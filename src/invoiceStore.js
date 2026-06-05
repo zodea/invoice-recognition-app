@@ -13,7 +13,7 @@ let seq = 0;
 const uid = (p) => `${p}_${Date.now().toString(36)}_${(seq++).toString(36)}`;
 
 function emptyFields() {
-  return { code: "", number: "", date: "", dateText: "", buyer: "", seller: "", amount: "", tax: "", total: "", rate: "", type: "", docType: "", remark: "" };
+  return { code: "", number: "", date: "", dateText: "", buyer: "", seller: "", amount: "", tax: "", total: "", rate: "", type: "", taxKind: "", docType: "", remark: "" };
 }
 
 // 预览队列：按插入顺序小批量渲染，避免一次性占满 pdf.js worker。

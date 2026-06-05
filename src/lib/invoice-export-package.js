@@ -70,8 +70,10 @@ export function exportParentFolderName(invoices) {
 
 // 待优化#3：分目录维度。专票/普票从 type 推断，行程单/货运凭证用 docType。
 function invoiceTypePart(inv) {
-  const t = String(inv?.fields?.type || "");
-  const d = String(inv?.fields?.docType || "");
+  const f = inv?.fields || {};
+  if (f.taxKind) return f.taxKind; // 专用发票 / 普通发票（最可靠，来自票面括注/全称）
+  const t = String(f.type || "");
+  const d = String(f.docType || "");
   if (/专用/.test(t)) return "专用发票";
   if (/普通/.test(t)) return "普通发票";
   if (d && d !== "增值税发票") return d; // 行程单 / 货物运输凭证

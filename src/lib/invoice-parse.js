@@ -61,7 +61,7 @@ export function parseInvoice(rawText) {
   let text = String(rawText || "").normalize("NFKC");
   for (const [k, v] of Object.entries(RADICAL_FIX)) if (text.includes(k)) text = text.split(k).join(v);
   text = text.replace(/[ \t]+/g, " ");
-  const f = { code: "", number: "", date: "", dateText: "", buyer: "", seller: "", amount: "", tax: "", total: "", rate: "", type: "", docType: "", remark: "" };
+  const f = { code: "", number: "", date: "", dateText: "", buyer: "", seller: "", amount: "", tax: "", total: "", rate: "", type: "", taxKind: "", docType: "", remark: "" };
 
   // 单据大类（发票 / 行程单 / 货物运输凭证 / 未识别），按原始文本判定一次
   f.docType = classifyDocType(rawText);
@@ -69,6 +69,11 @@ export function parseInvoice(rawText) {
   // 发票类型
   const tMatch = text.match(/(电子发票|增值税电子专用发票|增值税电子普通发票|增值税专用发票|增值税普通发票|普通发票|专用发票|数电)/);
   if (tMatch) f.type = tMatch[1];
+
+  // 专票/普票判定（分目录“发票类型”用）：很多票 type 抽成笼统“电子发票”，
+  // 但括注/全称里有“专用发票/普通发票”，据此给出更准的专票/普票分类。
+  if (/专用发票/.test(text)) f.taxKind = "专用发票";
+  else if (/普通发票/.test(text)) f.taxKind = "普通发票";
 
   // 发票号码（数电 20 位；旧版 8 位）
   const num = text.match(/发\s*票\s*号\s*码[:：]?\s*([0-9]{8,25})/) ||
@@ -241,5 +246,7 @@ export function parseInvoice(rawText) {
 }
 
 export function isProbablyInvoiceText(text) {
-  return /发票|价税合计|开票日期|税额/.test(String(text || ""));
+  // 含发票关键词，或属于报销常见的行程单/货运凭证（这些没有“发票/价税合计”等字样，
+  // 但同样是文字型 PDF，应走文字解析而非 OCR——否则货拉拉凭证会抽不到类型/购买方）。
+  return /发票|价税合计|开票日期|税额|行程单|货物运输|货拉拉|收款凭证|托运人/.test(String(text || ""));
 }

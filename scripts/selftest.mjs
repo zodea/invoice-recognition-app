@@ -6,7 +6,7 @@ import * as XLSX from "xlsx";
 import { dateRangeLabel, archiveBaseName, safeSheetName } from "../src/lib/naming.js";
 import { parseDoc, findDate, findOrderNo, findCompany } from "../src/lib/parse.js";
 import { buildWorkbookBytes } from "../src/lib/excel.js";
-import { parseInvoice, classifyDocType } from "../src/lib/invoice-parse.js";
+import { parseInvoice, classifyDocType, isProbablyInvoiceText } from "../src/lib/invoice-parse.js";
 import { buildInvoiceWorkbookBytes } from "../src/lib/invoice-excel.js";
 import { exportWorkbookName, invoiceExportFileName, exportParentFolderName, invoiceFolderParts } from "../src/lib/invoice-export-package.js";
 import { buildPrintLayout } from "../src/lib/invoice-layout.js";
@@ -262,6 +262,12 @@ ok("货运凭证 type=货物运输凭证", freight.type === "货物运输凭证"
 ok("货运凭证 买方=托运人(无证照号码)", freight.buyer === "广东瑞航建设工程有限公司");
 ok("货运凭证 金额=53.37", Number(freight.total) === 53.37);
 ok("货运凭证 日期=2026-03-24", freight.date === "2026-03-24");
+// 货运凭证/行程单没有“发票/价税合计”字样，但必须被判定为“可走文字解析”，否则会被当扫描件去 OCR
+ok("isProbablyInvoiceText 认货运凭证", isProbablyInvoiceText("货物运输电子收款凭证 托运人名称: x 费用合计(大写) (小写): ¥ 53.37"));
+ok("isProbablyInvoiceText 认行程单", isProbablyInvoiceText("腾讯出行服务—打车——行程单 合计67.75元"));
+ok("isProbablyInvoiceText 普通文本=false", !isProbablyInvoiceText("这是一段普通文字"));
+ok("专票普票 taxKind 普通", parseInvoice("电子发票(普通发票) 开票日期：2026年04月22日").taxKind === "普通发票");
+ok("专票普票 taxKind 专用", parseInvoice("增值税专用发票 开票日期：2026年04月11日").taxKind === "专用发票");
 
 // 字体混淆（ToUnicode 映射成空格/控制字符）：名称应判空，不能抓出乱码。
 const obf = parseInvoice("电子发票（普通发票） 发票号码：\n名称：     名称：   \n开票日期：");
