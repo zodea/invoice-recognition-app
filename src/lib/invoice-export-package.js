@@ -122,6 +122,27 @@ export function canUseTauriExport() {
   return typeof window !== "undefined" && Boolean(window.__TAURI_INTERNALS__ || window.__TAURI__);
 }
 
+export function canChooseSaveDir() {
+  return canUseTauriExport() || (typeof window !== "undefined" && typeof window.showDirectoryPicker === "function");
+}
+
+// 让用户选目录后把单个文件（PDF / Excel）写进去，与“整理导出”一致的保存体验。
+// 返回 { saved } / { canceled } / { fallbackDownload }（调用方在不支持选目录时回退浏览器下载）。
+export async function saveBytesToChosenDir(bytes, fileName) {
+  if (canUseTauriExport()) {
+    const dir = await pickTauriExportDir();
+    if (!dir) return { canceled: true };
+    const saved = await writeTauriFile(dir, [], fileName, bytes);
+    return { saved };
+  }
+  if (typeof window !== "undefined" && typeof window.showDirectoryPicker === "function") {
+    const dir = await window.showDirectoryPicker({ mode: "readwrite" });
+    const saved = await writeBytes(dir, fileName, bytes);
+    return { saved };
+  }
+  return { fallbackDownload: true };
+}
+
 function toUint8Array(bytes) {
   if (bytes instanceof Uint8Array) return bytes;
   if (bytes instanceof ArrayBuffer) return new Uint8Array(bytes);

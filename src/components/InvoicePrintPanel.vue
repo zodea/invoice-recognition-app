@@ -8,6 +8,7 @@ import {
   pickTauriExportDir,
   writeInvoiceExportPackage,
   writeInvoiceExportPackageTauri,
+  saveBytesToChosenDir,
 } from "../lib/invoice-export-package";
 
 const busy = ref(false);
@@ -16,6 +17,8 @@ const groupByBuyer = ref(true);
 
 const included = computed(() => orderedForPrint().map((x) => x.inv));
 const summary = computed(() => invoiceSummary());
+// 至少有一张已识别才允许导出 PDF / Excel（未识别导出没有意义）
+const hasRecognized = computed(() => included.value.some((inv) => inv.status === "done"));
 
 async function makeLayout() {
   if (!included.value.length) {
@@ -43,19 +46,43 @@ async function printNow() {
 }
 async function downloadPdf() {
   const bytes = await makeLayout();
-  if (bytes) {
-    downloadBytes(bytes, `发票打印版_每页${invoiceStore.perPage}张.pdf`);
-    msg.value = "已下载打印版 PDF。";
+  if (!bytes) return;
+  const name = `发票打印版_每页${invoiceStore.perPage}张.pdf`;
+  busy.value = true;
+  msg.value = "请选择保存目录…";
+  try {
+    const r = await saveBytesToChosenDir(bytes, name);
+    if (r.canceled) { msg.value = "已取消保存。"; return; }
+    if (r.fallbackDownload) { downloadBytes(bytes, name); msg.value = "已下载打印版 PDF。"; return; }
+    msg.value = `已保存打印版 PDF：${r.saved}`;
+  } catch (e) {
+    if (e && e.name === "AbortError") msg.value = "已取消保存。";
+    else { downloadBytes(bytes, name); msg.value = "保存目录失败，已改为下载。"; }
+  } finally {
+    busy.value = false;
   }
 }
-function exportExcel() {
+async function exportExcel() {
   if (!included.value.length) {
     window.alert("没有勾选发票。");
     return;
   }
   const bytes = buildInvoiceWorkbookBytes(included.value);
-  downloadBytes(bytes, "发票开票明细与汇总账单.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  msg.value = "已导出明细 + 汇总账单 Excel。";
+  const name = "发票开票明细与汇总账单.xlsx";
+  const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  busy.value = true;
+  msg.value = "请选择保存目录…";
+  try {
+    const r = await saveBytesToChosenDir(bytes, name);
+    if (r.canceled) { msg.value = "已取消保存。"; return; }
+    if (r.fallbackDownload) { downloadBytes(bytes, name, mime); msg.value = "已导出明细 + 汇总账单 Excel。"; return; }
+    msg.value = `已保存 Excel：${r.saved}`;
+  } catch (e) {
+    if (e && e.name === "AbortError") msg.value = "已取消保存。";
+    else { downloadBytes(bytes, name, mime); msg.value = "保存目录失败，已改为下载。"; }
+  } finally {
+    busy.value = false;
+  }
 }
 
 async function exportPackage() {
@@ -125,9 +152,9 @@ async function exportPackage() {
       </div>
       <div class="btns">
         <button class="primary" :disabled="busy || !included.length" @click="printNow">打印</button>
-        <button :disabled="busy || !included.length" @click="downloadPdf">PDF</button>
-        <button :disabled="!included.length" @click="exportExcel">Excel</button>
-        <button :disabled="busy || !included.length" @click="exportPackage">整理导出</button>
+        <button :disabled="busy || !included.length || !hasRecognized" :title="!hasRecognized ? '请先识别后再导出' : ''" @click="downloadPdf">PDF</button>
+        <button :disabled="busy || !included.length || !hasRecognized" :title="!hasRecognized ? '请先识别后再导出' : ''" @click="exportExcel">Excel</button>
+        <button :disabled="busy || !included.length || !hasRecognized" :title="!hasRecognized ? '请先识别后再导出' : ''" @click="exportPackage">整理导出</button>
       </div>
     </div>
     <div class="msg" v-if="msg">{{ msg }}</div>
