@@ -8,8 +8,14 @@ import InvoicePrintPanel from "../components/InvoicePrintPanel.vue";
 
 const sorted = computed(() => sortedInvoices());
 const unrecognizedCount = computed(() => invoiceStore.invoices.filter((i) => i.status !== "done").length);
+const duplicateCount = computed(() => invoiceStore.invoices.filter((i) => i.duplicateReason).length);
 const buyers = computed(() => buyerOptions());
 const docTypes = computed(() => docTypeOptions());
+
+function dedupe() {
+  const n = invoiceActions.refreshDuplicates();
+  invoiceStore.msg = n ? `已识别并取消勾选 ${n} 张重复发票。` : "未发现重复发票。";
+}
 
 watch(
   () => invoiceStore.selectedId,
@@ -36,11 +42,13 @@ watch(
         <strong>{{ invoiceStore.invoices.length }}</strong> 张发票
         <span v-if="unrecognizedCount">，{{ unrecognizedCount }} 张未识别</span>
         <span v-else>，全部已识别</span>
+        <span v-if="duplicateCount" class="dup-badge">含 {{ duplicateCount }} 张重复(已排除)</span>
       </div>
       <div class="toolbar-actions">
         <button class="tool primary" :disabled="invoiceStore.busy || !unrecognizedCount" @click="invoiceActions.recognizeAll">
           {{ invoiceStore.busy ? "识别中…" : "全部识别" }}
         </button>
+        <button class="tool" :disabled="invoiceStore.busy || invoiceStore.invoices.length < 2" @click="dedupe">去重</button>
         <button class="tool ghost" @click="invoiceActions.clearAll">清空</button>
       </div>
       <span class="msg" v-if="invoiceStore.msg">{{ invoiceStore.msg }}</span>
@@ -120,6 +128,16 @@ watch(
 }
 .toolbar-summary strong {
   color: var(--ink);
+}
+.dup-badge {
+  margin-left: 8px;
+  color: #991b1b;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 700;
 }
 .toolbar-actions {
   display: flex;
