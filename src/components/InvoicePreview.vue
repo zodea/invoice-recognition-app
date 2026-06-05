@@ -1,9 +1,32 @@
 <script setup>
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { invoiceStore, printUnits, selectInvoice } from "../invoiceStore";
 import { A4_RATIO, perPageCount, planSlots } from "../lib/print-layout";
+import { renderPdfPages } from "../lib/pdftext";
 
 const units = computed(() => printUnits());
+
+// 放大查看：右键槽位或点放大按钮，弹层显示该页大图；电子票按需渲染高清(scale 3)更清晰。
+const zoom = ref(null); // { unit, image, loading }
+async function openZoom(unit) {
+  selectInvoice(unit.invId);
+  zoom.value = { unit, image: unit.image, loading: false };
+  if (unit.inv.isTextPdf && unit.inv.blob) {
+    zoom.value.loading = true;
+    try {
+      const pages = await renderPdfPages(unit.inv.blob, { scale: 3 });
+      const hi = pages[unit.page] || pages[0];
+      if (hi && zoom.value && zoom.value.unit === unit) zoom.value.image = hi;
+    } catch (e) {
+      /* 渲染失败保留已有预览图 */
+    } finally {
+      if (zoom.value && zoom.value.unit === unit) zoom.value.loading = false;
+    }
+  }
+}
+function closeZoom() {
+  zoom.value = null;
+}
 const slots = computed(() => planSlots(invoiceStore.perPage));
 const pages = computed(() => {
   const per = perPageCount(invoiceStore.perPage);
@@ -44,10 +67,13 @@ function slotStyle(slot) {
           :style="slotStyle(slots[unitIndex])"
           :data-inv="unit.invId"
           @click="selectInvoice(unit.invId)"
+          @contextmenu.prevent="openZoom(unit)"
+          title="右键放大查看"
         >
           <span class="seq">
             {{ unit.seq }}<template v-if="unit.pageCount > 1">-{{ unit.page + 1 }}</template>
           </span>
+          <span class="zoom-btn" title="放大查看" @click.stop="openZoom(unit)">🔍</span>
           <span v-if="unit.needsReview" class="review-tag">待复核</span>
           <img v-if="unit.image" :src="unit.image" alt="" />
           <div v-else class="pdf-card">
@@ -59,6 +85,26 @@ function slotStyle(slot) {
         </button>
       </div>
       <div class="page-no">A4 第 {{ pageIndex + 1 }} 页</div>
+    </div>
+
+    <div v-if="zoom" class="zoom-overlay" @click="closeZoom">
+      <div class="zoom-box" @click.stop>
+        <button class="zoom-close" @click="closeZoom" title="关闭">✕</button>
+        <img v-if="zoom.image" :src="zoom.image" class="zoom-img" alt="" />
+        <div v-else class="zoom-card">
+          <strong>{{ zoom.unit.inv.fields.seller || "电子发票 PDF" }}</strong>
+          <span>{{ zoom.unit.inv.fields.date || "日期待复核" }}</span>
+          <span>{{ zoom.unit.inv.fields.total ? `¥${zoom.unit.inv.fields.total}` : "金额待复核" }}</span>
+          <small>{{ zoom.unit.inv.name }}</small>
+        </div>
+        <div v-if="zoom.loading" class="zoom-loading">高清渲染中…</div>
+        <div class="zoom-meta">
+          序号 {{ zoom.unit.seq }}<template v-if="zoom.unit.pageCount > 1">-{{ zoom.unit.page + 1 }}</template>
+          · {{ zoom.unit.inv.fields.seller || "未识别销售方" }}
+          · {{ zoom.unit.inv.fields.date || "无日期" }}
+          · ¥{{ zoom.unit.inv.fields.total || "0.00" }}
+        </div>
+      </div>
     </div>
   </section>
 </template>
@@ -160,6 +206,96 @@ function slotStyle(slot) {
   color: #b45309;
   border: 1px solid #fed7aa;
   padding: 3px 6px;
+}
+.zoom-btn {
+  position: absolute;
+  z-index: 3;
+  right: 5px;
+  bottom: 5px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(31, 35, 41, 0.66);
+  color: #fff;
+  font-size: 13px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.slot:hover .zoom-btn {
+  opacity: 1;
+}
+.zoom-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: rgba(15, 23, 42, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.zoom-box {
+  position: relative;
+  max-width: 94vw;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.zoom-img {
+  max-width: 94vw;
+  max-height: 82vh;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.zoom-card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 40px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 320px;
+}
+.zoom-card strong { font-size: 18px; }
+.zoom-card span { color: var(--ink-soft); }
+.zoom-card small { color: var(--ink-soft); font-size: 12px; }
+.zoom-close {
+  position: absolute;
+  top: -14px;
+  right: -14px;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: none;
+  background: #fff;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 800;
+  box-shadow: var(--shadow);
+}
+.zoom-loading {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(31, 35, 41, 0.8);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+.zoom-meta {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
 }
 .pdf-card {
   height: 100%;
