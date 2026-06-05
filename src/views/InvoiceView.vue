@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, watch } from "vue";
-import { invoiceStore, invoiceActions, sortedInvoices } from "../invoiceStore";
+import { invoiceStore, invoiceActions, sortedInvoices, buyerOptions, docTypeOptions } from "../invoiceStore";
 import InvoiceUpload from "../components/InvoiceUpload.vue";
 import InvoicePreview from "../components/InvoicePreview.vue";
 import InvoiceRow from "../components/InvoiceRow.vue";
@@ -8,6 +8,8 @@ import InvoicePrintPanel from "../components/InvoicePrintPanel.vue";
 
 const sorted = computed(() => sortedInvoices());
 const unrecognizedCount = computed(() => invoiceStore.invoices.filter((i) => i.status !== "done").length);
+const buyers = computed(() => buyerOptions());
+const docTypes = computed(() => docTypeOptions());
 
 watch(
   () => invoiceStore.selectedId,
@@ -42,6 +44,31 @@ watch(
         <button class="tool ghost" @click="invoiceActions.clearAll">清空</button>
       </div>
       <span class="msg" v-if="invoiceStore.msg">{{ invoiceStore.msg }}</span>
+    </div>
+
+    <div class="filters" v-if="invoiceStore.invoices.length">
+      <div class="filter-group">
+        <span>购买方</span>
+        <button
+          v-for="buyer in buyers"
+          :key="buyer"
+          :class="{ active: invoiceStore.buyerFilter === buyer }"
+          @click="invoiceStore.buyerFilter = buyer"
+        >
+          {{ buyer }}
+        </button>
+      </div>
+      <div class="filter-group">
+        <span>类型</span>
+        <button
+          v-for="docType in docTypes"
+          :key="docType"
+          :class="{ active: invoiceStore.docTypeFilter === docType }"
+          @click="invoiceStore.docTypeFilter = docType"
+        >
+          {{ docType }}
+        </button>
+      </div>
     </div>
 
     <div v-if="invoiceStore.invoices.length" class="workspace">
@@ -120,6 +147,41 @@ watch(
 }
 .msg {
   color: var(--ink-soft);
+}
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.filter-group span {
+  flex: 0 0 auto;
+  color: var(--ink-soft);
+  font-weight: 700;
+  font-size: 12px;
+}
+.filter-group button {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.filter-group button.active {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand);
 }
 .workspace {
   display: grid;
