@@ -5,6 +5,7 @@ import { extractPdfText, renderPdfPages } from "./lib/pdftext";
 import { recognizePages } from "./lib/ocr";
 import { parseInvoice, isProbablyInvoiceText } from "./lib/invoice-parse";
 import { applyInvoiceFilenameFallback } from "./lib/invoice-filename";
+import { markInvoiceDuplicates } from "./lib/invoice-dedupe";
 import { perPageCount } from "./lib/print-layout.js";
 
 let seq = 0;
@@ -102,6 +103,8 @@ export const invoiceActions = {
         error: "",
         note: "",
         systemNote: "",
+        duplicateOfId: "",
+        duplicateReason: "",
         include: true,
       });
       invoiceStore.invoices.push(inv);
@@ -167,6 +170,10 @@ export const invoiceActions = {
     inv.include = !inv.include;
   },
 
+  refreshDuplicates() {
+    return markInvoiceDuplicates(invoiceStore.invoices);
+  },
+
   async recognizeOne(inv) {
     // 等待文件读取（抽图/抽文字探测）完成，避免点早了被直接跳过（点"全部识别"会静默漏掉）
     let waited = 0;
@@ -212,8 +219,9 @@ export const invoiceActions = {
         applyParsed(inv.fields, parseInvoice(inv.rawText));
       }
       applyFilenameFallback(inv);
+      const duplicateCount = invoiceActions.refreshDuplicates();
       inv.status = "done";
-      invoiceStore.msg = "识别完成，请核对。";
+      invoiceStore.msg = duplicateCount ? `识别完成，已自动排除 ${duplicateCount} 张重复发票。` : "识别完成，请核对。";
     } catch (e) {
       inv.status = "error";
       inv.error = String((e && e.message) || e);
@@ -227,6 +235,8 @@ export const invoiceActions = {
     for (const inv of invoiceStore.invoices) {
       if (inv.status !== "done") await invoiceActions.recognizeOne(inv);
     }
+    const duplicateCount = invoiceActions.refreshDuplicates();
+    if (duplicateCount) invoiceStore.msg = `全部识别完成，已自动排除 ${duplicateCount} 张重复发票。`;
   },
 };
 
@@ -280,7 +290,7 @@ export function sortedInvoices({ applyFilters = true } = {}) {
   return arr.map((inv, i) => ({
     inv,
     seq: i + 1,
-    needsReview: !inv.fields.date || !inv.fields.total || !inv.fields.seller || !inv.fields.buyer || /需复核/.test(inv.systemNote || ""),
+    needsReview: !inv.fields.date || !inv.fields.total || !inv.fields.seller || !inv.fields.buyer || /需复核/.test(inv.systemNote || "") || !!inv.duplicateReason,
   })).filter((x) => !applyFilters || passesInvoiceFilters(x.inv));
 }
 

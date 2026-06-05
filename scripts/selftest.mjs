@@ -10,6 +10,7 @@ import { parseInvoice, classifyDocType } from "../src/lib/invoice-parse.js";
 import { buildInvoiceWorkbookBytes } from "../src/lib/invoice-excel.js";
 import { buildPrintLayout } from "../src/lib/invoice-layout.js";
 import { applyInvoiceFilenameFallback, parseInvoiceFilename } from "../src/lib/invoice-filename.js";
+import { isDuplicateInvoice, markInvoiceDuplicates } from "../src/lib/invoice-dedupe.js";
 import { PDFDocument } from "pdf-lib";
 
 let pass = 0;
@@ -161,6 +162,44 @@ const filledByName = applyInvoiceFilenameFallback(fieldsByName, "dzfp_2651200000
 ok("dzfp 文件名兜底号码", fieldsByName.number === "26512000000397340296");
 ok("dzfp 文件名兜底销售方", fieldsByName.seller === "西充县古楼农机加油站");
 ok("文件名兜底返回填充字段", filledByName.filled.includes("number") && filledByName.filled.includes("seller"));
+
+console.log("== invoice duplicate detection ==");
+const dupA = {
+  id: "a",
+  name: "a.pdf",
+  include: true,
+  fields: {
+    number: "25312000000111111111",
+    date: "2026-05-08",
+    seller: "杭州测试商行",
+    buyer: "广州测试建筑有限公司",
+    amount: 283.02,
+    tax: 16.98,
+    total: 300,
+    docType: "增值税发票",
+    remark: "项目A",
+  },
+};
+const dupB = {
+  id: "b",
+  name: "b.pdf",
+  include: true,
+  fields: { ...dupA.fields },
+};
+ok("日期和票面内容一致 -> 重复", isDuplicateInvoice(dupB, dupA));
+const duplicateCount = markInvoiceDuplicates([dupA, dupB]);
+ok("重复项自动排除", duplicateCount === 1 && dupA.include === true && dupB.include === false && dupB.duplicateReason.includes("疑似重复"));
+const sameNumberDifferentContent = {
+  id: "c",
+  name: "c.pdf",
+  include: true,
+  fields: {
+    ...dupA.fields,
+    total: 301,
+    amount: 284.02,
+  },
+};
+ok("日期和发票号码一致但内容不同 -> 不去重", !isDuplicateInvoice(sameNumberDifferentContent, dupA));
 
 console.log("== 单据类型分类 classifyDocType ==");
 ok("普通增值税发票 -> 增值税发票", classifyDocType("电子发票（普通发票） 发票号码：123 价税合计（小写）¥300.00") === "增值税发票");

@@ -22,7 +22,8 @@ function syncDate(inv) {
       <div class="title-line">
         <span class="seq">{{ item.seq }}</span>
         <span class="file" :title="item.inv.name">{{ item.inv.name }}</span>
-        <span v-if="item.needsReview" class="tag">待复核</span>
+        <span v-if="item.inv.duplicateReason" class="tag duplicate">重复</span>
+        <span v-else-if="item.needsReview" class="tag">待复核</span>
       </div>
       <div class="row-actions">
         <label class="include" @click.stop>
@@ -43,11 +44,12 @@ function syncDate(inv) {
       <span v-else-if="item.inv.status === 'error'" class="bad">{{ item.inv.error }}</span>
       <span v-else>未识别</span>
       <span v-if="item.inv.systemNote" class="system-note">{{ item.inv.systemNote }}</span>
+      <span v-if="item.inv.duplicateReason" class="system-note">{{ item.inv.duplicateReason }}</span>
     </div>
 
     <div v-if="showText && item.inv.rawText" class="raw"><pre>{{ item.inv.rawText }}</pre></div>
 
-    <div class="fields">
+    <div class="fields" @change="invoiceActions.refreshDuplicates">
       <label>发票号码<input v-model="item.inv.fields.number" /></label>
       <label>开票日期<input v-model="item.inv.fields.date" placeholder="2026-03-09" @input="syncDate(item.inv)" /></label>
       <label class="wide">销售方<input v-model="item.inv.fields.seller" /></label>
@@ -121,6 +123,11 @@ function syncDate(inv) {
   padding: 2px 7px;
   font-size: 12px;
   font-weight: 700;
+}
+.tag.duplicate {
+  color: #991b1b;
+  background: #fef2f2;
+  border-color: #fecaca;
 }
 .row-actions {
   display: flex;
