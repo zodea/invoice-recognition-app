@@ -7,7 +7,7 @@ import { parseInvoice, isProbablyInvoiceText } from "./lib/invoice-parse";
 import { applyInvoiceFilenameFallback } from "./lib/invoice-filename";
 import { markInvoiceDuplicates } from "./lib/invoice-dedupe";
 import { invoiceFolderParts } from "./lib/invoice-export-package";
-import { loadLedger, saveLedger, recordInvoices, markVerified, parseVerifiedNumbers, historyStatus, importInputInvoiceWorkbookBytes, markPrintedInvoices } from "./lib/invoice-ledger";
+import { loadLedger, saveLedger, recordInvoices, markVerified, parseVerifiedNumbers, historyStatus, importInputInvoiceWorkbookBytes, markPrintedInvoices, shouldDefaultExcludeByHistory } from "./lib/invoice-ledger";
 import { perPageCount } from "./lib/print-layout.js";
 
 let seq = 0;
@@ -96,8 +96,18 @@ export const invoiceStore = reactive({
 });
 
 // 用台账刷新每张发票的历史状态（是否曾用过/已认证），供 UI 标记“历史重复/已认证”
+function applyHistoryToInvoice(inv) {
+  inv.history = historyStatus(invoiceStore.ledger, inv);
+  const shouldExclude = shouldDefaultExcludeByHistory(invoiceStore.ledger, inv);
+  if (shouldExclude && !inv.includeTouched) {
+    inv.include = false;
+    inv.historyAutoExcluded = true;
+  } else if (!shouldExclude) {
+    inv.historyAutoExcluded = false;
+  }
+}
 function refreshHistory() {
-  for (const inv of invoiceStore.invoices) inv.history = historyStatus(invoiceStore.ledger, inv);
+  for (const inv of invoiceStore.invoices) applyHistoryToInvoice(inv);
 }
 
 // 只填空字段，保留人工编辑
@@ -144,6 +154,8 @@ export const invoiceActions = {
         duplicateReason: "",
         history: { usedBefore: false, verified: false, printed: false, batches: [] }, // 历史台账：是否曾用过/已认证/已打印
         include: true,
+        includeTouched: false,
+        historyAutoExcluded: false,
       });
       invoiceStore.invoices.push(inv);
       if (!invoiceStore.selectedId) invoiceStore.selectedId = inv.id;
@@ -214,6 +226,7 @@ export const invoiceActions = {
 
   toggleInclude(inv) {
     inv.include = !inv.include;
+    inv.includeTouched = true;
   },
 
   refreshDuplicates() {
@@ -287,7 +300,7 @@ export const invoiceActions = {
         const duplicateCount = invoiceActions.refreshDuplicates();
         invoiceStore.msg = duplicateCount ? `识别完成，已自动排除 ${duplicateCount} 张重复发票。` : "识别完成，请核对。";
       }
-      inv.history = historyStatus(invoiceStore.ledger, inv); // 历史台账查重/认证标记
+      applyHistoryToInvoice(inv); // 历史台账查重/认证/已打印默认不勾选
     } catch (e) {
       inv.status = "error";
       inv.error = String((e && e.message) || e);
@@ -417,7 +430,7 @@ export function sortedInvoices({ applyFilters = true } = {}) {
   return arr.map((inv, i) => ({
     inv,
     seq: i + 1,
-    needsReview: !inv.fields.date || !inv.fields.total || !inv.fields.seller || !inv.fields.buyer || /需复核/.test(inv.systemNote || "") || !!inv.duplicateReason,
+    needsReview: !inv.fields.date || !inv.fields.total || !inv.fields.seller || !inv.fields.buyer || /需复核/.test(inv.systemNote || "") || !!inv.duplicateReason || !!inv.history?.usedBefore,
   })).filter((x) => !applyFilters || passesInvoiceFilters(x.inv));
 }
 

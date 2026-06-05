@@ -36,7 +36,7 @@ function syncDate(inv) {
       </div>
       <div class="row-actions">
         <label class="include" @click.stop>
-          <input type="checkbox" v-model="item.inv.include" />
+          <input type="checkbox" v-model="item.inv.include" @change="item.inv.includeTouched = true" />
           打印/汇总
         </label>
         <button :disabled="item.inv.rendering || invoiceStore.busy" @click.stop="invoiceActions.recognizeOne(item.inv)">
@@ -57,6 +57,7 @@ function syncDate(inv) {
       <span v-if="item.inv.history?.usedBefore" class="system-note">
         历史台账已记录，{{ item.inv.history.printed ? "已打印" : "已认证" }}
       </span>
+      <span v-if="item.inv.historyAutoExcluded" class="system-note">已按历史打印记录默认取消勾选，可手动勾选</span>
     </div>
 
     <div v-if="showText && item.inv.rawText" class="raw"><pre>{{ item.inv.rawText }}</pre></div>

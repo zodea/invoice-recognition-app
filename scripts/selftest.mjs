@@ -13,7 +13,7 @@ import { buildPrintLayout } from "../src/lib/invoice-layout.js";
 import { applyInvoiceFilenameFallback, parseInvoiceFilename } from "../src/lib/invoice-filename.js";
 import { isDuplicateInvoice, markInvoiceDuplicates } from "../src/lib/invoice-dedupe.js";
 import { bigCategory, classifyReimburseKind, buildReimburseWorkbookBytes } from "../src/lib/invoice-reimburse.js";
-import { buildCurrentInputInvoiceReportBytes, buildHistoryReportBytes, historyStatus, importInputInvoiceRows, ledgerStats, markPrintedInvoices, parseInputInvoiceRows } from "../src/lib/invoice-ledger.js";
+import { buildCurrentInputInvoiceReportBytes, buildHistoryReportBytes, historyStatus, importInputInvoiceRows, ledgerStats, markPrintedInvoices, parseInputInvoiceRows, shouldDefaultExcludeByHistory } from "../src/lib/invoice-ledger.js";
 import { PDFDocument } from "pdf-lib";
 
 let pass = 0;
@@ -328,6 +328,7 @@ ok("进项表默认认证且已打印", parsedInput[0].verified && parsedInput[0
 const importedLedger = importInputInvoiceRows({}, taxRows, { sourceName: "税务局导出.xlsx", importedAt: "2026-06-06" }).ledger;
 const ledgerState = historyStatus(importedLedger, { fields: { number: "26447000000704299292" } });
 ok("历史状态 usedBefore=true", ledgerState.usedBefore && ledgerState.verified && ledgerState.printed);
+ok("历史已打印默认不勾选", shouldDefaultExcludeByHistory(importedLedger, { fields: { number: "26447000000704299292" } }));
 ok("台账统计", ledgerStats(importedLedger).total === 2 && ledgerStats(importedLedger).printed === 2);
 const printedLedger = markPrintedInvoices({}, [{ name: "p.pdf", include: true, fields: { number: "25312000000000000001", date: "2026-05-01", seller: "A公司", buyer: "B公司", total: 100 } }], { name: "测试打印", date: "2026-06-06" }).ledger;
 ok("打印后写入台账", historyStatus(printedLedger, { fields: { number: "25312000000000000001" } }).printed);

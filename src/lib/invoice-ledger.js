@@ -157,6 +157,11 @@ export function historyStatus(ledger, inv) {
   };
 }
 
+export function shouldDefaultExcludeByHistory(ledger, inv) {
+  const status = historyStatus(ledger, inv);
+  return !!(status.printed || status.verified);
+}
+
 // 把本批发票记入台账（标记“已用/已报销”），返回 { ledger, added, repeated }
 export function recordInvoices(ledger, invoices, batch = {}) {
   const next = { ...(ledger || {}) };
