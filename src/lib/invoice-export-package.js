@@ -47,13 +47,58 @@ export function invoiceExportFileName(inv) {
   return `${seller}：${date}=${total}元${invoiceExtension(inv)}`;
 }
 
-export function exportWorkbookName(invoices) {
+function dateRange(invoices) {
   const dates = invoices
     .map((inv) => inv?.fields?.date || inv?.fields?.dateText || "")
     .filter(Boolean)
     .sort();
-  if (!dates.length) return "发票统计.xlsx";
-  return `发票统计_${dates[0]}至${dates[dates.length - 1]}.xlsx`;
+  return dates.length ? [dates[0], dates[dates.length - 1]] : [];
+}
+
+export function exportWorkbookName(invoices) {
+  const r = dateRange(invoices);
+  if (!r.length) return "发票统计.xlsx";
+  return `发票统计_${r[0]}至${r[1]}.xlsx`;
+}
+
+// 待优化#2：把整批导出物收进一个父文件夹，按开票日期区间命名
+export function exportParentFolderName(invoices) {
+  const r = dateRange(invoices);
+  if (!r.length) return "发票整理";
+  return `发票整理_${r[0]}至${r[1]}`;
+}
+
+// 待优化#3：分目录维度。专票/普票从 type 推断，行程单/货运凭证用 docType。
+function invoiceTypePart(inv) {
+  const t = String(inv?.fields?.type || "");
+  const d = String(inv?.fields?.docType || "");
+  if (/专用/.test(t)) return "专用发票";
+  if (/普通/.test(t)) return "普通发票";
+  if (d && d !== "增值税发票") return d; // 行程单 / 货物运输凭证
+  return t || d || "";
+}
+const DIMENSION_PART = {
+  buyer: (inv) => sanitizeFilePart(inv?.fields?.buyer, "未识别购买方"),
+  seller: (inv) => sanitizeFilePart(inv?.fields?.seller, "未识别销售方"),
+  date: (inv) => sanitizeFilePart(inv?.fields?.date || inv?.fields?.dateText, "无日期"),
+  type: (inv) => sanitizeFilePart(invoiceTypePart(inv), "未识别类型"),
+};
+// 供 UI 选择的维度清单（顺序即默认展示顺序；实际嵌套顺序由用户勾选先后决定）
+export const GROUP_DIMENSIONS = [
+  { key: "buyer", label: "购买方" },
+  { key: "seller", label: "销售方" },
+  { key: "date", label: "日期" },
+  { key: "type", label: "发票类型(专票/普票)" },
+];
+
+// 按所选维度(保持传入顺序)返回该发票的嵌套文件夹路径数组
+export function invoiceFolderParts(inv, dims = []) {
+  const parts = [];
+  for (const key of dims) {
+    const fn = DIMENSION_PART[key];
+    if (fn) parts.push(fn(inv));
+  }
+  return parts;
 }
 
 async function exists(directoryHandle, name) {
@@ -83,30 +128,39 @@ async function writeBytes(directoryHandle, name, bytes) {
   return safeName;
 }
 
-async function targetDirectory(rootHandle, inv, groupByBuyer) {
-  if (!groupByBuyer) return rootHandle;
-  const buyer = sanitizeFilePart(inv?.fields?.buyer, "未识别购买方");
-  return rootHandle.getDirectoryHandle(buyer, { create: true });
+// 兼容旧的 groupByBuyer 布尔：没传 dims 时，true 等价于按购买方分目录
+function normalizeDims({ dims, groupByBuyer }) {
+  if (Array.isArray(dims) && dims.length) return dims;
+  return groupByBuyer ? ["buyer"] : [];
 }
 
-export async function writeInvoiceExportPackage(invoices, rootHandle, { excelBytes, groupByBuyer = false } = {}) {
+// 依次进入/创建多级子目录（File System Access API）
+async function resolveDir(rootHandle, parts) {
+  let dir = rootHandle;
+  for (const p of parts) {
+    if (!p) continue;
+    dir = await dir.getDirectoryHandle(p, { create: true });
+  }
+  return dir;
+}
+
+export async function writeInvoiceExportPackage(invoices, rootHandle, { excelBytes, dims, groupByBuyer = false } = {}) {
   if (!rootHandle || typeof rootHandle.getFileHandle !== "function") {
     throw new Error("当前环境不支持目录写入。");
   }
 
-  const result = {
-    excelName: "",
-    fileCount: 0,
-    grouped: groupByBuyer,
-  };
+  const useDims = normalizeDims({ dims, groupByBuyer });
+  const parent = exportParentFolderName(invoices);
+  const parentDir = await resolveDir(rootHandle, [parent]); // 待优化#2：统一收进父文件夹
+  const result = { excelName: "", fileCount: 0, parent, dims: useDims };
 
   if (excelBytes) {
-    result.excelName = await writeBytes(rootHandle, exportWorkbookName(invoices), excelBytes);
+    result.excelName = await writeBytes(parentDir, exportWorkbookName(invoices), excelBytes);
   }
 
   for (const inv of invoices) {
     if (!inv?.blob) continue;
-    const dir = await targetDirectory(rootHandle, inv, groupByBuyer);
+    const dir = await resolveDir(parentDir, invoiceFolderParts(inv, useDims)); // 待优化#3：按维度嵌套
     const name = await uniqueFileName(dir, invoiceExportFileName(inv));
     const fileHandle = await dir.getFileHandle(name, { create: true });
     const writable = await fileHandle.createWritable();
@@ -178,22 +232,20 @@ export async function pickTauriExportDir() {
   return invokeTauri("pick_export_dir");
 }
 
-export async function writeInvoiceExportPackageTauri(invoices, root, { excelBytes, groupByBuyer = false } = {}) {
+export async function writeInvoiceExportPackageTauri(invoices, root, { excelBytes, dims, groupByBuyer = false } = {}) {
   if (!root) throw new Error("未选择保存目录。");
 
-  const result = {
-    excelName: "",
-    fileCount: 0,
-    grouped: groupByBuyer,
-  };
+  const useDims = normalizeDims({ dims, groupByBuyer });
+  const parent = exportParentFolderName(invoices); // 待优化#2：父文件夹
+  const result = { excelName: "", fileCount: 0, parent, dims: useDims };
 
   if (excelBytes) {
-    result.excelName = await writeTauriFile(root, [], exportWorkbookName(invoices), excelBytes);
+    result.excelName = await writeTauriFile(root, [parent], exportWorkbookName(invoices), excelBytes);
   }
 
   for (const inv of invoices) {
     if (!inv?.blob) continue;
-    const parts = groupByBuyer ? [sanitizeFilePart(inv?.fields?.buyer, "未识别购买方")] : [];
+    const parts = [parent, ...invoiceFolderParts(inv, useDims)]; // 待优化#3：父/维度1/维度2…
     const bytes = await inv.blob.arrayBuffer();
     await writeTauriFile(root, parts, invoiceExportFileName(inv), bytes);
     result.fileCount++;

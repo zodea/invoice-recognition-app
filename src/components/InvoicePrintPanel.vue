@@ -9,11 +9,28 @@ import {
   writeInvoiceExportPackage,
   writeInvoiceExportPackageTauri,
   saveBytesToChosenDir,
+  GROUP_DIMENSIONS,
 } from "../lib/invoice-export-package";
 
 const busy = ref(false);
 const msg = ref("");
-const groupByBuyer = ref(true);
+
+// 待优化#3：分目录维度多选下拉。点选先后即文件夹嵌套顺序，序号在标签上体现。
+const dimsOpen = ref(false);
+function dimOrder(key) {
+  return invoiceStore.groupDims.indexOf(key);
+}
+function toggleDim(key) {
+  const i = invoiceStore.groupDims.indexOf(key);
+  if (i >= 0) invoiceStore.groupDims.splice(i, 1);
+  else invoiceStore.groupDims.push(key);
+}
+const dimsLabel = computed(() => {
+  if (!invoiceStore.groupDims.length) return "不分目录";
+  return invoiceStore.groupDims
+    .map((k) => GROUP_DIMENSIONS.find((d) => d.key === k)?.label || k)
+    .join(" / ");
+});
 
 const included = computed(() => orderedForPrint().map((x) => x.inv));
 const summary = computed(() => invoiceSummary());
@@ -109,17 +126,17 @@ async function exportPackage() {
       msg.value = "正在整理原文件和统计表…";
       result = await writeInvoiceExportPackageTauri(included.value, dir, {
         excelBytes,
-        groupByBuyer: groupByBuyer.value,
+        dims: invoiceStore.groupDims,
       });
     } else {
       const dir = await window.showDirectoryPicker({ mode: "readwrite" });
       msg.value = "正在整理原文件和统计表…";
       result = await writeInvoiceExportPackage(included.value, dir, {
         excelBytes,
-        groupByBuyer: groupByBuyer.value,
+        dims: invoiceStore.groupDims,
       });
     }
-    msg.value = `已导出 ${result.fileCount} 个原文件，统计表：${result.excelName || "未生成"}。`;
+    msg.value = `已导出到「${result.parent}」：${result.fileCount} 个文件，统计表：${result.excelName || "未生成"}。`;
   } catch (e) {
     if (e && e.name === "AbortError") {
       msg.value = "已取消导出。";
@@ -146,9 +163,20 @@ async function exportPackage() {
       <label v-for="n in [1, 2, 4]" :key="n" class="radio">
         <input type="radio" :value="n" v-model="invoiceStore.perPage" /> {{ n }}张
       </label>
-      <label class="radio">
-        <input type="checkbox" v-model="groupByBuyer" /> 按购买方分目录
-      </label>
+      <div class="dims" @keydown.esc="dimsOpen = false">
+        <button type="button" class="dims-trigger" @click="dimsOpen = !dimsOpen">
+          分目录：<b>{{ dimsLabel }}</b> <span class="caret">▾</span>
+        </button>
+        <div v-if="dimsOpen" class="dims-menu">
+          <p class="dims-tip">勾选顺序即文件夹层级；左右两栏同步分组</p>
+          <label v-for="d in GROUP_DIMENSIONS" :key="d.key" class="dims-item">
+            <input type="checkbox" :checked="dimOrder(d.key) >= 0" @change="toggleDim(d.key)" />
+            <span class="badge" v-if="dimOrder(d.key) >= 0">{{ dimOrder(d.key) + 1 }}</span>
+            {{ d.label }}
+          </label>
+          <button type="button" class="dims-clear" @click="invoiceStore.groupDims.splice(0)">清除分目录</button>
+        </div>
+      </div>
       </div>
       <div class="btns">
         <button class="primary" :disabled="busy || !included.length" @click="printNow">打印</button>
@@ -175,6 +203,17 @@ async function exportPackage() {
 .actions-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .opts { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; color: var(--ink-soft); }
 .radio { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); }
+.dims { position: relative; }
+.dims-trigger { border: 1px solid var(--line-strong); background: #fff; border-radius: 6px; padding: 6px 10px; font-weight: 700; color: var(--ink); }
+.dims-trigger b { color: var(--brand); font-weight: 800; }
+.dims-trigger .caret { color: var(--ink-soft); }
+.dims-menu { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 220px; background: #fff; border: 1px solid var(--line-strong); border-radius: 8px; box-shadow: var(--shadow); padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+.dims-tip { margin: 0 0 4px; font-size: 11px; color: var(--ink-soft); }
+.dims-item { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 6px; cursor: pointer; color: var(--ink); }
+.dims-item:hover { background: var(--brand-soft); }
+.dims-item .badge { min-width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--brand); color: #fff; font-size: 11px; font-weight: 800; }
+.dims-clear { margin-top: 4px; border: none; background: none; color: var(--ink-soft); text-align: left; padding: 4px 6px; font-size: 12px; }
+.dims-clear:hover { color: var(--danger); }
 .btns { display: flex; gap: 8px; flex-wrap: wrap; }
 .btns button { border: 1px solid var(--line-strong); background: #fff; border-radius: 6px; padding: 7px 11px; font-weight: 700; }
 .btns button.primary { border: none; background: var(--brand); color: #fff; }

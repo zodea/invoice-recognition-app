@@ -6,6 +6,7 @@ import { recognizePages } from "./lib/ocr";
 import { parseInvoice, isProbablyInvoiceText } from "./lib/invoice-parse";
 import { applyInvoiceFilenameFallback } from "./lib/invoice-filename";
 import { markInvoiceDuplicates } from "./lib/invoice-dedupe";
+import { invoiceFolderParts } from "./lib/invoice-export-package";
 import { perPageCount } from "./lib/print-layout.js";
 
 let seq = 0;
@@ -62,6 +63,7 @@ export const invoiceStore = reactive({
   selectedId: "", // 左右联动选中的发票 id
   buyerFilter: "全部",
   docTypeFilter: "全部",
+  groupDims: [], // 待优化#3：分目录维度（顺序即嵌套顺序），同时驱动左右两栏分组排序
 });
 
 // 只填空字段，保留人工编辑
@@ -164,6 +166,7 @@ export const invoiceActions = {
     invoiceStore.selectedId = "";
     invoiceStore.buyerFilter = "全部";
     invoiceStore.docTypeFilter = "全部";
+    invoiceStore.groupDims = [];
   },
 
   toggleInclude(inv) {
@@ -279,10 +282,23 @@ export function filteredInvoices() {
   return invoiceStore.invoices.filter((inv) => passesInvoiceFilters(inv));
 }
 
-// 按开票日期升序；无日期的排最后。返回带 seq（序号）和 needsReview 标记的数组。
+// 选中的分目录维度下，该发票的文件夹路径（用于左右两栏分组排序与分组标签展示）
+export function groupPath(inv) {
+  return invoiceFolderParts(inv, invoiceStore.groupDims || []);
+}
+
+// 先按所选分目录维度（顺序）分组，再组内按开票日期升序；无日期排最后。
+// 这样左右两栏顺序与“整理导出”的文件夹分类完全一致（待优化#3）。
 export function sortedInvoices({ applyFilters = true } = {}) {
+  const dims = invoiceStore.groupDims || [];
   const arr = invoiceStore.invoices.slice();
   arr.sort((a, b) => {
+    const pa = invoiceFolderParts(a, dims);
+    const pb = invoiceFolderParts(b, dims);
+    for (let i = 0; i < dims.length; i++) {
+      const c = (pa[i] || "").localeCompare(pb[i] || "", "zh-Hans-CN");
+      if (c) return c;
+    }
     const da = a.fields.date || "";
     const db = b.fields.date || "";
     if (da && db) return da.localeCompare(db) || a.id.localeCompare(b.id);

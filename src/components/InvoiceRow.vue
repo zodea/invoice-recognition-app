@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from "vue";
-import { invoiceStore, invoiceActions, selectInvoice } from "../invoiceStore";
+import { invoiceStore, invoiceActions, selectInvoice, groupPath } from "../invoiceStore";
 import { invoiceExportFileName } from "../lib/invoice-export-package";
 
 defineProps({ item: Object });
@@ -30,6 +30,7 @@ function syncDate(inv) {
         <div class="export-name" :title="invoiceExportFileName(item.inv)">
           整理后：{{ invoiceExportFileName(item.inv) }}
         </div>
+        <div v-if="groupPath(item.inv).length" class="group-path">📁 {{ groupPath(item.inv).join(" / ") }}</div>
       </div>
       <div class="row-actions">
         <label class="include" @click.stop>
@@ -107,6 +108,14 @@ function syncDate(inv) {
 .export-name {
   margin: 3px 0 0 33px;
   color: var(--brand);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.group-path {
+  margin: 2px 0 0 33px;
+  color: var(--ink-soft);
   font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -8,7 +8,7 @@ import { parseDoc, findDate, findOrderNo, findCompany } from "../src/lib/parse.j
 import { buildWorkbookBytes } from "../src/lib/excel.js";
 import { parseInvoice, classifyDocType } from "../src/lib/invoice-parse.js";
 import { buildInvoiceWorkbookBytes } from "../src/lib/invoice-excel.js";
-import { exportWorkbookName, invoiceExportFileName } from "../src/lib/invoice-export-package.js";
+import { exportWorkbookName, invoiceExportFileName, exportParentFolderName, invoiceFolderParts } from "../src/lib/invoice-export-package.js";
 import { buildPrintLayout } from "../src/lib/invoice-layout.js";
 import { applyInvoiceFilenameFallback, parseInvoiceFilename } from "../src/lib/invoice-filename.js";
 import { isDuplicateInvoice, markInvoiceDuplicates } from "../src/lib/invoice-dedupe.js";
@@ -287,6 +287,19 @@ fs.unlinkSync("scripts/_inv.xlsx");
 console.log("== invoice export package ==");
 ok("整理导出文件名", invoiceExportFileName(invoices[0]) === "广州富丰建材贸易有限公司：2026-03-09=300.00元.pdf");
 ok("整理导出 Excel 根目录名", exportWorkbookName(invoices) === "发票统计_2026-03-09至2026-03-10.xlsx");
+// 待优化#2：所有导出物收进一个父文件夹（按开票日期区间命名）
+ok("整理导出父文件夹名", exportParentFolderName(invoices) === "发票整理_2026-03-09至2026-03-10");
+ok("无日期父文件夹名", exportParentFolderName([{ fields: {} }]) === "发票整理");
+// 待优化#3：按所选维度（顺序）生成嵌套文件夹路径
+ok("分目录-单维(购买方)", JSON.stringify(invoiceFolderParts(invoices[0], ["buyer"])) === JSON.stringify(["买方A"]));
+ok("分目录-多维按序(购买方/日期)", JSON.stringify(invoiceFolderParts(invoices[0], ["buyer", "date"])) === JSON.stringify(["买方A", "2026-03-09"]));
+ok("分目录-空维度返回空", invoiceFolderParts(invoices[0], []).length === 0);
+const zhuanInv = { fields: { type: "增值税专用发票", docType: "增值税发票" } };
+const putongInv = { fields: { type: "增值税普通发票", docType: "增值税发票" } };
+ok("分目录-类型专票", JSON.stringify(invoiceFolderParts(zhuanInv, ["type"])) === JSON.stringify(["专用发票"]));
+ok("分目录-类型普票", JSON.stringify(invoiceFolderParts(putongInv, ["type"])) === JSON.stringify(["普通发票"]));
+ok("分目录-类型行程单", JSON.stringify(invoiceFolderParts({ fields: { docType: "行程单" } }, ["type"])) === JSON.stringify(["行程单"]));
+ok("分目录-未识别购买方兜底", JSON.stringify(invoiceFolderParts({ fields: {} }, ["buyer"])) === JSON.stringify(["未识别购买方"]));
 
 console.log("== invoice layout ==");
 const srcDoc = await PDFDocument.create();
