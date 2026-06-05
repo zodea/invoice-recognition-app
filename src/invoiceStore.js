@@ -253,21 +253,24 @@ export function invoiceSummary() {
   return { count: n, amount: r2(amount), tax: r2(tax), total: r2(total) };
 }
 
+// 未识别的购买方/类型在筛选里统一归到“未识别”桶（显示留空意味，不再编造“未识别购买方”等文字）
+export const UNSET_LABEL = "未识别";
+
 export function buyerOptions() {
   const set = new Set();
-  for (const inv of invoiceStore.invoices) set.add((inv.fields.buyer || "").trim() || "未识别购买方");
+  for (const inv of invoiceStore.invoices) set.add((inv.fields.buyer || "").trim() || UNSET_LABEL);
   return ["全部", ...[...set].sort((a, b) => a.localeCompare(b, "zh-Hans-CN"))];
 }
 
 export function docTypeOptions() {
   const set = new Set();
-  for (const inv of invoiceStore.invoices) set.add((inv.fields.docType || inv.fields.type || "").trim() || "未识别类型");
+  for (const inv of invoiceStore.invoices) set.add((inv.fields.docType || inv.fields.type || "").trim() || UNSET_LABEL);
   return ["全部", ...[...set].sort((a, b) => a.localeCompare(b, "zh-Hans-CN"))];
 }
 
 export function passesInvoiceFilters(inv) {
-  const buyer = (inv.fields.buyer || "").trim() || "未识别购买方";
-  const docType = (inv.fields.docType || inv.fields.type || "").trim() || "未识别类型";
+  const buyer = (inv.fields.buyer || "").trim() || UNSET_LABEL;
+  const docType = (inv.fields.docType || inv.fields.type || "").trim() || UNSET_LABEL;
   return (invoiceStore.buyerFilter === "全部" || buyer === invoiceStore.buyerFilter)
     && (invoiceStore.docTypeFilter === "全部" || docType === invoiceStore.docTypeFilter);
 }

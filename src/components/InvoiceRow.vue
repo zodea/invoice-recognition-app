@@ -53,12 +53,12 @@ function syncDate(inv) {
       <label>发票号码<input v-model="item.inv.fields.number" /></label>
       <label>开票日期<input v-model="item.inv.fields.date" placeholder="2026-03-09" @input="syncDate(item.inv)" /></label>
       <label class="wide">销售方<input v-model="item.inv.fields.seller" /></label>
-      <label class="wide">购买方<input v-model="item.inv.fields.buyer" /></label>
+      <label class="wide">购买方<input v-model="item.inv.fields.buyer" placeholder="未识别（留空）" /></label>
       <label>金额<input v-model="item.inv.fields.amount" inputmode="decimal" /></label>
       <label>税额<input v-model="item.inv.fields.tax" inputmode="decimal" /></label>
       <label>价税合计<input v-model="item.inv.fields.total" inputmode="decimal" /></label>
       <label>税点<input v-model="item.inv.fields.rate" placeholder="如 13%（混票留空）" /></label>
-      <label>类型<input v-model="item.inv.fields.type" /></label>
+      <label>类型<input v-model="item.inv.fields.type" placeholder="未识别（留空）" /></label>
       <label class="full">票面备注<input v-model="item.inv.fields.remark" placeholder="发票备注栏内容" /></label>
     </div>
   </article>
