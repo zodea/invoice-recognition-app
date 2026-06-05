@@ -30,6 +30,10 @@ scripts/_*.xlsx
 *.log
 ._*
 
+# Internal working notes (kept local, not published to GitHub)
+todo.md
+待优化.md
+
 # OS/editor
 .claude/
 .DS_Store
