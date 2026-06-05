@@ -1,5 +1,5 @@
 // 发票批量整理：识别全部发票 -> 与文件名“真值”核对差异 -> 重命名输出 PDF
-//   (公司：yyyy／mm／dd-金额元.pdf) -> 生成「最早~最晚」日期区间的 Excel 统计。
+//   (公司：yyyy-mm-dd=金额元.pdf) -> 生成「最早~最晚」日期区间的 Excel 统计。
 // 运行：node scripts/invoice-batch.mjs
 import fs from "node:fs";
 import path from "node:path";
@@ -12,9 +12,27 @@ import * as XLSX from "xlsx";
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const srcDir = path.join(root, "发票测试");
 const outDir = path.join(root, "发票测试_输出");
-const renameDir = path.join(outDir, "重命名整理");
-fs.rmSync(renameDir, { recursive: true, force: true });
-fs.mkdirSync(renameDir, { recursive: true });
+const preferredRenameDir = path.join(outDir, "重命名整理");
+
+function timestamp() {
+  return new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
+}
+
+function prepareRenameDir(dir) {
+  fs.mkdirSync(outDir, { recursive: true });
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  } catch (e) {
+    const fallback = path.join(outDir, `重命名整理_${timestamp()}`);
+    fs.mkdirSync(fallback, { recursive: true });
+    console.warn(`输出目录不可用，已改用：${fallback}`);
+    console.warn(`原错误：${e.message || e}`);
+    return fallback;
+  }
+}
+
+const renameDir = prepareRenameDir(preferredRenameDir);
 
 const cmapsDir = path.join(root, "node_modules", "pdfjs-dist", "cmaps");
 class NodeCMapReaderFactory {
@@ -119,7 +137,7 @@ for (const file of files) {
   else status = "识别一致";
 
   // 重命名输出
-  const newName = `${sanitize(seller)}：${date ? date.replace(/-/g, "／") : "无日期"}-${fmtMoney(totalNum) || "0.00"}元.pdf`;
+  const newName = `${sanitize(seller)}：${date || "无日期"}=${fmtMoney(totalNum) || "0.00"}元.pdf`;
   const dest = uniquePath(renameDir, newName);
   fs.copyFileSync(file, dest);
 

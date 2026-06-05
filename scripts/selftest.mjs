@@ -8,6 +8,7 @@ import { parseDoc, findDate, findOrderNo, findCompany } from "../src/lib/parse.j
 import { buildWorkbookBytes } from "../src/lib/excel.js";
 import { parseInvoice, classifyDocType } from "../src/lib/invoice-parse.js";
 import { buildInvoiceWorkbookBytes } from "../src/lib/invoice-excel.js";
+import { exportWorkbookName, invoiceExportFileName } from "../src/lib/invoice-export-package.js";
 import { buildPrintLayout } from "../src/lib/invoice-layout.js";
 import { applyInvoiceFilenameFallback, parseInvoiceFilename } from "../src/lib/invoice-filename.js";
 import { isDuplicateInvoice, markInvoiceDuplicates } from "../src/lib/invoice-dedupe.js";
@@ -269,7 +270,7 @@ ok("字体混淆 卖方为空", obf.seller === "");
 
 console.log("== invoice excel ==");
 const invoices = [
-  { name: "a.pdf", note: "", include: true, fields: { number: "123", dateText: "2026-03-09", seller: "广州富丰建材贸易有限公司", buyer: "买方A", amount: 283.02, tax: 16.98, total: 300, type: "电子发票" } },
+  { name: "a.pdf", note: "", include: true, systemNote: "已补录", fields: { number: "123", dateText: "2026-03-09", seller: "广州富丰建材贸易有限公司", buyer: "买方A", amount: 283.02, tax: 16.98, total: 300, rate: "6%", type: "电子发票", remark: "票面A" } },
   { name: "b.pdf", note: "", include: true, fields: { number: "124", dateText: "2026-03-10", seller: "广州富丰建材贸易有限公司", buyer: "买方B", amount: 100, tax: 6, total: 106, type: "电子发票" } },
 ];
 const ibytes = buildInvoiceWorkbookBytes(invoices);
@@ -277,9 +278,15 @@ fs.writeFileSync("scripts/_inv.xlsx", Buffer.from(ibytes));
 const iwb = XLSX.read(fs.readFileSync("scripts/_inv.xlsx"));
 ok("含开票明细表", iwb.SheetNames.includes("开票明细"));
 ok("含汇总账单表", iwb.SheetNames.includes("汇总账单"));
+const detailSheet = XLSX.utils.sheet_to_json(iwb.Sheets["开票明细"], { header: 1 });
+ok("发票 Excel 拆出票面备注/系统备注", detailSheet[0].includes("票面备注") && detailSheet[0].includes("系统备注") && detailSheet.some((r) => r.includes("票面A") && r.includes("已补录")));
 const sumSheet = XLSX.utils.sheet_to_json(iwb.Sheets["汇总账单"], { header: 1 });
 ok("汇总合计=406", sumSheet.some((r) => r[0] === "合计" && Number(r[4]) === 406));
 fs.unlinkSync("scripts/_inv.xlsx");
+
+console.log("== invoice export package ==");
+ok("整理导出文件名", invoiceExportFileName(invoices[0]) === "广州富丰建材贸易有限公司：2026-03-09=300.00元.pdf");
+ok("整理导出 Excel 根目录名", exportWorkbookName(invoices) === "发票统计_2026-03-09至2026-03-10.xlsx");
 
 console.log("== invoice layout ==");
 const srcDoc = await PDFDocument.create();

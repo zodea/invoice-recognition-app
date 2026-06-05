@@ -7,7 +7,21 @@ function num(v) {
   return Number.isFinite(n) ? n : v;
 }
 
-const DETAIL_HEADERS = ["序号", "发票号码", "开票日期", "销售方", "购买方", "金额", "税额", "价税合计", "类型", "备注", "来源文件"];
+const DETAIL_HEADERS = [
+  "序号",
+  "发票号码",
+  "开票日期",
+  "销售方",
+  "购买方",
+  "金额",
+  "税额",
+  "价税合计",
+  "税点",
+  "类型",
+  "票面备注",
+  "系统备注",
+  "来源文件",
+];
 
 export function buildInvoiceWorkbookBytes(invoices) {
   const wb = XLSX.utils.book_new();
@@ -25,15 +39,18 @@ export function buildInvoiceWorkbookBytes(invoices) {
       num(f.amount),
       num(f.tax),
       num(f.total),
+      f.rate || "",
       f.type || "",
-      inv.note || "",
+      f.remark || "",
+      [inv.systemNote, inv.duplicateReason].filter(Boolean).join("；"),
       inv.name || "",
     ]);
   });
   const ws = XLSX.utils.aoa_to_sheet(rows);
   ws["!cols"] = [
     { wch: 5 }, { wch: 22 }, { wch: 12 }, { wch: 26 }, { wch: 26 },
-    { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 20 }, { wch: 24 },
+    { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 12 },
+    { wch: 22 }, { wch: 26 }, { wch: 24 },
   ];
   XLSX.utils.book_append_sheet(wb, ws, "开票明细");
 

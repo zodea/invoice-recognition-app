@@ -3,9 +3,16 @@ import { ref, computed } from "vue";
 import { invoiceStore, invoiceSummary, orderedForPrint } from "../invoiceStore";
 import { buildPrintLayout, openForPrint, downloadBytes } from "../lib/invoice-layout";
 import { buildInvoiceWorkbookBytes } from "../lib/invoice-excel";
+import {
+  canUseTauriExport,
+  pickTauriExportDir,
+  writeInvoiceExportPackage,
+  writeInvoiceExportPackageTauri,
+} from "../lib/invoice-export-package";
 
 const busy = ref(false);
 const msg = ref("");
+const groupByBuyer = ref(true);
 
 const included = computed(() => orderedForPrint().map((x) => x.inv));
 const summary = computed(() => invoiceSummary());
@@ -50,6 +57,52 @@ function exportExcel() {
   downloadBytes(bytes, "发票开票明细与汇总账单.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   msg.value = "已导出明细 + 汇总账单 Excel。";
 }
+
+async function exportPackage() {
+  if (!included.value.length) {
+    window.alert("没有勾选发票。");
+    return;
+  }
+  if (!canUseTauriExport() && typeof window.showDirectoryPicker !== "function") {
+    window.alert("当前运行环境不支持直接选择保存目录，请先使用 Excel / PDF 下载。");
+    return;
+  }
+
+  busy.value = true;
+  msg.value = "请选择保存目录…";
+  try {
+    const excelBytes = buildInvoiceWorkbookBytes(included.value);
+    let result;
+    if (canUseTauriExport()) {
+      const dir = await pickTauriExportDir();
+      if (!dir) {
+        msg.value = "已取消导出。";
+        return;
+      }
+      msg.value = "正在整理原文件和统计表…";
+      result = await writeInvoiceExportPackageTauri(included.value, dir, {
+        excelBytes,
+        groupByBuyer: groupByBuyer.value,
+      });
+    } else {
+      const dir = await window.showDirectoryPicker({ mode: "readwrite" });
+      msg.value = "正在整理原文件和统计表…";
+      result = await writeInvoiceExportPackage(included.value, dir, {
+        excelBytes,
+        groupByBuyer: groupByBuyer.value,
+      });
+    }
+    msg.value = `已导出 ${result.fileCount} 个原文件，统计表：${result.excelName || "未生成"}。`;
+  } catch (e) {
+    if (e && e.name === "AbortError") {
+      msg.value = "已取消导出。";
+    } else {
+      msg.value = "整理导出失败：" + ((e && e.message) || e);
+    }
+  } finally {
+    busy.value = false;
+  }
+}
 </script>
 
 <template>
@@ -66,11 +119,15 @@ function exportExcel() {
       <label v-for="n in [1, 2, 4]" :key="n" class="radio">
         <input type="radio" :value="n" v-model="invoiceStore.perPage" /> {{ n }}张
       </label>
+      <label class="radio">
+        <input type="checkbox" v-model="groupByBuyer" /> 按购买方分目录
+      </label>
       </div>
       <div class="btns">
         <button class="primary" :disabled="busy || !included.length" @click="printNow">打印</button>
         <button :disabled="busy || !included.length" @click="downloadPdf">PDF</button>
         <button :disabled="!included.length" @click="exportExcel">Excel</button>
+        <button :disabled="busy || !included.length" @click="exportPackage">整理导出</button>
       </div>
     </div>
     <div class="msg" v-if="msg">{{ msg }}</div>
