@@ -163,7 +163,7 @@ async function exportPackage() {
       <label v-for="n in [1, 2, 4]" :key="n" class="radio">
         <input type="radio" :value="n" v-model="invoiceStore.perPage" /> {{ n }}张
       </label>
-      <div class="dims" @keydown.esc="dimsOpen = false">
+      <div class="dims" @keydown.esc="dimsOpen = false" @mouseleave="dimsOpen = false">
         <button type="button" class="dims-trigger" @click="dimsOpen = !dimsOpen">
           分目录：<b>{{ dimsLabel }}</b> <span class="caret">▾</span>
         </button>

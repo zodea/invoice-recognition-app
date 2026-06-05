@@ -223,8 +223,9 @@ export function parseInvoice(rawText) {
     if (!f.type || f.type === "电子发票") f.type = /行程单/.test(text) ? "行程单" : "货物运输凭证";
     if (f.total === "") {
       const m =
-        text.match(/合\s*计[^0-9]{0,6}([0-9,]+\.[0-9]{2})\s*元?/) ||
-        text.match(/小写[)）]?\s*[:：]?\s*[¥￥]\s*([0-9,]+\.[0-9]{2})/);
+        text.match(/[合总]\s*计[^0-9]{0,6}([0-9,]+\.[0-9]{2})\s*元?/) || // 合计/总计 X[元]（货拉拉行程单是“总计”）
+        text.match(/小写[)）]?\s*[:：]?\s*[¥￥]\s*([0-9,]+\.[0-9]{2})/) ||
+        text.match(/[¥￥]\s*([0-9,]+\.[0-9]{2})/); // 最后兜底：任意 ¥金额
       if (m) f.total = toNumber(m[1]);
     }
     if (!f.date) {
@@ -234,7 +235,10 @@ export function parseInvoice(rawText) {
       if (dm) { f.date = `${dm[1]}-${pad2(+dm[2])}-${pad2(+dm[3])}`; f.dateText = f.date; }
     }
     if (!f.buyer) {
-      const bm = text.match(/托运人名称[:：]?\s*([^\n]+?)(?=托运人证照|证照号码|$)/);
+      // 托运人名称（货物运输凭证） / 公司:（货拉拉行程单抬头单位）都视为购买方
+      const bm =
+        text.match(/托运人名称[:：]?\s*([^\n]+?)(?=托运人证照|证照号码|$)/) ||
+        text.match(/公\s*司\s*[:：]\s*([^\n,，]+?)(?=\s*共|\s*[0-9]|\n|$)/);
       if (bm) {
         const name = dedupeDoubled(cleanName(bm[1]));
         if (isName(name)) f.buyer = name;
@@ -246,7 +250,8 @@ export function parseInvoice(rawText) {
 }
 
 export function isProbablyInvoiceText(text) {
-  // 含发票关键词，或属于报销常见的行程单/货运凭证（这些没有“发票/价税合计”等字样，
-  // 但同样是文字型 PDF，应走文字解析而非 OCR——否则货拉拉凭证会抽不到类型/购买方）。
-  return /发票|价税合计|开票日期|税额|行程单|货物运输|货拉拉|收款凭证|托运人/.test(String(text || ""));
+  // 先去掉字符间空格再判：有的混淆票把每个字拆开成“电 子 发 票”，连写关键词会匹配不到，
+  // 导致被误当扫描件走 OCR、丢失本可抽到的买卖方。去空格后这类票也能正确进入文字解析。
+  const t = String(text || "").replace(/[ \t]+/g, "");
+  return /发票|价税合计|开票日期|税额|行程单|货物运输|货拉拉|收款凭证|托运人/.test(t);
 }
