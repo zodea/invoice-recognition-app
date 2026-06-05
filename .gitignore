@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Frontend build output
+dist/
+public/pdf.worker.min.mjs
+public/cmaps/
+
+# Tauri/Rust build output
+src-tauri/target/
+src-tauri/gen/
+
+# Local installers and generated packages
+.codex-installers/
+*.msi
+*.dmg
+*.pkg
+*.AppImage
+*.deb
+*.rpm
+*_x64-setup.exe
+
+# Real invoice fixtures and generated exports
+发票测试/
+发票测试_输出/
+public/发票测试/
+
+# Temporary/self-test artifacts
+scripts/_*.xlsx
+*.log
+._*
+
+# OS/editor
+.claude/
+.DS_Store
+Thumbs.db

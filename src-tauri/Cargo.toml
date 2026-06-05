@@ -1,0 +1,18 @@
+[package]
+name = "songhuodan-ocr-app"
+version = "0.1.0"
+description = "送货单和发票识别整理助手"
+authors = ["zodea"]
+edition = "2021"
+
+[lib]
+name = "songhuodan_ocr_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

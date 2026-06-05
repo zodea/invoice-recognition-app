@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%BE%3C/text%3E%3C/svg%3E"
+    />
+    <title>送货单扫描识别整理</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <!-- PaddleOCR(OpenCV/Emscripten) 期望存在全局 Module，提前补上避免 ReferenceError -->
+    <script>
+      window.Module = window.Module || {};
+    </script>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

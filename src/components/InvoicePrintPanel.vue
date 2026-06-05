@@ -1,0 +1,99 @@
+<script setup>
+import { ref, computed } from "vue";
+import { invoiceStore, invoiceSummary, orderedForPrint } from "../invoiceStore";
+import { buildPrintLayout, openForPrint, downloadBytes } from "../lib/invoice-layout";
+import { buildInvoiceWorkbookBytes } from "../lib/invoice-excel";
+
+const busy = ref(false);
+const msg = ref("");
+
+const included = computed(() => orderedForPrint().map((x) => x.inv));
+const summary = computed(() => invoiceSummary());
+
+async function makeLayout() {
+  if (!included.value.length) {
+    window.alert("没有勾选要打印的发票。");
+    return null;
+  }
+  busy.value = true;
+  msg.value = "正在排版…";
+  try {
+    return await buildPrintLayout(included.value, { perPage: invoiceStore.perPage });
+  } catch (e) {
+    msg.value = "排版失败：" + ((e && e.message) || e);
+    return null;
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function printNow() {
+  const bytes = await makeLayout();
+  if (bytes) {
+    openForPrint(bytes);
+    msg.value = "已在新标签打开打印版，按 Ctrl+P 打印。";
+  }
+}
+async function downloadPdf() {
+  const bytes = await makeLayout();
+  if (bytes) {
+    downloadBytes(bytes, `发票打印版_每页${invoiceStore.perPage}张.pdf`);
+    msg.value = "已下载打印版 PDF。";
+  }
+}
+function exportExcel() {
+  if (!included.value.length) {
+    window.alert("没有勾选发票。");
+    return;
+  }
+  const bytes = buildInvoiceWorkbookBytes(included.value);
+  downloadBytes(bytes, "发票开票明细与汇总账单.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  msg.value = "已导出明细 + 汇总账单 Excel。";
+}
+</script>
+
+<template>
+  <div class="panel">
+    <div class="summary">
+      <span>勾选 <b>{{ summary.count }}</b> 张</span>
+      <span>价税合计 <b class="hl">{{ summary.total.toFixed(2) }}</b></span>
+      <span>税额 <b>{{ summary.tax.toFixed(2) }}</b></span>
+    </div>
+
+    <div class="actions-row">
+      <div class="opts">
+      <span>每页</span>
+      <label v-for="n in [1, 2, 4]" :key="n" class="radio">
+        <input type="radio" :value="n" v-model="invoiceStore.perPage" /> {{ n }}张
+      </label>
+      </div>
+      <div class="btns">
+        <button class="primary" :disabled="busy || !included.length" @click="printNow">打印</button>
+        <button :disabled="busy || !included.length" @click="downloadPdf">PDF</button>
+        <button :disabled="!included.length" @click="exportExcel">Excel</button>
+      </div>
+    </div>
+    <div class="msg" v-if="msg">{{ msg }}</div>
+  </div>
+</template>
+
+<style scoped>
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  box-shadow: var(--shadow);
+}
+.summary { display: flex; gap: 12px; flex-wrap: wrap; color: var(--ink-soft); margin-bottom: 8px; }
+.summary b { color: var(--ink); font-size: 15px; }
+.summary b.hl { color: var(--brand); }
+.actions-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.opts { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; color: var(--ink-soft); }
+.radio { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.btns button { border: 1px solid var(--line-strong); background: #fff; border-radius: 6px; padding: 7px 11px; font-weight: 700; }
+.btns button.primary { border: none; background: var(--brand); color: #fff; }
+.btns button:disabled { opacity: 0.5; cursor: default; }
+.msg { margin-top: 8px; color: var(--ink-soft); font-size: 13px; }
+</style>
