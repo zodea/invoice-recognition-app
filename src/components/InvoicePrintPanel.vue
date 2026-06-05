@@ -3,6 +3,7 @@ import { ref, computed } from "vue";
 import { invoiceStore, invoiceSummary, orderedForPrint } from "../invoiceStore";
 import { buildPrintLayout, openForPrint, downloadBytes } from "../lib/invoice-layout";
 import { buildInvoiceWorkbookBytes } from "../lib/invoice-excel";
+import { buildReimburseWorkbookBytes, reimburseWorkbookName } from "../lib/invoice-reimburse";
 import {
   canUseTauriExport,
   pickTauriExportDir,
@@ -102,6 +103,26 @@ async function exportExcel() {
   }
 }
 
+async function exportReimburse() {
+  if (!included.value.length) { window.alert("没有勾选发票。"); return; }
+  const bytes = buildReimburseWorkbookBytes(included.value);
+  const name = reimburseWorkbookName(included.value);
+  const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  busy.value = true;
+  msg.value = "请选择保存目录…";
+  try {
+    const r = await saveBytesToChosenDir(bytes, name);
+    if (r.canceled) { msg.value = "已取消保存。"; return; }
+    if (r.fallbackDownload) { downloadBytes(bytes, name, mime); msg.value = "已导出财务费用报销表。"; return; }
+    msg.value = `已保存财务费用报销表：${r.saved}`;
+  } catch (e) {
+    if (e && e.name === "AbortError") msg.value = "已取消保存。";
+    else { downloadBytes(bytes, name, mime); msg.value = "保存目录失败，已改为下载。"; }
+  } finally {
+    busy.value = false;
+  }
+}
+
 async function exportPackage() {
   if (!included.value.length) {
     window.alert("没有勾选发票。");
@@ -183,6 +204,7 @@ async function exportPackage() {
         <button :disabled="busy || !included.length || !hasRecognized" :title="!hasRecognized ? '请先识别后再导出' : ''" @click="downloadPdf">PDF</button>
         <button :disabled="busy || !included.length || !hasRecognized" :title="!hasRecognized ? '请先识别后再导出' : ''" @click="exportExcel">Excel</button>
         <button :disabled="busy || !included.length || !hasRecognized" :title="!hasRecognized ? '请先识别后再导出' : ''" @click="exportPackage">整理导出</button>
+        <button :disabled="busy || !included.length || !hasRecognized" :title="!hasRecognized ? '请先识别后再导出' : ''" @click="exportReimburse">财务费用报销导出</button>
       </div>
     </div>
     <div class="msg" v-if="msg">{{ msg }}</div>

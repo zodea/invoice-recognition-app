@@ -12,6 +12,7 @@ import { exportWorkbookName, invoiceExportFileName, exportParentFolderName, invo
 import { buildPrintLayout } from "../src/lib/invoice-layout.js";
 import { applyInvoiceFilenameFallback, parseInvoiceFilename } from "../src/lib/invoice-filename.js";
 import { isDuplicateInvoice, markInvoiceDuplicates } from "../src/lib/invoice-dedupe.js";
+import { bigCategory, classifyReimburseKind, buildReimburseWorkbookBytes } from "../src/lib/invoice-reimburse.js";
 import { PDFDocument } from "pdf-lib";
 
 let pass = 0;
@@ -279,6 +280,33 @@ ok("拆字混淆票 isProbablyInvoiceText 容空格", isProbablyInvoiceText("电
 const splitDup = parseInvoice("电 子 发 票\n购 销\n买 名 称 : 广 广 东 东 瑞 瑞 航 航 建 建 设 设 工 工 程 程 有 有 限 限 公 公 司 司 售 名 称 : 佛 佛 山 山 美 美 的 的 智 智 慧 慧 家 家 居 居 有 有 限 限 公 公 司 司");
 ok("拆字+重复票 卖方=佛山美的", splitDup.seller === "佛山美的智慧家居有限公司");
 ok("拆字+重复票 买方=广东瑞航", splitDup.buyer === "广东瑞航建设工程有限公司");
+// 劳务服务名称 / 税收大类（*类*）
+const itemInv = parseInvoice("项目名称 规格型号 单位 数量\n*餐饮服务*餐饮服务 1 177.64 177.64 6% 10.66\n价税合计（小写）¥188.30");
+ok("项目大类=餐饮服务", itemInv.category === "餐饮服务");
+const oilInv = parseInvoice("*汽油*国六95#车用汽油 升 47.55 6.47 307.96 13% 40.04\n价税合计（小写）¥348.00");
+ok("项目大类=汽油", oilInv.category === "汽油");
+
+console.log("== reimburse ==");
+ok("大类-汽油", bigCategory({ fields: { category: "汽油" } }) === "汽油");
+ok("大类-电器归日用品", bigCategory({ fields: { category: "家用清洁电器具" } }) === "日用品");
+ok("大类-医院归医疗", bigCategory({ fields: { seller: "南方医科大学珠江医院" } }) === "医疗");
+ok("分类-专用", classifyReimburseKind({ fields: { taxKind: "专用发票", docType: "增值税发票" } }) === "专用发票");
+ok("分类-普通", classifyReimburseKind({ fields: { taxKind: "普通发票", docType: "增值税发票" } }) === "普通发票");
+ok("分类-行程单归其他", classifyReimburseKind({ fields: { docType: "行程单" } }) === "其他");
+ok("分类-医疗门诊", classifyReimburseKind({ fields: { seller: "中山大学附属第一医院", docType: "增值税发票" } }) === "医疗门诊");
+const rinv = [
+  { fields: { buyer: "广东瑞航建设工程有限公司", seller: "A加油站", category: "汽油", service: "汽油", taxKind: "普通发票", docType: "增值税发票", total: 100, date: "2026-05-01" } },
+  { fields: { buyer: "广东瑞航建设工程有限公司", seller: "B餐厅", category: "餐饮服务", service: "餐饮服务", taxKind: "普通发票", docType: "增值税发票", total: 50, date: "2026-05-02" } },
+  { fields: { buyer: "广州市百信装饰工程有限公司", seller: "C公司", category: "日用品", service: "日用品", taxKind: "专用发票", docType: "增值税发票", total: 200, amount: 177, tax: 23, rate: "13%", date: "2026-05-03" } },
+];
+const rbytes = buildReimburseWorkbookBytes(rinv);
+fs.writeFileSync("scripts/_reimb.xlsx", Buffer.from(rbytes));
+const rwb = XLSX.read(fs.readFileSync("scripts/_reimb.xlsx"));
+ok("报销含瑞航交接单", rwb.SheetNames.some((n) => n.includes("交接单-瑞航")));
+ok("报销含百信专票", rwb.SheetNames.some((n) => n.includes("专票-百信")));
+const hoSheet = XLSX.utils.sheet_to_json(rwb.Sheets[rwb.SheetNames.find((n) => n.includes("交接单-瑞航"))], { header: 1 });
+ok("瑞航交接单合计=150", hoSheet.some((r) => r[0] === "合计" && Number(r[2]) === 150));
+fs.unlinkSync("scripts/_reimb.xlsx");
 
 // 字体混淆（ToUnicode 映射成空格/控制字符）：名称应判空，不能抓出乱码。
 const obf = parseInvoice("电子发票（普通发票） 发票号码：\n名称：     名称：   \n开票日期：");

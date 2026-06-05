@@ -61,7 +61,7 @@ export function parseInvoice(rawText) {
   let text = String(rawText || "").normalize("NFKC");
   for (const [k, v] of Object.entries(RADICAL_FIX)) if (text.includes(k)) text = text.split(k).join(v);
   text = text.replace(/[ \t]+/g, " ");
-  const f = { code: "", number: "", date: "", dateText: "", buyer: "", seller: "", amount: "", tax: "", total: "", rate: "", type: "", taxKind: "", docType: "", remark: "" };
+  const f = { code: "", number: "", date: "", dateText: "", buyer: "", seller: "", amount: "", tax: "", total: "", rate: "", type: "", taxKind: "", docType: "", remark: "", service: "", category: "" };
 
   // 单据大类（发票 / 行程单 / 货物运输凭证 / 未识别），按原始文本判定一次
   f.docType = classifyDocType(rawText);
@@ -214,6 +214,20 @@ export function parseInvoice(rawText) {
   }
   if (rateSet.size === 1) f.rate = [...rateSet][0] + "%";
   f.remark = extractRemark(text);
+
+  // 劳务、服务名称 + 税收大类。中国发票项目名格式为「*税收分类*具体名称」，
+  // 首对星号里的就是天然的“大类统称词”（餐饮服务/汽油/企业管理服务…），用于费用报销归纳。
+  const catM = text.match(/\*\s*([^*\n]{1,24}?)\s*\*/);
+  if (catM) f.category = catM[1].replace(/\s+/g, "").trim();
+  const itemM = text.match(/\*\s*[^*\n]{1,24}\s*\*\s*([^\n]+)/);
+  if (itemM) {
+    // 砍掉规格/单位/数量/单价等尾部（从第一个独立数字或 ¥ 起）
+    let s = itemM[1].replace(/\s+/g, " ").trim();
+    s = s.replace(/\s+(?=\d|[¥￥])\S.*$/, "").trim();
+    s = s.replace(/[\d¥￥%].*$/, "").trim();
+    if (s && /[一-龥]/.test(s)) f.service = s;
+  }
+  if (!f.service) f.service = f.category;
 
   // 非增值税发票但报销常混进来的两类凭证：
   //   ① 网约车行程单（曹操/滴滴/优行/如约）：「合计X元」+「申请日期/行程时间」。
