@@ -38,7 +38,7 @@ async function printNow() {
   const bytes = await makeLayout();
   if (bytes) {
     openForPrint(bytes);
-    msg.value = "已在新标签打开打印版，按 Ctrl+P 打印。";
+    msg.value = "已调起打印（打印内容为左侧排版）。若未弹出，请检查弹窗拦截。";
   }
 }
 async function downloadPdf() {

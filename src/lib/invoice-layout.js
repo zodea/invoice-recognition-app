@@ -61,11 +61,43 @@ export function pdfBlobUrl(bytes) {
   return URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
 }
 
-// 在新标签打开打印版 PDF，用户 Ctrl+P 打印（自动 print 常被浏览器拦截，故只打开）
+// 直接把“打印排版 PDF”送进系统打印对话框：用隐藏 iframe 载入 PDF blob，加载完成后
+// 调用 contentWindow.print()。这样点“打印”出来的就是排版本身，而不是页面文字。
+// Tauri WebView2 / Chrome / Edge 都支持；个别环境失败则回退到新标签页（手动 Ctrl+P）。
 export function openForPrint(bytes) {
   const url = pdfBlobUrl(bytes);
-  window.open(url, "_blank");
-  setTimeout(() => URL.revokeObjectURL(url), 120000);
+  const cleanup = (frame) => {
+    setTimeout(() => {
+      if (frame && frame.parentNode) frame.remove();
+      URL.revokeObjectURL(url);
+    }, 60000);
+  };
+  try {
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("aria-hidden", "true");
+    Object.assign(iframe.style, { position: "fixed", right: "0", bottom: "0", width: "0", height: "0", border: "0", visibility: "hidden" });
+    iframe.src = url;
+    iframe.onload = () => {
+      // PDF 插件渲染是异步的，稍等再触发打印更稳
+      setTimeout(() => {
+        try {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+        } catch (e) {
+          window.open(url, "_blank");
+        }
+        cleanup(iframe);
+      }, 400);
+    };
+    iframe.onerror = () => {
+      window.open(url, "_blank");
+      cleanup(iframe);
+    };
+    document.body.appendChild(iframe);
+  } catch (e) {
+    window.open(url, "_blank");
+    cleanup(null);
+  }
 }
 
 export function downloadBytes(bytes, name, mime = "application/pdf") {
