@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from "vue";
 import { invoiceStore, invoiceActions, selectInvoice } from "../invoiceStore";
+import { invoiceExportFileName } from "../lib/invoice-export-package";
 
 defineProps({ item: Object });
 
@@ -19,11 +20,16 @@ function syncDate(inv) {
     @click="selectInvoice(item.inv.id)"
   >
     <div class="row-top">
-      <div class="title-line">
-        <span class="seq">{{ item.seq }}</span>
-        <span class="file" :title="item.inv.name">{{ item.inv.name }}</span>
-        <span v-if="item.inv.duplicateReason" class="tag duplicate">重复</span>
-        <span v-else-if="item.needsReview" class="tag">待复核</span>
+      <div class="title-block">
+        <div class="title-line">
+          <span class="seq">{{ item.seq }}</span>
+          <span class="file" :title="item.inv.name">{{ item.inv.name }}</span>
+          <span v-if="item.inv.duplicateReason" class="tag duplicate">重复</span>
+          <span v-else-if="item.needsReview" class="tag">待复核</span>
+        </div>
+        <div class="export-name" :title="invoiceExportFileName(item.inv)">
+          整理后：{{ invoiceExportFileName(item.inv) }}
+        </div>
       </div>
       <div class="row-actions">
         <label class="include" @click.stop>
@@ -88,11 +94,23 @@ function syncDate(inv) {
   justify-content: space-between;
   gap: 10px;
 }
+.title-block {
+  min-width: 0;
+  flex: 1 1 auto;
+}
 .title-line {
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 7px;
+}
+.export-name {
+  margin: 3px 0 0 33px;
+  color: var(--brand);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .seq {
   flex: 0 0 auto;
