@@ -7,7 +7,7 @@ import { parseInvoice, isProbablyInvoiceText } from "./lib/invoice-parse";
 import { applyInvoiceFilenameFallback } from "./lib/invoice-filename";
 import { markInvoiceDuplicates } from "./lib/invoice-dedupe";
 import { invoiceFolderParts } from "./lib/invoice-export-package";
-import { loadLedger, saveLedger, recordInvoices, markVerified, parseVerifiedNumbers, historyStatus, importInputInvoiceWorkbookBytes } from "./lib/invoice-ledger";
+import { loadLedger, saveLedger, recordInvoices, markVerified, parseVerifiedNumbers, historyStatus, importInputInvoiceWorkbookBytes, markPrintedInvoices } from "./lib/invoice-ledger";
 import { perPageCount } from "./lib/print-layout.js";
 
 let seq = 0;
@@ -326,6 +326,18 @@ export const invoiceActions = {
     refreshHistory();
     invoiceStore.msg = `已记入历史台账：新增 ${added} 张，更新 ${repeated} 张。`;
     return { added, repeated };
+  },
+  markPrinted(ids, name) {
+    const idSet = ids && ids.length ? new Set(ids) : null;
+    const list = orderedForPrint()
+      .map((x) => x.inv)
+      .filter((inv) => inv.status === "done" && (!idSet || idSet.has(inv.id)));
+    const { ledger, added, updated, printed } = markPrintedInvoices(invoiceStore.ledger, list, { name: name || "打印批次" });
+    invoiceStore.ledger = ledger;
+    saveLedger(ledger);
+    refreshHistory();
+    invoiceStore.msg = `已标记打印：${printed} 张，新增台账 ${added} 张，更新 ${updated} 张。`;
+    return { added, updated, printed };
   },
   importVerifiedRows(rows) {
     const numbers = parseVerifiedNumbers(rows);

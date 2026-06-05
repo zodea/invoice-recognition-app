@@ -115,6 +115,26 @@ function pick(row, map, key) {
   return idx == null ? "" : row[idx];
 }
 
+function entryFromInvoice(inv, day) {
+  const f = fields(inv);
+  const key = ledgerKey(inv);
+  return {
+    key,
+    number: f.number || "",
+    code: f.code || "",
+    date: f.date || f.dateText || "",
+    seller: f.seller || "",
+    buyer: f.buyer || "",
+    amount: money(f.amount),
+    tax: money(f.tax),
+    total: money(f.total),
+    rate: f.rate || "",
+    type: f.taxKind || f.type || f.docType || "",
+    service: f.category || f.service || "",
+    firstSeen: day,
+  };
+}
+
 // 主键：优先发票号码；无号码退化为 内容指纹（日期|金额|销售方）
 export function ledgerKey(inv) {
   const f = fields(inv);
@@ -166,6 +186,33 @@ export function recordInvoices(ledger, invoices, batch = {}) {
     next[key] = entry;
   }
   return { ledger: next, added, repeated };
+}
+
+export function markPrintedInvoices(ledger, invoices, batch = {}) {
+  const next = { ...(ledger || {}) };
+  const batchName = batch.name || "打印批次";
+  const batchDate = batch.date || today();
+  let added = 0, updated = 0;
+  for (const inv of invoices || []) {
+    const base = entryFromInvoice(inv, batchDate);
+    const prev = next[base.key];
+    const entry = {
+      ...(prev || {}),
+      ...base,
+      verified: !!prev?.verified,
+      verifiedAt: prev?.verifiedAt || "",
+      printed: true,
+      printedAt: prev?.printedAt || batchDate,
+      firstSeen: prev?.firstSeen || base.firstSeen,
+      importSources: prev?.importSources || [],
+      batches: prev?.batches || [],
+    };
+    entry.batches = uniqueAppend(entry.batches, { name: batchName, date: batchDate, type: "打印" }, (x) => `${x.name}|${x.date}|${x.type || ""}`);
+    entry.lastUsed = batchDate;
+    next[base.key] = entry;
+    if (prev) updated++; else added++;
+  }
+  return { ledger: next, added, updated, printed: (invoices || []).length };
 }
 
 export function parseInputInvoiceRows(rows, { sourceName = "进项发票导入", importedAt = today() } = {}) {
@@ -331,6 +378,45 @@ export function buildHistoryReportBytes(ledger) {
   ];
   XLSX.utils.book_append_sheet(wb, ws, "历史发票台账");
   return XLSX.write(wb, { type: "array", bookType: "xlsx" });
+}
+
+export function buildCurrentInputInvoiceReportBytes(invoices, ledger) {
+  const wb = XLSX.utils.book_new();
+  const header = ["序号", "发票号码", "开票日期", "销售方", "购买方", "金额", "税额", "价税合计", "类型", "是否本次勾选", "历史认证", "历史已打印", "历史使用批次", "来源文件", "系统备注"];
+  const rows = [header];
+  for (const [i, inv] of (invoices || []).entries()) {
+    const f = inv.fields || {};
+    const st = historyStatus(ledger, inv);
+    rows.push([
+      i + 1,
+      f.number || "",
+      f.date || f.dateText || "",
+      f.seller || "",
+      f.buyer || "",
+      money(f.amount),
+      money(f.tax),
+      money(f.total),
+      f.taxKind || f.type || f.docType || "",
+      inv.include ? "是" : "否",
+      st.verified ? "已认证" : "未认证",
+      st.printed ? "已打印" : "未打印",
+      (st.batches || []).map((b) => b.name || b.date).filter(Boolean).join("；"),
+      inv.name || "",
+      [inv.systemNote, inv.duplicateReason].filter(Boolean).join("；"),
+    ]);
+  }
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws["!cols"] = [
+    { wch: 5 }, { wch: 22 }, { wch: 11 }, { wch: 28 }, { wch: 28 },
+    { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 10 },
+    { wch: 10 }, { wch: 10 }, { wch: 26 }, { wch: 28 }, { wch: 26 },
+  ];
+  XLSX.utils.book_append_sheet(wb, ws, "当前进项发票状态");
+  return XLSX.write(wb, { type: "array", bookType: "xlsx" });
+}
+
+export function currentInputReportName() {
+  return `当前进项发票状态_${today()}.xlsx`;
 }
 
 export function historyReportName() {

@@ -13,7 +13,7 @@ import { buildPrintLayout } from "../src/lib/invoice-layout.js";
 import { applyInvoiceFilenameFallback, parseInvoiceFilename } from "../src/lib/invoice-filename.js";
 import { isDuplicateInvoice, markInvoiceDuplicates } from "../src/lib/invoice-dedupe.js";
 import { bigCategory, classifyReimburseKind, buildReimburseWorkbookBytes } from "../src/lib/invoice-reimburse.js";
-import { buildHistoryReportBytes, historyStatus, importInputInvoiceRows, ledgerStats, parseInputInvoiceRows } from "../src/lib/invoice-ledger.js";
+import { buildCurrentInputInvoiceReportBytes, buildHistoryReportBytes, historyStatus, importInputInvoiceRows, ledgerStats, markPrintedInvoices, parseInputInvoiceRows } from "../src/lib/invoice-ledger.js";
 import { PDFDocument } from "pdf-lib";
 
 let pass = 0;
@@ -329,12 +329,20 @@ const importedLedger = importInputInvoiceRows({}, taxRows, { sourceName: "税务
 const ledgerState = historyStatus(importedLedger, { fields: { number: "26447000000704299292" } });
 ok("历史状态 usedBefore=true", ledgerState.usedBefore && ledgerState.verified && ledgerState.printed);
 ok("台账统计", ledgerStats(importedLedger).total === 2 && ledgerStats(importedLedger).printed === 2);
+const printedLedger = markPrintedInvoices({}, [{ name: "p.pdf", include: true, fields: { number: "25312000000000000001", date: "2026-05-01", seller: "A公司", buyer: "B公司", total: 100 } }], { name: "测试打印", date: "2026-06-06" }).ledger;
+ok("打印后写入台账", historyStatus(printedLedger, { fields: { number: "25312000000000000001" } }).printed);
 const hbytes = buildHistoryReportBytes(importedLedger);
 fs.writeFileSync("scripts/_history.xlsx", Buffer.from(hbytes));
 const hwb = XLSX.read(fs.readFileSync("scripts/_history.xlsx"));
 const hrows = XLSX.utils.sheet_to_json(hwb.Sheets["历史发票台账"], { header: 1 });
 ok("历史台账导出含已打印列", hrows[0].includes("是否已打印") && hrows.some((r) => r.includes("已打印")));
 fs.unlinkSync("scripts/_history.xlsx");
+const cbytes = buildCurrentInputInvoiceReportBytes([{ name: "p.pdf", include: true, systemNote: "", fields: { number: "25312000000000000001", date: "2026-05-01", seller: "A公司", buyer: "B公司", total: 100 } }], printedLedger);
+fs.writeFileSync("scripts/_current_input.xlsx", Buffer.from(cbytes));
+const cwb = XLSX.read(fs.readFileSync("scripts/_current_input.xlsx"));
+const crows = XLSX.utils.sheet_to_json(cwb.Sheets["当前进项发票状态"], { header: 1 });
+ok("当前进项状态导出含历史已打印", crows[0].includes("历史已打印") && crows.some((r) => r.includes("已打印")));
+fs.unlinkSync("scripts/_current_input.xlsx");
 
 console.log("== invoice excel ==");
 const invoices = [

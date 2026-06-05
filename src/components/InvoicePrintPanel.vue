@@ -15,6 +15,8 @@ import {
 
 const busy = ref(false);
 const msg = ref("");
+const pendingPrintedIds = ref([]);
+const pendingPrintedCount = computed(() => pendingPrintedIds.value.length);
 
 // 待优化#3：分目录维度多选下拉。点选先后即文件夹嵌套顺序，序号在标签上体现。
 const dimsOpen = ref(false);
@@ -59,8 +61,23 @@ async function printNow() {
   const bytes = await makeLayout();
   if (bytes) {
     openForPrint(bytes);
-    msg.value = "已调起打印（打印内容为左侧排版）。若未弹出，请检查弹窗拦截。";
+    pendingPrintedIds.value = included.value.filter((inv) => inv.status === "done").map((inv) => inv.id);
+    msg.value = pendingPrintedIds.value.length
+      ? "已调起打印。打印完成后请确认是否把本次发票标记为已打印。"
+      : "已调起打印。当前没有已识别发票可写入打印台账。";
   }
+}
+
+function confirmPrinted() {
+  const stamp = new Date().toISOString().slice(0, 10);
+  const result = invoiceActions.markPrinted(pendingPrintedIds.value, `打印_${stamp}`);
+  pendingPrintedIds.value = [];
+  msg.value = `已确认打印并写入台账：${result.printed} 张。`;
+}
+
+function cancelPrinted() {
+  pendingPrintedIds.value = [];
+  msg.value = "已取消本次打印标记。";
 }
 async function downloadPdf() {
   const bytes = await makeLayout();
@@ -208,6 +225,11 @@ async function exportPackage() {
       </div>
     </div>
     <div class="msg" v-if="msg">{{ msg }}</div>
+    <div class="print-confirm" v-if="pendingPrintedCount">
+      <span>本次 {{ pendingPrintedCount }} 张是否均已打印？</span>
+      <button class="ok" :disabled="busy" @click="confirmPrinted">确认已打印</button>
+      <button :disabled="busy" @click="cancelPrinted">暂不标记</button>
+    </div>
   </div>
 </template>
 
@@ -241,4 +263,29 @@ async function exportPackage() {
 .btns button.primary { border: none; background: var(--brand); color: #fff; }
 .btns button:disabled { opacity: 0.5; cursor: default; }
 .msg { margin-top: 8px; color: var(--ink-soft); font-size: 13px; }
+.print-confirm {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  background: #f0fdf4;
+  color: #166534;
+  font-size: 13px;
+}
+.print-confirm button {
+  border: 1px solid var(--line-strong);
+  background: #fff;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-weight: 700;
+}
+.print-confirm button.ok {
+  border-color: #16a34a;
+  background: #16a34a;
+  color: #fff;
+}
 </style>

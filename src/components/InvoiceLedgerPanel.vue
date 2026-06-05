@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from "vue";
 import { invoiceStore, invoiceActions } from "../invoiceStore";
-import { buildHistoryReportBytes, historyReportName, ledgerStats } from "../lib/invoice-ledger";
+import { buildCurrentInputInvoiceReportBytes, buildHistoryReportBytes, currentInputReportName, historyReportName, ledgerStats } from "../lib/invoice-ledger";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
 import { downloadBytes } from "../lib/invoice-layout";
 
@@ -61,6 +61,38 @@ async function exportHistory() {
     busy.value = false;
   }
 }
+
+async function exportCurrentInputStatus() {
+  if (!invoiceStore.invoices.length) {
+    window.alert("当前还没有导入发票。");
+    return;
+  }
+  busy.value = true;
+  msg.value = "请选择保存目录…";
+  const bytes = buildCurrentInputInvoiceReportBytes(invoiceStore.invoices, invoiceStore.ledger);
+  const name = currentInputReportName();
+  const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  try {
+    const r = await saveBytesToChosenDir(bytes, name);
+    if (r.canceled) {
+      msg.value = "已取消导出。";
+    } else if (r.fallbackDownload) {
+      downloadBytes(bytes, name, mime);
+      msg.value = "已导出当前进项发票状态。";
+    } else {
+      msg.value = `已保存当前进项发票状态：${r.saved}`;
+    }
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      msg.value = "已取消导出。";
+    } else {
+      downloadBytes(bytes, name, mime);
+      msg.value = "保存目录失败，已改为下载。";
+    }
+  } finally {
+    busy.value = false;
+  }
+}
 </script>
 
 <template>
@@ -80,6 +112,7 @@ async function exportHistory() {
     <div class="actions">
       <button class="primary" :disabled="busy" @click="chooseFile">导入进项 Excel</button>
       <button :disabled="busy || !stats.total" @click="exportHistory">导出历史台账</button>
+      <button :disabled="busy || !invoiceStore.invoices.length" @click="exportCurrentInputStatus">导出当前进项状态</button>
     </div>
     <div class="msg" v-if="msg">{{ msg }}</div>
   </section>
