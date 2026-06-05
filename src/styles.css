@@ -18,6 +18,32 @@
   box-sizing: border-box;
 }
 
+/* 待优化#9：尽量隐藏滚动条——细、透明轨道、仅悬停时显出淡淡的滑块，保留滚动能力 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+*:hover {
+  scrollbar-color: rgba(100, 110, 125, 0.35) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+*:hover::-webkit-scrollbar-thumb {
+  background: rgba(100, 110, 125, 0.3);
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 html,
 body,
 #app {
