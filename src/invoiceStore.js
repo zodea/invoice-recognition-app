@@ -19,6 +19,15 @@ function emptyFields() {
 // 预览队列：按插入顺序小批量渲染，避免一次性占满 pdf.js worker。
 const previewRenderQueue = [];
 let previewRenderRunning = false;
+// 预览页图只用于屏幕显示（导出走原文件），按批量大小自适应分辨率：
+// 量大时调小，显著降低光栅化耗时与内存，肉眼预览仍清晰。
+function adaptivePreviewScale() {
+  const n = invoiceStore.invoices.length;
+  if (n > 80) return 1.0;
+  if (n > 40) return 1.2;
+  if (n > 15) return 1.35;
+  return 1.6;
+}
 async function renderInvoicePreview(inv) {
   try {
     inv.previewStatus = "running";
@@ -26,8 +35,8 @@ async function renderInvoicePreview(inv) {
       // 图片上传 / 扫描型 PDF：内嵌 JPEG 即整页，直接复用，无需再渲染
       inv.renderedPages = inv.pages.map((p) => p.dataUrl);
     } else {
-      // 电子发票（文字型 PDF）：用 pdf.js 渲染真实页面，效果与导出打印 PDF 一致
-      inv.renderedPages = await renderPdfPages(inv.blob);
+      // 电子发票（文字型 PDF）：用 pdf.js 渲染真实页面
+      inv.renderedPages = await renderPdfPages(inv.blob, { scale: adaptivePreviewScale() });
     }
     inv.previewStatus = inv.renderedPages.length ? "done" : "idle";
   } catch (e) {
@@ -177,7 +186,7 @@ export const invoiceActions = {
     return markInvoiceDuplicates(invoiceStore.invoices);
   },
 
-  async recognizeOne(inv) {
+  async recognizeOne(inv, { skipDedupe = false } = {}) {
     // 等待文件读取（抽图/抽文字探测）完成，避免点早了被直接跳过（点"全部识别"会静默漏掉）
     let waited = 0;
     while (inv.rendering && waited < 20000) {
@@ -222,9 +231,14 @@ export const invoiceActions = {
         applyParsed(inv.fields, parseInvoice(inv.rawText));
       }
       applyFilenameFallback(inv);
-      const duplicateCount = invoiceActions.refreshDuplicates();
       inv.status = "done";
-      invoiceStore.msg = duplicateCount ? `识别完成，已自动排除 ${duplicateCount} 张重复发票。` : "识别完成，请核对。";
+      // 批量识别时跳过逐张去重（O(n²)，整批结束后统一跑一次即可），大幅提速
+      if (skipDedupe) {
+        invoiceStore.msg = "识别完成，请核对。";
+      } else {
+        const duplicateCount = invoiceActions.refreshDuplicates();
+        invoiceStore.msg = duplicateCount ? `识别完成，已自动排除 ${duplicateCount} 张重复发票。` : "识别完成，请核对。";
+      }
     } catch (e) {
       inv.status = "error";
       inv.error = String((e && e.message) || e);
@@ -236,10 +250,12 @@ export const invoiceActions = {
 
   async recognizeAll() {
     for (const inv of invoiceStore.invoices) {
-      if (inv.status !== "done") await invoiceActions.recognizeOne(inv);
+      if (inv.status !== "done") await invoiceActions.recognizeOne(inv, { skipDedupe: true });
     }
-    const duplicateCount = invoiceActions.refreshDuplicates();
-    if (duplicateCount) invoiceStore.msg = `全部识别完成，已自动排除 ${duplicateCount} 张重复发票。`;
+    const duplicateCount = invoiceActions.refreshDuplicates(); // 整批结束统一去重一次
+    invoiceStore.msg = duplicateCount
+      ? `全部识别完成，已自动排除 ${duplicateCount} 张重复发票。`
+      : "全部识别完成，请核对。";
   },
 };
 

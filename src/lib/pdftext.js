@@ -36,7 +36,9 @@ export async function extractPdfText(file, { maxPages = 10 } = {}) {
 // 把 PDF 每页渲染成图片 dataURL，用于左侧"打印排版"预览——效果与导出的打印 PDF 一致。
 // 历史上本环境对"合成 PNG-PDF"的 render 会卡死，但真实电子发票可正常渲染；这里每页加
 // 超时兜底（卡住则 cancel 该页并占位），失败页返回 null，调用方据此回退到信息卡片。
-export async function renderPdfPages(file, { scale = 2, maxPages = 10, timeoutMs = 12000 } = {}) {
+// 注意：这些页图只用于左侧屏幕预览，导出打印 PDF 走 embedPdf(原文件)，与本函数无关，
+// 所以 scale 可按批量大小自适应调小以提速/省内存，不影响最终打印清晰度。
+export async function renderPdfPages(file, { scale = 1.5, maxPages = 10, timeoutMs = 12000, quality = 0.82 } = {}) {
   const buf = new Uint8Array(await file.arrayBuffer());
   const pdf = await pdfjsLib.getDocument({
     data: buf,
@@ -64,7 +66,7 @@ export async function renderPdfPages(file, { scale = 2, maxPages = 10, timeoutMs
         }),
       ]);
       clearTimeout(timer);
-      out.push(canvas.toDataURL("image/jpeg", 0.85));
+      out.push(canvas.toDataURL("image/jpeg", quality));
       page.cleanup();
     } catch (e) {
       out.push(null);
