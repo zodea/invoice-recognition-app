@@ -7,6 +7,7 @@ import { parseInvoice, isProbablyInvoiceText } from "./lib/invoice-parse";
 import { applyInvoiceFilenameFallback } from "./lib/invoice-filename";
 import { markInvoiceDuplicates } from "./lib/invoice-dedupe";
 import { invoiceFolderParts } from "./lib/invoice-export-package";
+import { loadLedger, saveLedger, recordInvoices, markVerified, parseVerifiedNumbers, historyStatus, importInputInvoiceWorkbookBytes } from "./lib/invoice-ledger";
 import { perPageCount } from "./lib/print-layout.js";
 
 let seq = 0;
@@ -91,7 +92,13 @@ export const invoiceStore = reactive({
   buyerFilter: "全部",
   docTypeFilter: "全部",
   groupDims: [], // 待优化#3：分目录维度（顺序即嵌套顺序），同时驱动左右两栏分组排序
+  ledger: loadLedger(), // 历史发票台账（跨批次查重 + 认证状态），本地持久化
 });
+
+// 用台账刷新每张发票的历史状态（是否曾用过/已认证），供 UI 标记“历史重复/已认证”
+function refreshHistory() {
+  for (const inv of invoiceStore.invoices) inv.history = historyStatus(invoiceStore.ledger, inv);
+}
 
 // 只填空字段，保留人工编辑
 function applyParsed(fields, parsed) {
@@ -135,6 +142,7 @@ export const invoiceActions = {
         systemNote: "",
         duplicateOfId: "",
         duplicateReason: "",
+        history: { usedBefore: false, verified: false, printed: false, batches: [] }, // 历史台账：是否曾用过/已认证/已打印
         include: true,
       });
       invoiceStore.invoices.push(inv);
@@ -279,6 +287,7 @@ export const invoiceActions = {
         const duplicateCount = invoiceActions.refreshDuplicates();
         invoiceStore.msg = duplicateCount ? `识别完成，已自动排除 ${duplicateCount} 张重复发票。` : "识别完成，请核对。";
       }
+      inv.history = historyStatus(invoiceStore.ledger, inv); // 历史台账查重/认证标记
     } catch (e) {
       inv.status = "error";
       inv.error = String((e && e.message) || e);
@@ -293,10 +302,41 @@ export const invoiceActions = {
       if (inv.status !== "done") await invoiceActions.recognizeOne(inv, { skipDedupe: true });
     }
     const duplicateCount = invoiceActions.refreshDuplicates(); // 整批结束统一去重一次
-    invoiceStore.msg = duplicateCount
-      ? `全部识别完成，已自动排除 ${duplicateCount} 张重复发票。`
-      : "全部识别完成，请核对。";
+    refreshHistory(); // 跨批次历史查重 + 认证标记
+    const reused = invoiceStore.invoices.filter((i) => i.history && i.history.usedBefore).length;
+    invoiceStore.msg = `全部识别完成${duplicateCount ? `，已排除 ${duplicateCount} 张本批重复` : ""}${reused ? `，⚠ ${reused} 张历史上已用过(疑似重复使用)` : ""}。`;
   },
+
+  // —— 历史台账 / 认证查重 ——
+  async importInputInvoiceReport(file) {
+    if (!file) return { imported: 0, added: 0, updated: 0 };
+    const bytes = await file.arrayBuffer();
+    const { ledger, imported, added, updated } = importInputInvoiceWorkbookBytes(invoiceStore.ledger, bytes, { sourceName: file.name });
+    invoiceStore.ledger = ledger;
+    saveLedger(ledger);
+    refreshHistory();
+    invoiceStore.msg = `进项历史导入完成：${imported} 张，新增 ${added} 张，更新 ${updated} 张。已认证视为已打印，后续用于防重复。`;
+    return { imported, added, updated };
+  },
+  recordToLedger(name) {
+    const list = orderedForPrint().map((x) => x.inv).filter((inv) => inv.status === "done");
+    const { ledger, added, repeated } = recordInvoices(invoiceStore.ledger, list, { name: name || "报销批次" });
+    invoiceStore.ledger = ledger;
+    saveLedger(ledger);
+    refreshHistory();
+    invoiceStore.msg = `已记入历史台账：新增 ${added} 张，更新 ${repeated} 张。`;
+    return { added, repeated };
+  },
+  importVerifiedRows(rows) {
+    const numbers = parseVerifiedNumbers(rows);
+    const { ledger, matched, unmatched } = markVerified(invoiceStore.ledger, numbers);
+    invoiceStore.ledger = ledger;
+    saveLedger(ledger);
+    refreshHistory();
+    invoiceStore.msg = `认证清单导入：识别 ${numbers.length} 个发票号码，匹配台账 ${matched} 张，另登记 ${unmatched} 张仅认证记录。`;
+    return { count: numbers.length, matched, unmatched };
+  },
+  refreshHistory,
 };
 
 export function invoiceSummary() {

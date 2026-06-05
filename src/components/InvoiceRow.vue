@@ -25,6 +25,8 @@ function syncDate(inv) {
           <span class="seq">{{ item.seq }}</span>
           <span class="file" :title="item.inv.name">{{ item.inv.name }}</span>
           <span v-if="item.inv.duplicateReason" class="tag duplicate">重复</span>
+          <span v-if="item.inv.history?.printed" class="tag printed">历史已打印</span>
+          <span v-else-if="item.inv.history?.verified" class="tag printed">历史已认证</span>
           <span v-else-if="item.needsReview" class="tag">待复核</span>
         </div>
         <div class="export-name" :title="invoiceExportFileName(item.inv)">
@@ -52,6 +54,9 @@ function syncDate(inv) {
       <span v-else>未识别</span>
       <span v-if="item.inv.systemNote" class="system-note">{{ item.inv.systemNote }}</span>
       <span v-if="item.inv.duplicateReason" class="system-note">{{ item.inv.duplicateReason }}</span>
+      <span v-if="item.inv.history?.usedBefore" class="system-note">
+        历史台账已记录，{{ item.inv.history.printed ? "已打印" : "已认证" }}
+      </span>
     </div>
 
     <div v-if="showText && item.inv.rawText" class="raw"><pre>{{ item.inv.rawText }}</pre></div>
@@ -155,6 +160,11 @@ function syncDate(inv) {
   color: #991b1b;
   background: #fef2f2;
   border-color: #fecaca;
+}
+.tag.printed {
+  color: #166534;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
 }
 .row-actions {
   display: flex;

@@ -13,6 +13,7 @@ import { buildPrintLayout } from "../src/lib/invoice-layout.js";
 import { applyInvoiceFilenameFallback, parseInvoiceFilename } from "../src/lib/invoice-filename.js";
 import { isDuplicateInvoice, markInvoiceDuplicates } from "../src/lib/invoice-dedupe.js";
 import { bigCategory, classifyReimburseKind, buildReimburseWorkbookBytes } from "../src/lib/invoice-reimburse.js";
+import { buildHistoryReportBytes, historyStatus, importInputInvoiceRows, ledgerStats, parseInputInvoiceRows } from "../src/lib/invoice-ledger.js";
 import { PDFDocument } from "pdf-lib";
 
 let pass = 0;
@@ -312,6 +313,28 @@ fs.unlinkSync("scripts/_reimb.xlsx");
 const obf = parseInvoice("电子发票（普通发票） 发票号码：\n名称：     名称：   \n开票日期：");
 ok("字体混淆 买方为空(不抓乱码)", obf.buyer === "");
 ok("字体混淆 卖方为空", obf.seller === "");
+
+console.log("== invoice ledger ==");
+const taxRows = [
+  ["广州力沣建筑劳务有限公司进项发票清单"],
+  ["序号", "发票号码", "发票种类", "开票日期", "销方名称", "进项类型", "货物、应税劳务及服务", "不含税金额", "税率", "税额", "有效税额", "加计扣除税额", "价税合计", "红字蓝字", "发票状态"],
+  [1, "26447000000704299292", "数电票（普通发票）", "2026-03-29", "中国石化销售股份有限公司广东广州石油分公司", "货物", "*汽油*95号车用汽油(ⅥB)", 483.59, "13%", 62.87, "", "--", 546.46, "蓝字", "正常"],
+  [2, "26447000000708374013", "数电票（普通发票）", "2026-03-29", "中国石化销售股份有限公司广东广州石油分公司", "货物", "*汽油*95号车用汽油(ⅥB)", 345.36, "13%", 44.9, "", "--", 390.26, "蓝字", "正常"],
+];
+const parsedInput = parseInputInvoiceRows(taxRows, { sourceName: "税务局导出.xlsx", importedAt: "2026-06-06" });
+ok("进项表导入解析2张", parsedInput.length === 2);
+ok("进项表买方取标题公司", parsedInput[0].buyer === "广州力沣建筑劳务有限公司");
+ok("进项表默认认证且已打印", parsedInput[0].verified && parsedInput[0].printed);
+const importedLedger = importInputInvoiceRows({}, taxRows, { sourceName: "税务局导出.xlsx", importedAt: "2026-06-06" }).ledger;
+const ledgerState = historyStatus(importedLedger, { fields: { number: "26447000000704299292" } });
+ok("历史状态 usedBefore=true", ledgerState.usedBefore && ledgerState.verified && ledgerState.printed);
+ok("台账统计", ledgerStats(importedLedger).total === 2 && ledgerStats(importedLedger).printed === 2);
+const hbytes = buildHistoryReportBytes(importedLedger);
+fs.writeFileSync("scripts/_history.xlsx", Buffer.from(hbytes));
+const hwb = XLSX.read(fs.readFileSync("scripts/_history.xlsx"));
+const hrows = XLSX.utils.sheet_to_json(hwb.Sheets["历史发票台账"], { header: 1 });
+ok("历史台账导出含已打印列", hrows[0].includes("是否已打印") && hrows.some((r) => r.includes("已打印")));
+fs.unlinkSync("scripts/_history.xlsx");
 
 console.log("== invoice excel ==");
 const invoices = [

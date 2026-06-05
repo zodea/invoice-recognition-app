@@ -24,6 +24,9 @@ src-tauri/gen/
 发票测试/
 发票测试_输出/
 public/发票测试/
+*.xlsx
+*.xls
+*.xlsm
 
 # Temporary/self-test artifacts
 scripts/_*.xlsx

@@ -1,0 +1,153 @@
+<script setup>
+import { computed, ref } from "vue";
+import { invoiceStore, invoiceActions } from "../invoiceStore";
+import { buildHistoryReportBytes, historyReportName, ledgerStats } from "../lib/invoice-ledger";
+import { saveBytesToChosenDir } from "../lib/invoice-export-package";
+import { downloadBytes } from "../lib/invoice-layout";
+
+const fileRef = ref(null);
+const busy = ref(false);
+const msg = ref("");
+const stats = computed(() => ledgerStats(invoiceStore.ledger));
+
+function chooseFile() {
+  fileRef.value?.click();
+}
+
+async function importReport(e) {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  busy.value = true;
+  msg.value = "正在导入进项发票历史…";
+  try {
+    const r = await invoiceActions.importInputInvoiceReport(file);
+    msg.value = `已导入 ${r.imported} 张，新增 ${r.added} 张，更新 ${r.updated} 张。`;
+  } catch (err) {
+    msg.value = "导入失败：" + ((err && err.message) || err);
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function exportHistory() {
+  if (!stats.value.total) {
+    window.alert("当前还没有历史进项发票台账。");
+    return;
+  }
+  busy.value = true;
+  msg.value = "请选择保存目录…";
+  const bytes = buildHistoryReportBytes(invoiceStore.ledger);
+  const name = historyReportName();
+  const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  try {
+    const r = await saveBytesToChosenDir(bytes, name);
+    if (r.canceled) {
+      msg.value = "已取消导出。";
+    } else if (r.fallbackDownload) {
+      downloadBytes(bytes, name, mime);
+      msg.value = "已导出历史台账。";
+    } else {
+      msg.value = `已保存历史台账：${r.saved}`;
+    }
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      msg.value = "已取消导出。";
+    } else {
+      downloadBytes(bytes, name, mime);
+      msg.value = "保存目录失败，已改为下载。";
+    }
+  } finally {
+    busy.value = false;
+  }
+}
+</script>
+
+<template>
+  <section class="panel">
+    <input ref="fileRef" class="hidden" type="file" accept=".xlsx,.xls" @change="importReport" />
+    <div class="head">
+      <div>
+        <h2>历史进项台账</h2>
+        <p>导入税务局进项发票清单，本地记录认证/使用状态。</p>
+      </div>
+    </div>
+    <div class="stats">
+      <span><b>{{ stats.total }}</b> 张</span>
+      <span><b>{{ stats.verified }}</b> 已认证</span>
+      <span><b>{{ stats.printed }}</b> 已打印</span>
+    </div>
+    <div class="actions">
+      <button class="primary" :disabled="busy" @click="chooseFile">导入进项 Excel</button>
+      <button :disabled="busy || !stats.total" @click="exportHistory">导出历史台账</button>
+    </div>
+    <div class="msg" v-if="msg">{{ msg }}</div>
+  </section>
+</template>
+
+<style scoped>
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  box-shadow: var(--shadow);
+}
+.hidden {
+  display: none;
+}
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+h2 {
+  margin: 0;
+  font-size: 15px;
+}
+p {
+  margin: 2px 0 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.stats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 9px 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.stats b {
+  color: var(--ink);
+  font-size: 15px;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+button {
+  border: 1px solid var(--line-strong);
+  background: #fff;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-weight: 700;
+}
+button.primary {
+  border: none;
+  background: var(--brand);
+  color: #fff;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.msg {
+  margin-top: 8px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+</style>

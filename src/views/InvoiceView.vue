@@ -5,6 +5,7 @@ import InvoiceUpload from "../components/InvoiceUpload.vue";
 import InvoicePreview from "../components/InvoicePreview.vue";
 import InvoiceRow from "../components/InvoiceRow.vue";
 import InvoicePrintPanel from "../components/InvoicePrintPanel.vue";
+import InvoiceLedgerPanel from "../components/InvoiceLedgerPanel.vue";
 
 const sorted = computed(() => sortedInvoices());
 const unrecognizedCount = computed(() => invoiceStore.invoices.filter((i) => i.status !== "done").length);
@@ -35,6 +36,7 @@ watch(
     <div class="top-grid">
       <InvoiceUpload />
       <InvoicePrintPanel />
+      <InvoiceLedgerPanel />
     </div>
 
     <div class="toolbar" v-if="invoiceStore.invoices.length">
@@ -109,7 +111,7 @@ watch(
 }
 .top-grid {
   display: grid;
-  grid-template-columns: minmax(340px, 1fr) minmax(420px, 0.9fr);
+  grid-template-columns: minmax(300px, 0.9fr) minmax(420px, 1.1fr) minmax(300px, 0.8fr);
   gap: 12px;
   align-items: stretch;
 }
