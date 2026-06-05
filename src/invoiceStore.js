@@ -64,6 +64,24 @@ async function processPreviewQueue() {
   }
 }
 
+// 文字层不可用时，取“整页图像”喂给 OCR：
+//   电子/字体加密票 → 渲染整页（scale 2，OCR 友好清晰度，加密票渲染后视觉正常）；
+//   真扫描件 → 直接用内嵌的整页 JPEG（原始分辨率）。
+async function pageImagesForOcr(inv) {
+  if (inv.isTextPdf) {
+    try {
+      const imgs = (await renderPdfPages(inv.blob, { scale: 2 })).filter(Boolean);
+      if (imgs.length) return imgs;
+    } catch (e) { /* 渲染失败再退到内嵌图 */ }
+  }
+  if (inv.pages && inv.pages.length) return inv.pages.map((p) => p.dataUrl).filter(Boolean);
+  try {
+    return (await renderPdfPages(inv.blob, { scale: 2 })).filter(Boolean);
+  } catch (e) {
+    return [];
+  }
+}
+
 export const invoiceStore = reactive({
   invoices: [],
   busy: false,
@@ -108,6 +126,7 @@ export const invoiceActions = {
         pageCount: 1,
         rendering: true,
         isTextPdf: false,
+        textGarbled: false, // 文字层是乱码(字体加密)，识别走整页 OCR
         fields: emptyFields(),
         rawText: "",
         status: "idle",
@@ -131,9 +150,16 @@ export const invoiceActions = {
             if (!textPdf) {
               try {
                 const tr = await extractPdfText(file);
-                if (isProbablyInvoiceText(tr.text || "")) {
+                const t = tr.text || "";
+                const meaningful = t.replace(/\s/g, "").length;
+                if (isProbablyInvoiceText(t)) {
                   textPdf = true;
-                  inv.rawText = tr.text || "";
+                  inv.rawText = t; // 文字层可用：直接解析
+                } else if (meaningful >= 40) {
+                  // 有实质文字层但被字体加密成乱码（如某些电子发票）：仍按电子票处理，
+                  // 预览渲染整页、识别时走“整页 OCR”兜底（不存乱码 rawText）。
+                  textPdf = true;
+                  inv.textGarbled = true;
                 }
               } catch (e) {
                 /* 抽不到文字则按扫描件处理 */
@@ -212,17 +238,31 @@ export const invoiceActions = {
           }
         }
         if (isProbablyInvoiceText(text)) {
+          // 文字层可用：直接解析（最准最快）
           inv.isTextPdf = true;
           inv.rawText = text;
           applyParsed(inv.fields, parseInvoice(text));
-        } else if (inv.pages.length) {
-          // 扫描型发票 PDF：OCR 抽出的页图
-          invoiceStore.msg = "OCR 识别扫描发票…";
-          const lines = await recognizePages(inv.pages, (m) => (invoiceStore.msg = m));
-          inv.rawText = lines.join("\n");
-          applyParsed(inv.fields, parseInvoice(inv.rawText));
         } else {
-          if (!applyFilenameFallback(inv)) throw new Error("该 PDF 既无文字也无图片，请手动录入");
+          // 文字层缺失(扫描件) 或 被字体加密成乱码(电子票) → 渲染整页转 OCR。
+          // 加密票虽抽不到文字，但渲染出来视觉正常，OCR 能读出真实文字。
+          let ocrText = "";
+          try {
+            const imgs = await pageImagesForOcr(inv);
+            if (imgs.length) {
+              invoiceStore.msg = inv.textGarbled ? "字体加密，转图像 OCR 识别…" : "OCR 识别扫描发票…";
+              const lines = await recognizePages(imgs.map((d) => ({ dataUrl: d })), (m) => (invoiceStore.msg = m));
+              ocrText = lines.join("\n");
+            }
+          } catch (e) {
+            // OCR 不可用（如无法联网下载模型/无 WebGL）→ 不让整张失败，下面用文件名兜底
+            inv.systemNote = "OCR 不可用，已按文件名补录，请手动核对";
+          }
+          if (ocrText.trim()) {
+            inv.rawText = ocrText;
+            applyParsed(inv.fields, parseInvoice(ocrText));
+            inv.systemNote = inv.systemNote || "OCR 识别，请重点核对";
+          }
+          // 无论 OCR 成否，最后都会执行下方 applyFilenameFallback 补齐日期/金额等空字段
         }
       } else {
         invoiceStore.msg = "OCR 识别发票图片…";
