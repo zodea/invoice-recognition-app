@@ -28,7 +28,7 @@ watch(
   <div class="wrap">
     <div class="top-grid">
       <InvoiceUpload />
-      <InvoicePrintPanel v-if="invoiceStore.invoices.length" />
+      <InvoicePrintPanel />
     </div>
 
     <div class="toolbar" v-if="invoiceStore.invoices.length">
