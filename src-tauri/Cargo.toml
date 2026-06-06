@@ -1,6 +1,6 @@
 [package]
 name = "songhuodan-ocr-app"
-version = "0.1.0"
+version = "0.2.0"
 description = "送货单和发票识别整理助手"
 authors = ["zodea"]
 edition = "2021"

@@ -13,7 +13,7 @@ import { buildPrintLayout } from "../src/lib/invoice-layout.js";
 import { applyInvoiceFilenameFallback, parseInvoiceFilename } from "../src/lib/invoice-filename.js";
 import { isDuplicateInvoice, markInvoiceDuplicates } from "../src/lib/invoice-dedupe.js";
 import { bigCategory, classifyReimburseKind, buildReimburseWorkbookBytes } from "../src/lib/invoice-reimburse.js";
-import { buildCurrentInputInvoiceReportBytes, buildHistoryReportBytes, historyStatus, importInputInvoiceRows, ledgerStats, markPrintedInvoices, parseInputInvoiceRows, shouldDefaultExcludeByHistory } from "../src/lib/invoice-ledger.js";
+import { buildCurrentInputInvoiceReportBytes, buildHistoryReportBytes, historyStatus, importInputInvoiceRows, importInputInvoiceWorkbookBytes, ledgerStats, markPrintedInvoices, parseInputInvoiceRows, shouldDefaultExcludeByHistory } from "../src/lib/invoice-ledger.js";
 import { PDFDocument } from "pdf-lib";
 
 let pass = 0;
@@ -330,6 +330,20 @@ const ledgerState = historyStatus(importedLedger, { fields: { number: "264470000
 ok("历史状态 usedBefore=true", ledgerState.usedBefore && ledgerState.verified && ledgerState.printed);
 ok("历史已打印默认不勾选", shouldDefaultExcludeByHistory(importedLedger, { fields: { number: "26447000000704299292" } }));
 ok("台账统计", ledgerStats(importedLedger).total === 2 && ledgerStats(importedLedger).printed === 2);
+const fullRows = [
+  ["序号", "发票代码", "发票号码", "数电发票号码", "销方名称", "购买方名称", "开票日期", "金额", "税额", "价税合计", "发票票种", "发票状态", "是否正数发票", "货物或应税劳务名称"],
+  ["1", "", "", "25322000000640451773", "南京市铂越电子商务有限公司", "广东瑞航建设工程有限公司", "2025-12-31 21:55:28", 86.68, 0.87, 87.55, "数电发票（普通发票）", "正常", "是", "*金属制品*下水器"],
+  ["2", "045002200111", "17020885", "--", "广西百祥石油有限公司", "广东瑞航建设工程有限公司", "2025-01-23", 474.05, 61.63, 535.68, "增值税电子普通发票", "正常", "是", ""],
+];
+const fullParsed = parseInputInvoiceRows(fullRows, { sourceName: "全量发票查询导出结果.xlsx", importedAt: "2026-06-06" });
+ok("全量查询格式 数电发票号码识别", fullParsed.length === 2 && fullParsed[0].number === "25322000000640451773");
+ok("全量查询格式 发票票种/购买方识别", fullParsed[0].type.includes("普通发票") && fullParsed[0].buyer === "广东瑞航建设工程有限公司");
+ok("全量查询格式 数电占位时回退旧号码", fullParsed[1].number === "17020885");
+const fullWb = XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(fullWb, XLSX.utils.aoa_to_sheet([fullRows[0], fullRows[1], fullRows[1]]), "信息汇总表");
+XLSX.utils.book_append_sheet(fullWb, XLSX.utils.aoa_to_sheet(fullRows), "发票基础信息");
+const fullBytes = XLSX.write(fullWb, { type: "array", bookType: "xlsx" });
+ok("全量查询工作簿优先发票基础信息", importInputInvoiceWorkbookBytes({}, fullBytes, { sourceName: "全量" }).imported === 2);
 const printedLedger = markPrintedInvoices({}, [{ name: "p.pdf", include: true, fields: { number: "25312000000000000001", date: "2026-05-01", seller: "A公司", buyer: "B公司", total: 100 } }], { name: "测试打印", date: "2026-06-06" }).ledger;
 ok("打印后写入台账", historyStatus(printedLedger, { fields: { number: "25312000000000000001" } }).printed);
 const hbytes = buildHistoryReportBytes(importedLedger);

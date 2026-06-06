@@ -66,33 +66,37 @@ function money(value) {
 }
 
 const COLUMN_ALIASES = {
-  number: ["发票号码", "发票号"],
+  number: ["数电发票号码", "发票号码", "发票号"],
   code: ["发票代码"],
-  invoiceType: ["发票种类", "发票类型"],
+  invoiceType: ["发票种类", "发票类型", "发票票种"],
   date: ["开票日期", "发票日期"],
   seller: ["销方名称", "销售方名称", "销售方"],
   buyer: ["购方名称", "购买方名称", "购买方"],
   inputType: ["进项类型"],
-  service: ["货物、应税劳务及服务", "货物应税劳务及服务", "项目名称", "商品和服务名称"],
+  service: ["货物、应税劳务及服务", "货物或应税劳务名称", "货物应税劳务及服务", "项目名称", "商品和服务名称"],
   amount: ["不含税金额", "金额"],
   rate: ["税率", "税率/征收率"],
   tax: ["税额"],
   validTax: ["有效税额"],
   addDeductTax: ["加计扣除税额"],
   total: ["价税合计", "合计金额"],
-  redBlue: ["红字蓝字"],
+  redBlue: ["红字蓝字", "是否正数发票"],
   invoiceStatus: ["发票状态", "状态"],
 };
 
 function findHeader(rows) {
   for (let i = 0; i < (rows || []).length; i++) {
     const headers = (rows[i] || []).map(normHeader);
-    if (headers.includes("发票号码") && headers.some((h) => h.includes("开票日期"))) {
+    if ((headers.includes("发票号码") || headers.includes("数电发票号码")) && headers.some((h) => h.includes("开票日期"))) {
       const map = {};
       for (const [field, names] of Object.entries(COLUMN_ALIASES)) {
-        const idx = headers.findIndex((h) => names.some((name) => h === normHeader(name)));
+        const idx = names
+          .map((name) => headers.findIndex((h) => h === normHeader(name)))
+          .find((n) => n >= 0);
         if (idx >= 0) map[field] = idx;
       }
+      const legacyNumber = headers.findIndex((h) => h === "发票号码");
+      if (legacyNumber >= 0 && legacyNumber !== map.number) map.numberFallback = legacyNumber;
       return { rowIndex: i, map };
     }
   }
@@ -113,6 +117,15 @@ function buyerFromTitle(rows, headerIndex) {
 function pick(row, map, key) {
   const idx = map[key];
   return idx == null ? "" : row[idx];
+}
+
+function invoiceNumber(row, map) {
+  const candidates = [pick(row, map, "number"), row[map.numberFallback]];
+  for (const value of candidates) {
+    const no = String(value || "").replace(/\s/g, "").trim();
+    if (/^\d{8,25}$/.test(no)) return no;
+  }
+  return "";
 }
 
 function entryFromInvoice(inv, day) {
@@ -226,8 +239,8 @@ export function parseInputInvoiceRows(rows, { sourceName = "进项发票导入",
   const defaultBuyer = buyerFromTitle(rows, rowIndex);
   const entries = [];
   for (const row of rows.slice(rowIndex + 1)) {
-    const number = String(pick(row, map, "number") || "").replace(/\s/g, "").trim();
-    if (!number || !/^\d{8,25}$/.test(number)) continue;
+    const number = invoiceNumber(row, map);
+    if (!number) continue;
     entries.push({
       key: number,
       number,
@@ -286,9 +299,12 @@ export function importInputInvoiceWorkbookBytes(ledger, bytes, opts = {}) {
   const wb = XLSX.read(bytes, { type: "array", cellDates: true });
   let next = ledger || {};
   let imported = 0, added = 0, updated = 0;
-  for (const sheetName of wb.SheetNames) {
+  const preferredSheet = wb.SheetNames.find((n) => n === "发票基础信息")
+    || wb.SheetNames.find((n) => n === "信息汇总表");
+  const sheetNames = preferredSheet ? [preferredSheet] : wb.SheetNames;
+  for (const sheetName of sheetNames) {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: "" });
-    const r = importInputInvoiceRows(next, rows, opts);
+    const r = importInputInvoiceRows(next, rows, { ...opts, sourceName: `${opts.sourceName || "进项发票导入"}:${sheetName}` });
     next = r.ledger;
     imported += r.imported;
     added += r.added;
