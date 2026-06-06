@@ -7,6 +7,7 @@ import { downloadBytes } from "../lib/invoice-layout";
 
 const fileRef = ref(null);
 const busy = ref(false);
+const dragging = ref(false);
 const msg = ref("");
 const stats = computed(() => ledgerStats(invoiceStore.ledger));
 
@@ -14,10 +15,16 @@ function chooseFile() {
   fileRef.value?.click();
 }
 
-async function importReport(e) {
-  const file = e.target.files && e.target.files[0];
-  e.target.value = "";
+function pickExcelFile(files) {
+  return Array.from(files || []).find((f) => /\.(xlsx|xls)$/i.test(f.name));
+}
+
+async function importLedgerFile(file) {
   if (!file) return;
+  if (!/\.(xlsx|xls)$/i.test(file.name)) {
+    msg.value = "请导入税务局导出的 Excel 文件（.xlsx / .xls）。";
+    return;
+  }
   busy.value = true;
   msg.value = "正在导入进项发票历史…";
   try {
@@ -93,16 +100,43 @@ async function exportCurrentInputStatus() {
     busy.value = false;
   }
 }
+
+async function importReport(e) {
+  const file = pickExcelFile(e.target.files);
+  e.target.value = "";
+  await importLedgerFile(file);
+}
+
+async function onDrop(e) {
+  dragging.value = false;
+  if (busy.value) return;
+  const file = pickExcelFile(e.dataTransfer?.files);
+  if (!file) {
+    msg.value = "没有找到可导入的 Excel 文件，请拖入 .xlsx 或 .xls。";
+    return;
+  }
+  await importLedgerFile(file);
+}
 </script>
 
 <template>
-  <section class="panel">
+  <section
+    class="panel"
+    :class="{ dragging }"
+    @dragenter.prevent="dragging = true"
+    @dragover.prevent="dragging = true"
+    @dragleave.prevent="dragging = false"
+    @drop.prevent="onDrop"
+  >
     <input ref="fileRef" class="hidden" type="file" accept=".xlsx,.xls" @change="importReport" />
     <div class="head">
       <div>
         <h2>历史进项台账</h2>
-        <p>导入税务局进项发票清单，本地记录认证/使用状态。</p>
+        <p>拖入或选择税务局进项发票清单，本地记录认证/使用状态。</p>
       </div>
+    </div>
+    <div class="drop-hint">
+      <span>{{ dragging ? "松开即可导入进项 Excel" : "可拖拽 .xlsx / .xls 到这里导入" }}</span>
     </div>
     <div class="stats">
       <span><b>{{ stats.total }}</b> 张</span>
@@ -125,6 +159,12 @@ async function exportCurrentInputStatus() {
   border-radius: 8px;
   padding: 10px;
   box-shadow: var(--shadow);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.panel.dragging {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.16), var(--shadow);
 }
 .hidden {
   display: none;
@@ -152,6 +192,21 @@ p {
   margin: 9px 0;
   color: var(--ink-soft);
   font-size: 12px;
+}
+.drop-hint {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 6px;
+  background: #f8fafc;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+.panel.dragging .drop-hint {
+  border-color: var(--brand);
+  background: #fff;
+  color: var(--brand);
 }
 .stats b {
   color: var(--ink);
