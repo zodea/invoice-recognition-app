@@ -331,6 +331,16 @@ export const invoiceActions = {
     invoiceStore.msg = `进项历史导入完成：${imported} 张，新增 ${added} 张，更新 ${updated} 张。已认证视为已打印，后续用于防重复。`;
     return { imported, added, updated };
   },
+  clearLedger() {
+    invoiceStore.ledger = {};
+    saveLedger(invoiceStore.ledger);
+    for (const inv of invoiceStore.invoices) {
+      if (inv.historyAutoExcluded && !inv.includeTouched) inv.include = true;
+      inv.historyAutoExcluded = false;
+    }
+    refreshHistory();
+    invoiceStore.msg = "已清空历史进项台账。";
+  },
   recordToLedger(name) {
     const list = orderedForPrint().map((x) => x.inv).filter((inv) => inv.status === "done");
     const { ledger, added, repeated } = recordInvoices(invoiceStore.ledger, list, { name: name || "报销批次" });

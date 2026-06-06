@@ -117,6 +117,19 @@ async function onDrop(e) {
   }
   await importLedgerFile(file);
 }
+
+function clearLedger() {
+  if (!stats.value.total) return;
+  const ok = window.confirm(
+    `确认清空历史进项台账吗？\n\n当前共有 ${stats.value.total} 张历史记录。清空后，已认证/已打印状态会被删除；如果是误上传了错误 Excel，可以清空后重新导入正确文件。`
+  );
+  if (!ok) {
+    msg.value = "已取消清空。";
+    return;
+  }
+  invoiceActions.clearLedger();
+  msg.value = "已清空历史进项台账，可以重新导入正确的进项 Excel。";
+}
 </script>
 
 <template>
@@ -147,6 +160,7 @@ async function onDrop(e) {
       <button class="primary" :disabled="busy" @click="chooseFile">导入进项 Excel</button>
       <button :disabled="busy || !stats.total" @click="exportHistory">导出历史台账</button>
       <button :disabled="busy || !invoiceStore.invoices.length" @click="exportCurrentInputStatus">导出当前进项状态</button>
+      <button class="danger" :disabled="busy || !stats.total" @click="clearLedger">清空历史台账</button>
     </div>
     <div class="msg" v-if="msg">{{ msg }}</div>
   </section>
@@ -228,6 +242,11 @@ button.primary {
   border: none;
   background: var(--brand);
   color: #fff;
+}
+button.danger {
+  border-color: #fecaca;
+  color: #991b1b;
+  background: #fef2f2;
 }
 button:disabled {
   opacity: 0.5;
