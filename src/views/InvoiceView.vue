@@ -29,240 +29,69 @@ watch(
     });
   }
 );
+
+const filterBtn = (active) =>
+  active
+    ? "border border-brand bg-brand-soft text-brand rounded-full px-2.25 py-1 text-xs font-700"
+    : "border border-line bg-white text-ink rounded-full px-2.25 py-1 text-xs font-700 hover:border-brand";
 </script>
 
 <template>
-  <div class="wrap">
-    <div class="top-grid">
+  <div class="flex flex-col gap-3">
+    <div class="grid gap-3 items-stretch grid-cols-[minmax(300px,0.9fr)_minmax(420px,1.1fr)_minmax(300px,0.8fr)] lt-lg:grid-cols-1">
       <InvoiceUpload />
       <InvoicePrintPanel />
       <InvoiceLedgerPanel />
     </div>
 
-    <div class="toolbar" v-if="invoiceStore.invoices.length">
-      <div class="toolbar-summary">
-        <strong>{{ invoiceStore.invoices.length }}</strong> 张发票
+    <div v-if="invoiceStore.invoices.length" class="flex items-center gap-2.5 flex-wrap px-2.5 py-2 border border-line rounded-lg bg-white">
+      <div class="text-ink-soft">
+        <strong class="text-ink">{{ invoiceStore.invoices.length }}</strong> 张发票
         <span v-if="unrecognizedCount">，{{ unrecognizedCount }} 张未识别</span>
         <span v-else>，全部已识别</span>
-        <span v-if="duplicateCount" class="dup-badge">含 {{ duplicateCount }} 张重复(已排除)</span>
+        <span v-if="duplicateCount" class="ml-2 chip text-[#991b1b] bg-[#fef2f2] border border-[#fecaca] px-2 py-0.5">含 {{ duplicateCount }} 张重复(已排除)</span>
       </div>
-      <div class="toolbar-actions">
-        <button class="tool primary" :disabled="invoiceStore.busy || !unrecognizedCount" @click="invoiceActions.recognizeAll">
+      <div class="flex items-center gap-2">
+        <button class="btn-primary px-2.5 py-1.5" :disabled="invoiceStore.busy || !unrecognizedCount" @click="invoiceActions.recognizeAll">
           {{ invoiceStore.busy ? "识别中…" : "全部识别" }}
         </button>
-        <button class="tool" :disabled="invoiceStore.busy || invoiceStore.invoices.length < 2" @click="dedupe">去重</button>
-        <button class="tool ghost" @click="invoiceActions.clearAll">清空</button>
+        <button class="btn px-2.5 py-1.5" :disabled="invoiceStore.busy || invoiceStore.invoices.length < 2" @click="dedupe">去重</button>
+        <button class="btn-ghost px-2.5 py-1.5" @click="invoiceActions.clearAll">清空</button>
       </div>
-      <span class="msg" v-if="invoiceStore.msg">{{ invoiceStore.msg }}</span>
+      <span class="text-ink-soft" v-if="invoiceStore.msg">{{ invoiceStore.msg }}</span>
     </div>
 
-    <div class="filters" v-if="invoiceStore.invoices.length">
-      <div class="filter-group">
-        <span>购买方</span>
-        <button
-          v-for="buyer in buyers"
-          :key="buyer"
-          :class="{ active: invoiceStore.buyerFilter === buyer }"
-          @click="invoiceStore.buyerFilter = buyer"
-        >
-          {{ buyer }}
-        </button>
+    <div v-if="invoiceStore.invoices.length" class="flex flex-col gap-2 px-2.5 py-2.5 border border-line rounded-lg bg-white">
+      <div class="flex items-center gap-1.75 flex-wrap">
+        <span class="flex-none text-ink-soft font-700 text-xs">购买方</span>
+        <button v-for="buyer in buyers" :key="buyer" :class="filterBtn(invoiceStore.buyerFilter === buyer)" @click="invoiceStore.buyerFilter = buyer">{{ buyer }}</button>
       </div>
-      <div class="filter-group">
-        <span>类型</span>
-        <button
-          v-for="docType in docTypes"
-          :key="docType"
-          :class="{ active: invoiceStore.docTypeFilter === docType }"
-          @click="invoiceStore.docTypeFilter = docType"
-        >
-          {{ docType }}
-        </button>
+      <div class="flex items-center gap-1.75 flex-wrap">
+        <span class="flex-none text-ink-soft font-700 text-xs">类型</span>
+        <button v-for="docType in docTypes" :key="docType" :class="filterBtn(invoiceStore.docTypeFilter === docType)" @click="invoiceStore.docTypeFilter = docType">{{ docType }}</button>
       </div>
     </div>
 
-    <div v-if="invoiceStore.invoices.length" class="workspace">
-      <aside class="preview-pane">
+    <div v-if="invoiceStore.invoices.length" class="grid gap-3.5 items-start grid-cols-[minmax(360px,0.9fr)_minmax(520px,1.35fr)] lt-lg:grid-cols-1">
+      <aside class="preview-pane min-h-0 max-h-[calc(100vh-250px)] lt-lg:max-h-none overflow-auto p-3 bg-[#f8fafc] border border-line rounded-lg">
         <InvoicePreview />
       </aside>
 
-      <section class="review-pane">
-        <div class="pane-head">
+      <section class="review-pane min-h-0 max-h-[calc(100vh-250px)] lt-lg:max-h-none overflow-auto p-3 bg-[#f8fafc] border border-line rounded-lg">
+        <div class="sticky -top-3 z-4 flex items-center justify-between gap-2.5 -mx-3 -mt-3 mb-2.5 px-3 py-3 bg-[#f8fafc]/96 border-b border-line backdrop-blur">
           <div>
-            <h2>识别内容</h2>
-            <p>{{ sorted.length }} 张发票</p>
+            <h2 class="m-0 text-base font-700">识别内容</h2>
+            <p class="mt-0.25 text-ink-soft text-xs">{{ sorted.length }} 张发票</p>
           </div>
         </div>
-        <div class="rows">
+        <div class="flex flex-col gap-2.5">
           <InvoiceRow v-for="item in sorted" :key="item.inv.id" :item="item" />
         </div>
       </section>
     </div>
 
-    <div v-else class="empty">还没有发票。把电子发票 PDF 或扫描件拖到上面。</div>
+    <div v-else class="text-center text-ink-soft p-7.5 bg-panel border border-dashed border-line-strong rounded-lg">
+      还没有发票。把电子发票 PDF 或扫描件拖到上面。
+    </div>
   </div>
 </template>
-
-<style scoped>
-.wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.top-grid {
-  display: grid;
-  grid-template-columns: minmax(300px, 0.9fr) minmax(420px, 1.1fr) minmax(300px, 0.8fr);
-  gap: 12px;
-  align-items: stretch;
-}
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
-}
-.toolbar-summary {
-  color: var(--ink-soft);
-}
-.toolbar-summary strong {
-  color: var(--ink);
-}
-.dup-badge {
-  margin-left: 8px;
-  color: #991b1b;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 999px;
-  padding: 2px 8px;
-  font-size: 12px;
-  font-weight: 700;
-}
-.toolbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.tool {
-  border: 1px solid var(--line-strong);
-  background: #fff;
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-weight: 700;
-}
-.tool.primary {
-  border-color: var(--brand);
-  background: var(--brand);
-  color: #fff;
-}
-.tool.ghost {
-  color: var(--ink-soft);
-}
-.tool:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.msg {
-  color: var(--ink-soft);
-}
-.filters {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
-}
-.filter-group {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex-wrap: wrap;
-}
-.filter-group span {
-  flex: 0 0 auto;
-  color: var(--ink-soft);
-  font-weight: 700;
-  font-size: 12px;
-}
-.filter-group button {
-  border: 1px solid var(--line);
-  background: #fff;
-  color: var(--ink);
-  border-radius: 999px;
-  padding: 4px 9px;
-  font-size: 12px;
-  font-weight: 700;
-}
-.filter-group button.active {
-  border-color: var(--brand);
-  background: var(--brand-soft);
-  color: var(--brand);
-}
-.workspace {
-  display: grid;
-  grid-template-columns: minmax(360px, 0.9fr) minmax(520px, 1.35fr);
-  gap: 14px;
-  align-items: start;
-}
-.preview-pane,
-.review-pane {
-  min-height: 0;
-  max-height: calc(100vh - 250px);
-  overflow: auto;
-  padding: 12px;
-  background: #f8fafc;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
-.pane-head {
-  position: sticky;
-  top: -12px;
-  z-index: 4;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin: -12px -12px 10px;
-  padding: 12px;
-  background: rgba(248, 250, 252, 0.96);
-  border-bottom: 1px solid var(--line);
-  backdrop-filter: blur(6px);
-}
-.pane-head h2 {
-  margin: 0;
-  font-size: 16px;
-}
-.pane-head p {
-  margin: 1px 0 0;
-  color: var(--ink-soft);
-  font-size: 12px;
-}
-.rows {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.empty {
-  text-align: center;
-  color: var(--ink-soft);
-  padding: 30px;
-  background: var(--panel);
-  border: 1px dashed var(--line-strong);
-  border-radius: 8px;
-}
-@media (max-width: 980px) {
-  .top-grid,
-  .workspace {
-    grid-template-columns: 1fr;
-  }
-  .preview-pane,
-  .review-pane {
-    max-height: none;
-  }
-}
-</style>

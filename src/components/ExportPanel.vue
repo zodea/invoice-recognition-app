@@ -38,7 +38,7 @@ async function doExport() {
       log("请选择导出目标文件夹…");
       res = await exportToDirectory(payload, log);
     } else {
-      log("当前浏览器不支持选择文件夹，改为逐个下载（建议用 Chrome / Edge）。");
+      log("当前环境不支持选择文件夹，改为逐个下载（建议用 Chrome / Edge）。");
       res = await exportByDownload(payload, log);
     }
     log(`✅ 完成，共导出 ${res.files} 个文件的整理结果。`);
@@ -53,77 +53,19 @@ async function doExport() {
 </script>
 
 <template>
-  <div class="export">
-    <div class="summary">
-      <div><b>{{ stats.partitions }}</b> 个分区</div>
-      <div><b>{{ stats.files }}</b> 个文件</div>
-      <div><b>{{ stats.companies }}</b> 个公司</div>
-      <div v-if="stats.noCompany" class="warn">{{ stats.noCompany }} 个未填公司</div>
+  <div class="panel p-3.5">
+    <div class="flex gap-4 flex-wrap text-ink-soft mb-2.5">
+      <div><b class="text-ink text-base">{{ stats.partitions }}</b> 个分区</div>
+      <div><b class="text-ink text-base">{{ stats.files }}</b> 个文件</div>
+      <div><b class="text-ink text-base">{{ stats.companies }}</b> 个公司</div>
+      <div v-if="stats.noCompany" class="text-warn">{{ stats.noCompany }} 个未填公司</div>
     </div>
-    <button class="export-btn" :disabled="busy || !store.files.length" @click="doExport">
+    <button class="w-full border-none bg-brand text-white text-base font-700 p-3 rounded-lg disabled:opacity-50 disabled:cursor-default" :disabled="busy || !store.files.length" @click="doExport">
       {{ busy ? "导出中…" : "📁 导出到文件夹" }}
     </button>
-    <div class="hint" v-if="!supported">※ 选择文件夹需 Chrome / Edge；当前浏览器将改为逐个下载。</div>
-    <div class="logs" v-if="logs.length">
-      <div v-for="(l, i) in logs" :key="i" :class="{ strong: l.startsWith('✅') || l.startsWith('❌') }">{{ l }}</div>
+    <div class="text-ink-soft text-xs mt-1.5" v-if="!supported">※ 选择文件夹需 Chrome / Edge / 桌面应用；当前环境将改为逐个下载。</div>
+    <div class="mt-2.5 bg-[#0b1020] text-[#cbd5e1] rounded-md p-2.5 text-xs font-mono max-h-50 overflow-auto" v-if="logs.length">
+      <div v-for="(l, i) in logs" :key="i" :class="l.startsWith('✅') || l.startsWith('❌') ? 'text-white font-700' : ''">{{ l }}</div>
     </div>
   </div>
 </template>
-
-<style scoped>
-.export {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 14px;
-  box-shadow: var(--shadow);
-}
-.summary {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  color: var(--ink-soft);
-  margin-bottom: 10px;
-}
-.summary b {
-  color: var(--ink);
-  font-size: 16px;
-}
-.summary .warn {
-  color: var(--warn);
-}
-.export-btn {
-  width: 100%;
-  border: none;
-  background: var(--brand);
-  color: #fff;
-  font-size: 16px;
-  font-weight: 700;
-  padding: 12px;
-  border-radius: 8px;
-}
-.export-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.hint {
-  color: var(--ink-soft);
-  font-size: 12px;
-  margin-top: 6px;
-}
-.logs {
-  margin-top: 10px;
-  background: #0b1020;
-  color: #cbd5e1;
-  border-radius: 6px;
-  padding: 10px;
-  font-size: 12px;
-  font-family: ui-monospace, Consolas, monospace;
-  max-height: 200px;
-  overflow: auto;
-}
-.logs .strong {
-  color: #fff;
-  font-weight: 700;
-}
-</style>

@@ -37,68 +37,31 @@ async function importLedgerFile(file) {
   }
 }
 
-async function exportHistory() {
-  if (!stats.value.total) {
-    window.alert("当前还没有历史进项发票台账。");
-    return;
-  }
+async function saveLedgerBytes(bytes, name, okMsg, dlMsg) {
   busy.value = true;
   msg.value = "请选择保存目录…";
-  const bytes = buildHistoryReportBytes(invoiceStore.ledger);
-  const name = historyReportName();
   const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   try {
     const r = await saveBytesToChosenDir(bytes, name);
-    if (r.canceled) {
-      msg.value = "已取消导出。";
-    } else if (r.fallbackDownload) {
-      downloadBytes(bytes, name, mime);
-      msg.value = "已导出历史台账。";
-    } else {
-      msg.value = `已保存历史台账：${r.saved}`;
-    }
+    if (r.canceled) msg.value = "已取消导出。";
+    else if (r.fallbackDownload) { downloadBytes(bytes, name, mime); msg.value = dlMsg; }
+    else msg.value = `${okMsg}：${r.saved}`;
   } catch (err) {
-    if (err && err.name === "AbortError") {
-      msg.value = "已取消导出。";
-    } else {
-      downloadBytes(bytes, name, mime);
-      msg.value = "保存目录失败，已改为下载。";
-    }
+    if (err && err.name === "AbortError") msg.value = "已取消导出。";
+    else { downloadBytes(bytes, name, mime); msg.value = "保存目录失败，已改为下载。"; }
   } finally {
     busy.value = false;
   }
 }
 
+async function exportHistory() {
+  if (!stats.value.total) { window.alert("当前还没有历史进项发票台账。"); return; }
+  await saveLedgerBytes(buildHistoryReportBytes(invoiceStore.ledger), historyReportName(), "已保存历史台账", "已导出历史台账。");
+}
+
 async function exportCurrentInputStatus() {
-  if (!invoiceStore.invoices.length) {
-    window.alert("当前还没有导入发票。");
-    return;
-  }
-  busy.value = true;
-  msg.value = "请选择保存目录…";
-  const bytes = buildCurrentInputInvoiceReportBytes(invoiceStore.invoices, invoiceStore.ledger);
-  const name = currentInputReportName();
-  const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-  try {
-    const r = await saveBytesToChosenDir(bytes, name);
-    if (r.canceled) {
-      msg.value = "已取消导出。";
-    } else if (r.fallbackDownload) {
-      downloadBytes(bytes, name, mime);
-      msg.value = "已导出当前进项发票状态。";
-    } else {
-      msg.value = `已保存当前进项发票状态：${r.saved}`;
-    }
-  } catch (err) {
-    if (err && err.name === "AbortError") {
-      msg.value = "已取消导出。";
-    } else {
-      downloadBytes(bytes, name, mime);
-      msg.value = "保存目录失败，已改为下载。";
-    }
-  } finally {
-    busy.value = false;
-  }
+  if (!invoiceStore.invoices.length) { window.alert("当前还没有导入发票。"); return; }
+  await saveLedgerBytes(buildCurrentInputInvoiceReportBytes(invoiceStore.invoices, invoiceStore.ledger), currentInputReportName(), "已保存当前进项发票状态", "已导出当前进项发票状态。");
 }
 
 async function importReport(e) {
@@ -123,10 +86,7 @@ function clearLedger() {
   const ok = window.confirm(
     `确认清空历史进项台账吗？\n\n当前共有 ${stats.value.total} 张历史记录。清空后，已认证/已打印状态会被删除；如果是误上传了错误 Excel，可以清空后重新导入正确文件。`
   );
-  if (!ok) {
-    msg.value = "已取消清空。";
-    return;
-  }
+  if (!ok) { msg.value = "已取消清空。"; return; }
   invoiceActions.clearLedger();
   msg.value = "已清空历史进项台账，可以重新导入正确的进项 Excel。";
 }
@@ -134,127 +94,37 @@ function clearLedger() {
 
 <template>
   <section
-    class="panel"
-    :class="{ dragging }"
+    class="panel p-2.5 transition-colors"
+    :class="dragging ? '!border-brand bg-brand-soft shadow-[0_0_0_2px_rgba(37,99,235,0.16)]' : ''"
     @dragenter.prevent="dragging = true"
     @dragover.prevent="dragging = true"
     @dragleave.prevent="dragging = false"
     @drop.prevent="onDrop"
   >
     <input ref="fileRef" class="hidden" type="file" accept=".xlsx,.xls" @change="importReport" />
-    <div class="head">
+    <div class="flex items-start justify-between gap-2.5">
       <div>
-        <h2>历史进项台账</h2>
-        <p>拖入或选择税务局进项发票清单，本地记录认证/使用状态。</p>
+        <h2 class="m-0 text-[15px] font-700">历史进项台账</h2>
+        <p class="mt-0.5 text-ink-soft text-xs leading-relaxed">拖入或选择税务局进项发票清单，本地记录认证/使用状态。</p>
       </div>
     </div>
-    <div class="drop-hint">
-      <span>{{ dragging ? "松开即可导入进项 Excel" : "可拖拽 .xlsx / .xls 到这里导入" }}</span>
+    <div
+      class="mt-2 p-2 border border-dashed rounded-md text-xs font-700 transition-colors"
+      :class="dragging ? 'border-brand bg-white text-brand' : 'border-line-strong bg-[#f8fafc] text-ink-soft'"
+    >
+      {{ dragging ? "松开即可导入进项 Excel" : "可拖拽 .xlsx / .xls 到这里导入" }}
     </div>
-    <div class="stats">
-      <span><b>{{ stats.total }}</b> 张</span>
-      <span><b>{{ stats.verified }}</b> 已认证</span>
-      <span><b>{{ stats.printed }}</b> 已打印</span>
+    <div class="flex gap-2.5 flex-wrap my-2.25 text-ink-soft text-xs">
+      <span><b class="text-ink text-[15px]">{{ stats.total }}</b> 张</span>
+      <span><b class="text-ink text-[15px]">{{ stats.verified }}</b> 已认证</span>
+      <span><b class="text-ink text-[15px]">{{ stats.printed }}</b> 已打印</span>
     </div>
-    <div class="actions">
-      <button class="primary" :disabled="busy" @click="chooseFile">导入进项 Excel</button>
-      <button :disabled="busy || !stats.total" @click="exportHistory">导出历史台账</button>
-      <button :disabled="busy || !invoiceStore.invoices.length" @click="exportCurrentInputStatus">导出当前进项状态</button>
-      <button class="danger" :disabled="busy || !stats.total" @click="clearLedger">清空历史台账</button>
+    <div class="flex gap-2 flex-wrap">
+      <button class="btn-primary px-2.5 py-1.75" :disabled="busy" @click="chooseFile">导入进项 Excel</button>
+      <button class="btn px-2.5 py-1.75" :disabled="busy || !stats.total" @click="exportHistory">导出历史台账</button>
+      <button class="btn px-2.5 py-1.75" :disabled="busy || !invoiceStore.invoices.length" @click="exportCurrentInputStatus">导出当前进项状态</button>
+      <button class="btn px-2.5 py-1.75 border-[#fecaca] text-[#991b1b] bg-[#fef2f2]" :disabled="busy || !stats.total" @click="clearLedger">清空历史台账</button>
     </div>
-    <div class="msg" v-if="msg">{{ msg }}</div>
+    <div class="mt-2 text-ink-soft text-xs" v-if="msg">{{ msg }}</div>
   </section>
 </template>
-
-<style scoped>
-.panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px;
-  box-shadow: var(--shadow);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
-}
-.panel.dragging {
-  border-color: var(--brand);
-  background: var(--brand-soft);
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.16), var(--shadow);
-}
-.hidden {
-  display: none;
-}
-.head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-h2 {
-  margin: 0;
-  font-size: 15px;
-}
-p {
-  margin: 2px 0 0;
-  color: var(--ink-soft);
-  font-size: 12px;
-  line-height: 1.4;
-}
-.stats {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin: 9px 0;
-  color: var(--ink-soft);
-  font-size: 12px;
-}
-.drop-hint {
-  margin-top: 8px;
-  padding: 8px;
-  border: 1px dashed var(--line-strong);
-  border-radius: 6px;
-  background: #f8fafc;
-  color: var(--ink-soft);
-  font-size: 12px;
-  font-weight: 700;
-}
-.panel.dragging .drop-hint {
-  border-color: var(--brand);
-  background: #fff;
-  color: var(--brand);
-}
-.stats b {
-  color: var(--ink);
-  font-size: 15px;
-}
-.actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-button {
-  border: 1px solid var(--line-strong);
-  background: #fff;
-  border-radius: 6px;
-  padding: 7px 10px;
-  font-weight: 700;
-}
-button.primary {
-  border: none;
-  background: var(--brand);
-  color: #fff;
-}
-button.danger {
-  border-color: #fecaca;
-  color: #991b1b;
-  background: #fef2f2;
-}
-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.msg {
-  margin-top: 8px;
-  color: var(--ink-soft);
-  font-size: 12px;
-}
-</style>

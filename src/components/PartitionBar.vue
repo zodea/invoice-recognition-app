@@ -24,91 +24,34 @@ function remove(p) {
   if (countOf(p.id) > 0 && !window.confirm(`分区【${p.name}】里还有 ${countOf(p.id)} 个文件，删除后会移到其它分区。继续？`)) return;
   if (!actions.removePartition(p.id)) window.alert("至少保留一个分区。");
 }
+
+const chipBase = "inline-flex items-center gap-1.5 border bg-white text-ink px-2.5 py-1.25 rounded-full cursor-pointer";
+function chipCls(active) {
+  return active ? `${chipBase} border-brand bg-brand-soft text-brand` : `${chipBase} border-line-strong`;
+}
 </script>
 
 <template>
-  <div class="bar">
-    <span class="label">项目分区：</span>
-    <button class="chip" :class="{ active: store.activePartitionId === 'all' }" @click="actions.setActivePartition('all')">
-      全部 <em>{{ store.files.length }}</em>
+  <div class="flex flex-wrap gap-2 items-center px-3.5 py-3 panel">
+    <span class="text-ink-soft font-600">项目分区：</span>
+    <button :class="chipCls(store.activePartitionId === 'all')" @click="actions.setActivePartition('all')">
+      全部 <em class="not-italic text-ink-soft bg-bg rounded-full px-1.75 text-xs">{{ store.files.length }}</em>
     </button>
     <template v-for="p in store.partitions" :key="p.id">
-      <span v-if="editingId === p.id" class="chip editing">
-        <input v-model="editName" @keyup.enter="commitEdit" @blur="commitEdit" autofocus />
+      <span v-if="editingId === p.id" :class="chipBase">
+        <input class="border-none outline-none w-24 font-inherit bg-transparent" v-model="editName" @keyup.enter="commitEdit" @blur="commitEdit" autofocus />
       </span>
       <button
         v-else
-        class="chip"
-        :class="{ active: store.activePartitionId === p.id }"
+        :class="[chipCls(store.activePartitionId === p.id), store.activePartitionId === p.id ? '[&_em]:text-brand' : '']"
         @click="actions.setActivePartition(p.id)"
         @dblclick="startEdit(p)"
-        :title="'双击重命名'"
+        title="双击重命名"
       >
-        {{ p.name }} <em>{{ countOf(p.id) }}</em>
-        <span class="x" @click.stop="remove(p)" title="删除分区">×</span>
+        {{ p.name }} <em class="not-italic text-ink-soft bg-bg rounded-full px-1.75 text-xs">{{ countOf(p.id) }}</em>
+        <span class="text-ink-soft ml-0.5 font-700 hover:text-danger" @click.stop="remove(p)" title="删除分区">×</span>
       </button>
     </template>
-    <button class="chip add" @click="addNew">＋ 新建分区</button>
+    <button :class="`${chipBase} border-dashed border-line-strong text-brand`" @click="addNew">＋ 新建分区</button>
   </div>
 </template>
-
-<style scoped>
-.bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  padding: 12px 14px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-.label {
-  color: var(--ink-soft);
-  font-weight: 600;
-}
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--line-strong);
-  background: #fff;
-  color: var(--ink);
-  padding: 5px 10px;
-  border-radius: 999px;
-}
-.chip em {
-  font-style: normal;
-  color: var(--ink-soft);
-  background: var(--bg);
-  border-radius: 999px;
-  padding: 0 7px;
-  font-size: 12px;
-}
-.chip.active {
-  border-color: var(--brand);
-  background: var(--brand-soft);
-  color: var(--brand);
-}
-.chip.active em {
-  color: var(--brand);
-}
-.chip.add {
-  border-style: dashed;
-  color: var(--brand);
-}
-.chip .x {
-  color: var(--ink-soft);
-  margin-left: 2px;
-  font-weight: 700;
-}
-.chip .x:hover {
-  color: var(--danger);
-}
-.chip.editing input {
-  border: none;
-  outline: none;
-  width: 96px;
-  font: inherit;
-}
-</style>
