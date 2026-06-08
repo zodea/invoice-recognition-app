@@ -46,7 +46,42 @@ function canvasToObjectURL(canvas, quality) {
   });
 }
 
-export async function renderPdfPages(file, { scale = 1.5, maxPages = 10, timeoutMs = 12000, quality = 0.82 } = {}) {
+// 取图片自然尺寸（用于横向自动旋转判断）。
+export function imgNaturalSize(url) {
+  return new Promise((resolve) => {
+    const im = new Image();
+    im.onload = () => resolve({ w: im.naturalWidth, h: im.naturalHeight });
+    im.onerror = () => resolve({ w: 0, h: 0 });
+    im.src = url;
+  });
+}
+
+// 把一张图片按 deg(顺时针 0/90/180/270) 旋转，返回新的对象 URL；deg=0 原样返回。
+export async function rotateImageUrl(url, deg = 0) {
+  const r = ((deg % 360) + 360) % 360;
+  if (!url || r === 0) return url;
+  const img = await new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = rej;
+    im.src = url;
+  });
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  const canvas = document.createElement("canvas");
+  const swap = r === 90 || r === 270;
+  canvas.width = swap ? h : w;
+  canvas.height = swap ? w : h;
+  const ctx = canvas.getContext("2d");
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate((r * Math.PI) / 180);
+  ctx.drawImage(img, -w / 2, -h / 2);
+  return await new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob ? URL.createObjectURL(blob) : url), "image/jpeg", 0.9);
+  });
+}
+
+export async function renderPdfPages(file, { scale = 1.5, maxPages = 10, timeoutMs = 12000, quality = 0.82, rotation = 0 } = {}) {
   const buf = new Uint8Array(await file.arrayBuffer());
   const pdf = await pdfjsLib.getDocument({
     data: buf,
@@ -58,7 +93,7 @@ export async function renderPdfPages(file, { scale = 1.5, maxPages = 10, timeout
   for (let i = 1; i <= n; i++) {
     try {
       const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale });
+      const viewport = page.getViewport({ scale, rotation }); // rotation 顺时针，叠加在页面固有旋转上
       const canvas = document.createElement("canvas");
       canvas.width = Math.ceil(viewport.width);
       canvas.height = Math.ceil(viewport.height);

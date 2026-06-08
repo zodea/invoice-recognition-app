@@ -1,7 +1,7 @@
 import { reactive } from "vue";
 import { PDFDocument } from "pdf-lib";
 import { renderFileToPages, isPdf } from "./lib/pdf";
-import { extractPdfText, renderPdfPages } from "./lib/pdftext";
+import { extractPdfText, renderPdfPages, rotateImageUrl, imgNaturalSize } from "./lib/pdftext";
 import { recognizePages } from "./lib/ocr";
 import { parseInvoice, isProbablyInvoiceText } from "./lib/invoice-parse";
 import { applyInvoiceFilenameFallback } from "./lib/invoice-filename";
@@ -37,15 +37,44 @@ function adaptivePreviewScale() {
   if (n > 15) return 1.35;
   return 1.6;
 }
+// 只回收“本函数新建的”旋转/渲染对象 URL，保留 inv.pages 的源图 URL（图片旋转 0 度会原样复用）。
+function revokeRenderedPages(inv) {
+  const keep = new Set((inv.pages || []).map((p) => p && p.dataUrl).filter(Boolean));
+  for (const u of inv.renderedPages || []) {
+    if (typeof u === "string" && u.startsWith("blob:") && !keep.has(u)) URL.revokeObjectURL(u);
+  }
+}
+// 按给定旋转角生成预览页图：电子票走 pdf.js 渲染；图片/扫描件用 canvas 旋转内嵌整页图。
+async function produceRenderedPages(inv, rotation) {
+  if (inv.kind === "image" || !inv.isTextPdf) {
+    return await Promise.all(inv.pages.map((p) => rotateImageUrl(p.dataUrl, rotation)));
+  }
+  return await renderPdfPages(inv.blob, { scale: adaptivePreviewScale(), rotation });
+}
+// 取首页宽高（图片/扫描件用已知页尺寸；电子票用首张渲染图尺寸）。
+async function firstPageSize(inv) {
+  if (inv.pages[0]?.width && inv.pages[0]?.height) return { w: inv.pages[0].width, h: inv.pages[0].height };
+  const url = inv.renderedPages?.[0];
+  if (!url) return null;
+  return await imgNaturalSize(url);
+}
+// 仅“内容很多导致页面异常竖长”时才需要自动旋转：竖向且高宽比超过 A4(1.41) 明显（≥1.55）。
+// 普通横向电子发票、A4 竖向扫描件都不旋转——避免“所有的都旋转”。
+const AUTO_ROTATE_TALL_RATIO = 1.55;
+function needsAutoRotate(size) {
+  return size && size.w > 0 && size.h > 0 && size.h / size.w >= AUTO_ROTATE_TALL_RATIO;
+}
 async function renderInvoicePreview(inv) {
   try {
+    revokeRenderedPages(inv);
     inv.previewStatus = "running";
-    if (inv.kind === "image" || !inv.isTextPdf) {
-      // 图片上传 / 扫描型 PDF：内嵌 JPEG 即整页，直接复用，无需再渲染
-      inv.renderedPages = inv.pages.map((p) => p.dataUrl);
-    } else {
-      // 电子发票（文字型 PDF）：用 pdf.js 渲染真实页面
-      inv.renderedPages = await renderPdfPages(inv.blob, { scale: adaptivePreviewScale() });
+    inv.renderedPages = await produceRenderedPages(inv, inv.rotation);
+    // 自动旋转：用户未手动调过、当前 0 度、且页面异常竖长（内容很多）→ 旋 90° 再渲一次
+    if (!inv.rotationTouched && inv.rotation === 0 && needsAutoRotate(await firstPageSize(inv))) {
+      inv.rotation = 90;
+      inv.rotationAuto = true;
+      revokeRenderedPages(inv);
+      inv.renderedPages = await produceRenderedPages(inv, 90);
     }
     inv.previewStatus = inv.renderedPages.length ? "done" : "idle";
   } catch (e) {
@@ -148,6 +177,9 @@ export const invoiceActions = {
         pages: [],
         renderedPages: [], // 左侧打印预览用的真实页图（异步填充）
         previewStatus: "idle",
+        rotation: 0, // 顺时针旋转角度 0/90/180/270，预览与打印一致
+        rotationTouched: false, // 用户是否手动调过方向（手动后不再自动旋转）
+        rotationAuto: false, // 是否被自动旋转过（仅提示用）
         pageCount: 1,
         rendering: true,
         isTextPdf: false,
@@ -245,6 +277,34 @@ export const invoiceActions = {
   toggleInclude(inv) {
     inv.include = !inv.include;
     inv.includeTouched = true;
+  },
+
+  // 打印勾选批量操作（作用于当前筛选后可见的发票）
+  setIncludeAll(list, value) {
+    for (const inv of list) {
+      inv.include = value;
+      inv.includeTouched = true;
+    }
+  },
+  invertInclude(list) {
+    for (const inv of list) {
+      inv.include = !inv.include;
+      inv.includeTouched = true;
+    }
+  },
+
+  // 手动调整方向：dir=1 右旋(顺时针)/dir=-1 左旋(逆时针)，每次 90°，立即重渲预览（打印同样按 rotation）
+  async rotateInvoice(inv, dir = 1) {
+    inv.rotation = (((inv.rotation || 0) + dir * 90) % 360 + 360) % 360;
+    inv.rotationTouched = true;
+    try {
+      revokeRenderedPages(inv);
+      inv.previewStatus = "running";
+      inv.renderedPages = await produceRenderedPages(inv, inv.rotation);
+      inv.previewStatus = inv.renderedPages.length ? "done" : "idle";
+    } catch (e) {
+      inv.previewStatus = "error";
+    }
   },
 
   refreshDuplicates() {

@@ -55,6 +55,9 @@ const tagBase = "chip flex-none px-1.75 py-0.5 border";
           {{ item.inv.status === "running" ? "识别中" : "识别" }}
         </button>
         <button v-if="item.inv.rawText" class="btn px-2 py-1 text-xs" @click.stop="showText = !showText">{{ showText ? "收起文本" : "文本" }}</button>
+        <button class="btn px-2 py-1 text-xs" title="顺时针旋转 90°（影响预览与打印）" @click.stop="invoiceActions.rotateInvoice(item.inv)">
+          ↻ 方向<span v-if="item.inv.rotation" class="text-brand"> {{ item.inv.rotation }}°</span>
+        </button>
         <button class="btn-danger px-2 py-1 text-xs" @click.stop="invoiceActions.removeInvoice(item.inv.id)">移除</button>
       </div>
     </div>
