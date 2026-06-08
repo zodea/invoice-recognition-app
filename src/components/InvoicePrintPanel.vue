@@ -34,7 +34,23 @@ const perPageStr = computed({
 });
 
 // 分目录维度多选。点选先后即文件夹嵌套顺序，序号在标签上体现。
+// 打开时快照，确认=保留、取消=还原、清空=取消所有维度；点外面/Esc 关闭按保留处理。
 const dimsOpen = ref(false);
+let dimsBackup = [];
+function onDimsOpen(open) {
+  if (open) dimsBackup = [...invoiceStore.groupDims];
+  dimsOpen.value = open;
+}
+function confirmDims() {
+  dimsOpen.value = false;
+}
+function cancelDims() {
+  invoiceStore.groupDims = [...dimsBackup];
+  dimsOpen.value = false;
+}
+function clearDims() {
+  invoiceStore.groupDims = [];
+}
 function dimOrder(key) {
   return invoiceStore.groupDims.indexOf(key);
 }
@@ -182,7 +198,7 @@ const exportBtnCls = "btn px-2.75 py-1.75 text-[13px]";
           </label>
         </RadioGroupRoot>
 
-        <PopoverRoot v-model:open="dimsOpen">
+        <PopoverRoot :open="dimsOpen" @update:open="onDimsOpen">
           <PopoverTrigger class="btn px-2.5 py-1.5 text-ink">
             分目录：<b class="text-brand font-800">{{ dimsLabel }}</b> <span class="text-ink-soft">▾</span>
           </PopoverTrigger>
@@ -202,7 +218,11 @@ const exportBtnCls = "btn px-2.75 py-1.75 text-[13px]";
                 <span v-if="dimOrder(d.key) >= 0" class="min-w-4.5 h-4.5 inline-flex items-center justify-center rounded-full bg-brand text-white text-[11px] font-800">{{ dimOrder(d.key) + 1 }}</span>
                 {{ d.label }}
               </label>
-              <button type="button" class="mt-1 border-none bg-none text-left px-1.5 py-1 text-xs text-ink-soft hover:text-danger" @click="invoiceStore.groupDims.splice(0)">清除分目录</button>
+              <div class="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-line">
+                <button type="button" class="btn-primary px-2.5 py-1 text-xs" @click="confirmDims">确认</button>
+                <button type="button" class="btn px-2.5 py-1 text-xs" @click="cancelDims">取消</button>
+                <button type="button" class="btn-danger px-2.5 py-1 text-xs ml-auto" :disabled="!invoiceStore.groupDims.length" @click="clearDims">清空</button>
+              </div>
             </PopoverContent>
           </PopoverPortal>
         </PopoverRoot>
