@@ -18,6 +18,21 @@ function dedupe() {
   invoiceStore.msg = n ? `已识别并取消勾选 ${n} 张重复发票。` : "未发现重复发票。";
 }
 
+// 打印勾选批量操作：作用于当前筛选后可见的发票
+const visibleInvs = computed(() => sorted.value.map((x) => x.inv));
+function selectAll() {
+  invoiceActions.setIncludeAll(visibleInvs.value, true);
+  invoiceStore.msg = `已全选 ${visibleInvs.value.length} 张。`;
+}
+function selectNone() {
+  invoiceActions.setIncludeAll(visibleInvs.value, false);
+  invoiceStore.msg = "已全部取消勾选。";
+}
+function invertSelect() {
+  invoiceActions.invertInclude(visibleInvs.value);
+  invoiceStore.msg = "已反选。";
+}
+
 watch(
   () => invoiceStore.selectedId,
   async (id) => {
@@ -57,6 +72,12 @@ const filterBtn = (active) =>
         </button>
         <button class="btn px-2.5 py-1.5" :disabled="invoiceStore.busy || invoiceStore.invoices.length < 2" @click="dedupe">去重</button>
         <button class="btn-ghost px-2.5 py-1.5" @click="invoiceActions.clearAll">清空</button>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <span class="text-ink-soft text-xs">打印勾选</span>
+        <button class="btn px-2.5 py-1.5" @click="selectAll">全选</button>
+        <button class="btn px-2.5 py-1.5" @click="invertSelect">反选</button>
+        <button class="btn px-2.5 py-1.5" @click="selectNone">全不选</button>
       </div>
       <span class="text-ink-soft" v-if="invoiceStore.msg">{{ invoiceStore.msg }}</span>
     </div>
