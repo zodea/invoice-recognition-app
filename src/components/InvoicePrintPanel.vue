@@ -174,9 +174,9 @@ const exportBtnCls = "btn px-2.75 py-1.75 text-[13px]";
           <label v-for="n in [1, 2, 4]" :key="n" class="inline-flex items-center gap-1.5 cursor-pointer text-ink">
             <RadioGroupItem
               :value="String(n)"
-              class="w-4 h-4 rounded-full border border-line-strong bg-white grid place-items-center data-[state=checked]:border-brand"
+              class="relative w-4 h-4 rounded-full border border-line-strong bg-white flex items-center justify-center p-0 data-[state=checked]:border-brand"
             >
-              <RadioGroupIndicator class="w-2 h-2 rounded-full bg-brand" />
+              <RadioGroupIndicator class="block w-2 h-2 rounded-full bg-brand" />
             </RadioGroupItem>
             {{ n }}张
           </label>

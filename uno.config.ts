@@ -22,7 +22,7 @@ export default defineConfig({
   },
   shortcuts: {
     panel: "bg-panel border border-line rounded-card shadow-card",
-    btn: "inline-flex items-center justify-center gap-1.5 border border-line-strong bg-white rounded-lg px-3 py-2 font-700 text-sm transition-colors disabled:opacity-50 disabled:cursor-default",
+    btn: "inline-flex items-center justify-center gap-1.5 border border-line-strong bg-white rounded-md px-3 py-2 font-700 text-sm transition-colors disabled:opacity-50 disabled:cursor-default",
     "btn-primary": "btn border-brand bg-brand text-white hover:bg-brand-deep",
     "btn-ghost": "btn border-transparent text-ink-soft hover:bg-line/40",
     "btn-danger": "btn text-danger",
