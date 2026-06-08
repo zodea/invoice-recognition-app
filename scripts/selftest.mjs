@@ -264,6 +264,14 @@ ok("货运凭证 type=货物运输凭证", freight.type === "货物运输凭证"
 ok("货运凭证 买方=托运人(无证照号码)", freight.buyer === "广东瑞航建设工程有限公司");
 ok("货运凭证 金额=53.37", Number(freight.total) === 53.37);
 ok("货运凭证 日期=2026-03-24", freight.date === "2026-03-24");
+// 脱敏星号（何* / 45222919****817）不得被当成 *税收分类*；货运大类归到“运输服务/交通运输”
+const freightMasked = parseInvoice([
+  "货物运输电子收款凭证",
+  "承运人姓名: 何* 承运人身份证号码: 45222919****817",
+  "费用合计(大写) (小写): ¥ 53.37  申请日期: 2026-03-24",
+].join("\n"));
+ok("货运凭证大类不抓脱敏文字", /^[一-龥]+$/.test(freightMasked.category) && !/号码|身份证/.test(freightMasked.category));
+ok("货运凭证大类=运输类", bigCategory(freightMasked) === "交通运输" || bigCategory(freightMasked) === "运输服务");
 // 货运凭证/行程单没有“发票/价税合计”字样，但必须被判定为“可走文字解析”，否则会被当扫描件去 OCR
 ok("isProbablyInvoiceText 认货运凭证", isProbablyInvoiceText("货物运输电子收款凭证 托运人名称: x 费用合计(大写) (小写): ¥ 53.37"));
 ok("isProbablyInvoiceText 认行程单", isProbablyInvoiceText("腾讯出行服务—打车——行程单 合计67.75元"));

@@ -217,9 +217,10 @@ export function parseInvoice(rawText) {
 
   // 劳务、服务名称 + 税收大类。中国发票项目名格式为「*税收分类*具体名称」，
   // 首对星号里的就是天然的“大类统称词”（餐饮服务/汽油/企业管理服务…），用于费用报销归纳。
-  const catM = text.match(/\*\s*([^*\n]{1,24}?)\s*\*/);
+  // 仅匹配“纯中文”的税收分类，避免脱敏星号（如 何* / 45222919****817）被误当成 *类别*
+  const catM = text.match(/\*\s*([一-龥][一-龥·]{0,23})\s*\*/);
   if (catM) f.category = catM[1].replace(/\s+/g, "").trim();
-  const itemM = text.match(/\*\s*[^*\n]{1,24}\s*\*\s*([^\n]+)/);
+  const itemM = text.match(/\*\s*[一-龥][一-龥·]{0,23}\s*\*\s*([^\n]+)/);
   if (itemM) {
     // 砍掉规格/单位/数量/单价等尾部（从第一个独立数字或 ¥ 起）
     let s = itemM[1].replace(/\s+/g, " ").trim();
@@ -258,6 +259,9 @@ export function parseInvoice(rawText) {
         if (isName(name)) f.buyer = name;
       }
     }
+    // 行程单/货运凭证无税收分类，归到固定运输大类（避免抓到脱敏文字当大类）
+    if (!f.category || !/^[一-龥·]+$/.test(f.category)) f.category = /行程单/.test(text) ? "交通运输" : "运输服务";
+    if (!f.service || !/[一-龥]/.test(f.service)) f.service = f.category;
   }
 
   return f;
