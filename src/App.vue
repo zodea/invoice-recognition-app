@@ -1,68 +1,35 @@
 <script setup>
-import { ref } from "vue";
-import DeliveryView from "./views/DeliveryView.vue";
-import InvoiceView from "./views/InvoiceView.vue";
+import { defineAsyncComponent, ref } from "vue";
+import { TabsContent, TabsList, TabsRoot, TabsTrigger } from "reka-ui";
 
-const view = ref("delivery"); // 'delivery' | 'invoice'
+// 按需懒加载：两视图分别代码分包，仅在激活时加载并挂载（不再同时渲染）。
+// 数据存于 store 单例（store.js / invoiceStore.js），切换 tab 卸载组件也不丢数据。
+const DeliveryView = defineAsyncComponent(() => import("./views/DeliveryView.vue"));
+const InvoiceView = defineAsyncComponent(() => import("./views/InvoiceView.vue"));
+
+const view = ref("invoice"); // 默认展示发票页
+const tabCls =
+  "border-none bg-white/12 text-white px-3.5 py-1.75 rounded-lg text-sm font-600 cursor-pointer transition-colors data-[state=active]:bg-white data-[state=active]:text-brand";
 </script>
 
 <template>
-  <div class="app">
-    <header class="topbar">
-      <div class="brand">扫描件助手</div>
-      <nav class="nav">
-        <button :class="{ active: view === 'delivery' }" @click="view = 'delivery'">📦 送货单整理</button>
-        <button :class="{ active: view === 'invoice' }" @click="view = 'invoice'">🧾 发票批量打印</button>
-      </nav>
+  <TabsRoot v-model="view" class="block min-h-full">
+    <header class="sticky top-0 z-20 flex items-center gap-5 h-13.5 px-5.5 text-white bg-gradient-to-b from-brand-deep to-brand">
+      <div class="text-lg font-700">扫描件助手</div>
+      <TabsList class="flex gap-2">
+        <TabsTrigger value="invoice" :class="tabCls">🧾 发票批量打印</TabsTrigger>
+        <TabsTrigger value="delivery" :class="tabCls">📦 送货单整理</TabsTrigger>
+      </TabsList>
     </header>
 
-    <main class="content">
-      <DeliveryView v-show="view === 'delivery'" />
-      <InvoiceView v-show="view === 'invoice'" />
+    <main class="max-w-[1480px] mx-auto p-4">
+      <!-- 不加 force-mount：reka 仅渲染当前激活的视图，切走即卸载，实现按需加载 -->
+      <TabsContent value="invoice" class="outline-none">
+        <InvoiceView />
+      </TabsContent>
+      <TabsContent value="delivery" class="outline-none">
+        <DeliveryView />
+      </TabsContent>
     </main>
-  </div>
+  </TabsRoot>
 </template>
-
-<style scoped>
-.app {
-  min-height: 100%;
-}
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  background: linear-gradient(180deg, #1e3a8a, #2563eb);
-  color: #fff;
-  padding: 0 22px;
-  height: 54px;
-  position: sticky;
-  top: 0;
-  z-index: 20;
-}
-.brand {
-  font-size: 18px;
-  font-weight: 700;
-}
-.nav {
-  display: flex;
-  gap: 8px;
-}
-.nav button {
-  border: none;
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  padding: 7px 14px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-}
-.nav button.active {
-  background: #fff;
-  color: var(--brand);
-}
-.content {
-  max-width: 1480px;
-  margin: 0 auto;
-  padding: 16px;
-}
-</style>
