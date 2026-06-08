@@ -292,6 +292,18 @@ export const invoiceActions = {
       inv.includeTouched = true;
     }
   },
+  // 一键排除“历史已用/已认证”的发票（避免重复使用），返回排除张数
+  excludeReused(list) {
+    let n = 0;
+    for (const inv of list || invoiceStore.invoices) {
+      if (inv.include && inv.history && inv.history.usedBefore) {
+        inv.include = false;
+        inv.includeTouched = true;
+        n++;
+      }
+    }
+    return n;
+  },
 
   // 手动调整方向：dir=1 右旋(顺时针)/dir=-1 左旋(逆时针)，每次 90°，立即重渲预览（打印同样按 rotation）
   async rotateInvoice(inv, dir = 1) {

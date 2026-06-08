@@ -10,12 +10,18 @@ import InvoiceLedgerPanel from "../components/InvoiceLedgerPanel.vue";
 const sorted = computed(() => sortedInvoices());
 const unrecognizedCount = computed(() => invoiceStore.invoices.filter((i) => i.status !== "done").length);
 const duplicateCount = computed(() => invoiceStore.invoices.filter((i) => i.duplicateReason).length);
+// 历史已用/已认证（台账查重）：勾选中且历史已用的张数，可一键排除以避免重复使用
+const reusedIncludedCount = computed(() => invoiceStore.invoices.filter((i) => i.include && i.history && i.history.usedBefore).length);
 const buyers = computed(() => buyerOptions());
 const docTypes = computed(() => docTypeOptions());
 
 function dedupe() {
   const n = invoiceActions.refreshDuplicates();
   invoiceStore.msg = n ? `已识别并取消勾选 ${n} 张重复发票。` : "未发现重复发票。";
+}
+function excludeReused() {
+  const n = invoiceActions.excludeReused(visibleInvs.value);
+  invoiceStore.msg = n ? `已排除 ${n} 张历史已用发票（避免重复使用）。` : "勾选中没有历史已用的发票。";
 }
 
 // 打印勾选批量操作：作用于当前筛选后可见的发票
@@ -65,12 +71,14 @@ const filterBtn = (active) =>
         <span v-if="unrecognizedCount">，{{ unrecognizedCount }} 张未识别</span>
         <span v-else>，全部已识别</span>
         <span v-if="duplicateCount" class="ml-2 chip text-[#991b1b] bg-[#fef2f2] border border-[#fecaca] px-2 py-0.5">含 {{ duplicateCount }} 张重复(已排除)</span>
+        <span v-if="reusedIncludedCount" class="ml-2 chip text-[#92400e] bg-[#fffbeb] border border-[#fde68a] px-2 py-0.5">勾选中 {{ reusedIncludedCount }} 张历史已用</span>
       </div>
       <div class="flex items-center gap-2">
         <button class="btn-primary px-2.5 py-1.5" :disabled="invoiceStore.busy || !unrecognizedCount" @click="invoiceActions.recognizeAll">
           {{ invoiceStore.busy ? "识别中…" : "全部识别" }}
         </button>
         <button class="btn px-2.5 py-1.5" :disabled="invoiceStore.busy || invoiceStore.invoices.length < 2" @click="dedupe">去重</button>
+        <button class="btn px-2.5 py-1.5" :disabled="!reusedIncludedCount" :title="'排除历史台账里已认证/已报销过的发票，避免重复使用'" @click="excludeReused">排除历史已用{{ reusedIncludedCount ? ` (${reusedIncludedCount})` : "" }}</button>
         <button class="btn-ghost px-2.5 py-1.5" @click="invoiceActions.clearAll">清空</button>
       </div>
       <div class="flex items-center gap-1.5">
