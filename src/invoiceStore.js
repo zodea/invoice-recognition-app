@@ -17,6 +17,14 @@ function emptyFields() {
   return { code: "", number: "", date: "", dateText: "", buyer: "", seller: "", amount: "", tax: "", total: "", rate: "", type: "", taxKind: "", docType: "", remark: "" };
 }
 
+// 回收某张发票占用的对象 URL（预览页图/内嵌页图），避免删除/清空后内存泄漏。
+function revokeInvoiceUrls(inv) {
+  const urls = new Set();
+  for (const u of inv.renderedPages || []) if (typeof u === "string" && u.startsWith("blob:")) urls.add(u);
+  for (const p of inv.pages || []) if (p && typeof p.dataUrl === "string" && p.dataUrl.startsWith("blob:")) urls.add(p.dataUrl);
+  for (const u of urls) URL.revokeObjectURL(u);
+}
+
 // 预览队列：按插入顺序小批量渲染，避免一次性占满 pdf.js worker。
 const previewRenderQueue = [];
 let previewRenderRunning = false;
@@ -167,9 +175,11 @@ export const invoiceActions = {
             // 误当成“页图”。这里再用文字探测确认：抽得到发票文字就按电子发票处理——
             // 丢弃碎片图、预览走信息卡片、页数取真实 PDF 页数（与 embedPdf 打印一致）。
             let textPdf = r.unsupported;
+            let probedNumPages = 0;
             if (!textPdf) {
               try {
                 const tr = await extractPdfText(file);
+                probedNumPages = tr.numPages || 0; // 复用探针页数，省一次 pdf-lib 解析
                 const t = tr.text || "";
                 const meaningful = t.replace(/\s/g, "").length;
                 if (isProbablyInvoiceText(t)) {
@@ -188,11 +198,15 @@ export const invoiceActions = {
             if (textPdf) {
               inv.isTextPdf = true;
               inv.pages = []; // 丢弃误抽的二维码/印章碎片
-              try {
-                const doc = await PDFDocument.load(await file.arrayBuffer());
-                inv.pageCount = doc.getPageCount();
-              } catch (e) {
-                inv.pageCount = 1;
+              if (probedNumPages) {
+                inv.pageCount = probedNumPages;
+              } else {
+                try {
+                  const doc = await PDFDocument.load(await file.arrayBuffer());
+                  inv.pageCount = doc.getPageCount();
+                } catch (e) {
+                  inv.pageCount = 1;
+                }
               }
             } else {
               inv.pageCount = r.pages.length || 1; // 扫描型：每张内嵌 JPEG 即一页
@@ -212,11 +226,15 @@ export const invoiceActions = {
 
   removeInvoice(id) {
     const i = invoiceStore.invoices.findIndex((x) => x.id === id);
-    if (i >= 0) invoiceStore.invoices.splice(i, 1);
+    if (i >= 0) {
+      revokeInvoiceUrls(invoiceStore.invoices[i]); // 回收预览图对象 URL，防内存泄漏
+      invoiceStore.invoices.splice(i, 1);
+    }
     if (invoiceStore.selectedId === id) invoiceStore.selectedId = invoiceStore.invoices[0]?.id || "";
   },
 
   clearAll() {
+    invoiceStore.invoices.forEach(revokeInvoiceUrls); // 回收全部预览图对象 URL
     invoiceStore.invoices.splice(0);
     invoiceStore.selectedId = "";
     invoiceStore.buyerFilter = "全部";

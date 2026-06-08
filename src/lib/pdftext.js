@@ -16,7 +16,8 @@ export async function extractPdfText(file, { maxPages = 10 } = {}) {
   }).promise;
   const pages = [];
   const all = [];
-  const n = Math.min(pdf.numPages, maxPages);
+  const numPages = pdf.numPages; // 真实页数（供调用方复用，省一次 pdf-lib 解析）
+  const n = Math.min(numPages, maxPages);
   for (let i = 1; i <= n; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
@@ -30,7 +31,7 @@ export async function extractPdfText(file, { maxPages = 10 } = {}) {
     page.cleanup();
   }
   await pdf.destroy();
-  return { text: all.join("\n"), pages };
+  return { text: all.join("\n"), pages, numPages };
 }
 
 // 把 PDF 每页渲染成图片 dataURL，用于左侧"打印排版"预览——效果与导出的打印 PDF 一致。
@@ -38,6 +39,13 @@ export async function extractPdfText(file, { maxPages = 10 } = {}) {
 // 超时兜底（卡住则 cancel 该页并占位），失败页返回 null，调用方据此回退到信息卡片。
 // 注意：这些页图只用于左侧屏幕预览，导出打印 PDF 走 embedPdf(原文件)，与本函数无关，
 // 所以 scale 可按批量大小自适应调小以提速/省内存，不影响最终打印清晰度。
+// canvas → 对象 URL（比 toDataURL 的 base64 编码更快、内存更省）。失败回退 null。
+function canvasToObjectURL(canvas, quality) {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob ? URL.createObjectURL(blob) : null), "image/jpeg", quality);
+  });
+}
+
 export async function renderPdfPages(file, { scale = 1.5, maxPages = 10, timeoutMs = 12000, quality = 0.82 } = {}) {
   const buf = new Uint8Array(await file.arrayBuffer());
   const pdf = await pdfjsLib.getDocument({
@@ -66,7 +74,7 @@ export async function renderPdfPages(file, { scale = 1.5, maxPages = 10, timeout
         }),
       ]);
       clearTimeout(timer);
-      out.push(canvas.toDataURL("image/jpeg", quality));
+      out.push(await canvasToObjectURL(canvas, quality));
       page.cleanup();
     } catch (e) {
       out.push(null);
