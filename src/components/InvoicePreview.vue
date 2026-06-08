@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import {
   ContextMenuContent,
   ContextMenuItem,
@@ -105,11 +105,25 @@ function onDown(e) {
   window.addEventListener("pointermove", onMove);
   window.addEventListener("pointerup", onUp);
 }
+function setZoom(delta) {
+  zoomLevel.value = Math.min(4, Math.max(1, Math.round((zoomLevel.value + delta) * 100) / 100));
+}
 function onWheel(e) {
   if (!e.ctrlKey && !e.metaKey) return;
   e.preventDefault();
-  zoomLevel.value = Math.min(4, Math.max(1, Math.round((zoomLevel.value + (e.deltaY < 0 ? 0.25 : -0.25)) * 100) / 100));
+  setZoom(e.deltaY < 0 ? 0.25 : -0.25);
 }
+// 放大模式键盘快捷键：Esc 退出，+/- 缩放，←/→ 左右旋
+function onKey(e) {
+  if (!zoomUnit.value) return;
+  if (e.key === "Escape") { exitZoom(); }
+  else if (e.key === "+" || e.key === "=") { e.preventDefault(); setZoom(0.25); }
+  else if (e.key === "-" || e.key === "_") { e.preventDefault(); setZoom(-0.25); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); rotateZoom(-1); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); rotateZoom(1); }
+}
+onMounted(() => window.addEventListener("keydown", onKey));
+onUnmounted(() => window.removeEventListener("keydown", onKey));
 
 const menuItemCls = "flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cursor-pointer outline-none text-ink data-[highlighted]:bg-brand-soft data-[highlighted]:text-brand";
 </script>
@@ -119,7 +133,7 @@ const menuItemCls = "flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cu
     <div class="pane-head sticky -top-3 z-5 flex items-center justify-between gap-2.5 -mx-3 -mt-3 mb-2.5 px-3 py-3 bg-[#f8fafc]/96 border-b border-line backdrop-blur">
       <div class="min-w-0">
         <h2 class="m-0 text-base font-700">打印排版</h2>
-        <p class="mt-0.25 text-ink-soft text-xs">{{ zoomUnit ? "放大查看 · 拖动可平移" : `${units.length} 个打印位 · 右键可放大/旋转` }}</p>
+        <p class="mt-0.25 text-ink-soft text-xs">{{ zoomUnit ? "放大查看 · 拖动平移 · Esc退出 +/-缩放 ←→旋转" : `${units.length} 个打印位 · 右键/双击放大 · 滚轮Ctrl缩放` }}</p>
       </div>
       <span class="chip bg-brand-soft text-brand">{{ invoiceStore.perPage }} 张/页</span>
     </div>
