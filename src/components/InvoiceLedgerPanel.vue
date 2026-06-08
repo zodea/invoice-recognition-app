@@ -4,6 +4,9 @@ import { invoiceStore, invoiceActions } from "../invoiceStore";
 import { buildCurrentInputInvoiceReportBytes, buildHistoryReportBytes, currentInputReportName, historyReportName, ledgerStats } from "../lib/invoice-ledger";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
 import { downloadBytes } from "../lib/invoice-layout";
+import InvoiceLedgerViewer from "./InvoiceLedgerViewer.vue";
+
+const viewerOpen = ref(false);
 
 const fileRef = ref(null);
 const busy = ref(false);
@@ -121,10 +124,12 @@ function clearLedger() {
     </div>
     <div class="flex gap-2 flex-wrap">
       <button class="btn-primary px-2.5 py-1.75" :disabled="busy" @click="chooseFile">导入进项 Excel</button>
+      <button class="btn px-2.5 py-1.75" :disabled="!stats.total" @click="viewerOpen = true">查看台账</button>
       <button class="btn px-2.5 py-1.75" :disabled="busy || !stats.total" @click="exportHistory">导出历史台账</button>
       <button class="btn px-2.5 py-1.75" :disabled="busy || !invoiceStore.invoices.length" @click="exportCurrentInputStatus">导出当前进项状态</button>
       <button class="btn px-2.5 py-1.75 border-[#fecaca] text-[#991b1b] bg-[#fef2f2]" :disabled="busy || !stats.total" @click="clearLedger">清空历史台账</button>
     </div>
     <div class="mt-2 text-ink-soft text-xs" v-if="msg">{{ msg }}</div>
+    <InvoiceLedgerViewer v-model:open="viewerOpen" />
   </section>
 </template>
