@@ -170,7 +170,9 @@ async function fetchResultData(jsonUrl) {
     const text = await tauriInvoke("vl_get_text", { url: jsonUrl });
     return parseVlResultText(text);
   }
-  const resp = await fetchWithTimeout(jsonUrl, {}, 60000, "下载识别结果");
+  // 浏览器(dev)：结果在百度对象存储(bcebos)，直连会被 CORS 拦，
+  // 经 vite dev 的 /vl-result 中间件由 Node 代取（见 vite.config.js）。
+  const resp = await fetchWithTimeout(`/vl-result?u=${encodeURIComponent(jsonUrl)}`, {}, 60000, "下载识别结果");
   if (!resp.ok) throw new Error(`下载识别结果失败（${resp.status}）`);
   return parseVlResultText(await resp.text());
 }
