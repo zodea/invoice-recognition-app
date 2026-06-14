@@ -2,7 +2,9 @@
 import { computed, ref } from "vue";
 import { CheckboxIndicator, CheckboxRoot } from "reka-ui";
 import { store, actions, makeItem, partitionName } from "../store";
+import { appSettings, saveAppSettings } from "../lib/app-settings";
 import FieldsTable from "./FieldsTable.vue";
+import HoverZoom from "./HoverZoom.vue";
 
 const props = defineProps({ file: Object });
 const showText = ref(false);
@@ -33,6 +35,11 @@ function useCandidate(name) {
   else d.items.push({ ...makeItem(), name });
 }
 
+function toggleZoom() {
+  appSettings.hoverZoom = !appSettings.hoverZoom;
+  saveAppSettings();
+}
+
 const fieldInput = "w-full min-w-0 border border-line-strong rounded-md px-2.5 py-1.5 font-inherit bg-white text-ink";
 </script>
 
@@ -42,7 +49,15 @@ const fieldInput = "w-full min-w-0 border border-line-strong rounded-md px-2.5 p
       <aside class="bg-[#f8fafc] border-b lg:border-b-0 lg:border-r border-line p-3">
         <div class="flex items-center justify-between gap-2 mb-2">
           <span class="chip border" :class="statusClass">{{ statusText }}</span>
-          <span class="text-[11px] text-ink-soft">{{ file.kind === "pdf" ? "PDF" : "图片" }}</span>
+          <div class="flex items-center gap-1.5">
+            <button
+              class="text-[11px] leading-none px-1.5 py-0.75 rounded border transition-colors"
+              :class="appSettings.hoverZoom ? 'border-brand text-brand bg-brand-soft' : 'border-line text-ink-soft bg-white'"
+              :title="appSettings.hoverZoom ? '悬停放大镜：开（点击关闭）' : '悬停放大镜：关（点击开启）'"
+              @click="toggleZoom"
+            >🔍{{ appSettings.hoverZoom ? "开" : "关" }}</button>
+            <span class="text-[11px] text-ink-soft">{{ file.kind === "pdf" ? "PDF" : "图片" }}</span>
+          </div>
         </div>
 
         <div v-if="file.rendering" class="h-44 flex items-center justify-center text-ink-soft text-xs border border-dashed border-line-strong rounded-md bg-white">
@@ -52,9 +67,13 @@ const fieldInput = "w-full min-w-0 border border-line-strong rounded-md px-2.5 p
           无法读取预览
         </div>
         <template v-else>
-          <button class="block w-full border-none bg-transparent p-0 cursor-zoom-in" title="点击看大图" @click="preview = file.pages[0]?.dataUrl">
-            <img :src="file.pages[0]?.dataUrl" class="w-full h-44 object-contain border border-line rounded-md bg-white" />
-          </button>
+          <HoverZoom
+            :src="file.pages[0]?.dataUrl"
+            :enabled="appSettings.hoverZoom"
+            img-class="block w-full h-44 object-contain border border-line rounded-md bg-white"
+            :title="appSettings.hoverZoom ? '悬停放大；点击看大图' : '点击看大图'"
+            @open="preview = file.pages[0]?.dataUrl"
+          />
           <div class="grid grid-cols-4 gap-1 mt-2" v-if="file.pages.length > 1">
             <button
               v-for="(pg, i) in file.pages.slice(1, 5)"

@@ -15,12 +15,13 @@ function load() {
 export const appSettings = reactive({
   vlApiUrl: "", // 形如 https://paddleocr.aistudio-app.com/api/v2/ocr/jobs
   vlToken: "",
+  hoverZoom: true, // 预览图鼠标悬停放大镜（issue #12），默认开
   ...load(),
 });
 
 export function saveAppSettings() {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ vlApiUrl: appSettings.vlApiUrl, vlToken: appSettings.vlToken }));
+    localStorage.setItem(KEY, JSON.stringify({ vlApiUrl: appSettings.vlApiUrl, vlToken: appSettings.vlToken, hoverZoom: appSettings.hoverZoom }));
   } catch (e) { /* ignore */ }
 }
 
