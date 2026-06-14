@@ -22,7 +22,16 @@ export function findDate(lines) {
   return null;
 }
 
+// 送货单单号多是带前导零的红色流水号（如 0005876）；预印单上紧挨税号印刷，
+// OCR 易把两者粘成长串（191206840950005876，尾部 0005876 才是单号）。取尾部前导零流水号。
+function trailingSerial(s) {
+  const m = String(s).match(/(0{2,}\d{2,})$/);
+  return m ? m[1] : "";
+}
+
 // 识别单号：优先“单号/编号/No”后面的串，否则取最长的一串 6+ 位数字/字母。
+// 长纯数字串（≥15 位）疑似税号/统一社会信用代码：只取其尾部红色流水号，
+// 取不出则留空（宁空勿错，由调用方按“待复核”兜底，见 issue #8）。
 export function findOrderNo(lines) {
   for (const line of lines) {
     const m = line.match(/(?:单据?编?号|编号|N[oO]\.?|NO\.?)\s*[:：]?\s*([A-Za-z0-9\-]{4,})/);
@@ -33,7 +42,9 @@ export function findOrderNo(lines) {
     const all = line.match(/[A-Za-z0-9\-]{6,}/g) || [];
     for (const s of all) if (/\d{4,}/.test(s) && s.length > best.length) best = s;
   }
-  return best || "";
+  if (!best) return "";
+  if (/^\d{15,}$/.test(best)) return trailingSerial(best);
+  return best;
 }
 
 // 识别公司名：含“有限公司/经营部/商行/厂/贸易/电缆/建材”等关键词的最长行。

@@ -107,6 +107,28 @@ ok("VL 纯数字品名丢弃", !rPc.docs[0].items.some((it) => it.name === "5"))
 ok("VL 首列名+单位+数量", rPc.docs[0].items.some((it) => it.name === "16铝铣耳" && it.unit === "个" && it.quantity === 50));
 ok("pickSupplier 直接调用", pickSupplier(["# 销货清单", "客户名称：某某公司", "广州市大板东建材有限公司"]) === "广州市大板东建材有限公司");
 
+console.log("== 单号抽取（issue #8）==");
+// 富丰类预印单：红色流水号(0005876)常与税号/统一社会信用代码粘连成长串，取尾部流水号
+ok("单号-税号粘连取尾部流水号", findOrderNo(["电话：020-85204317 191206840950005876"]) === "0005876");
+ok("单号-税号粘连(4.28)", findOrderNo(["191206840950005874"]) === "0005874");
+// 广东磊轶正规 NO 标签：原样保留，不受影响
+ok("单号-正规NO标签不变", findOrderNo(["客户名称：广东瑞航 日期：2026-05-14 NO：XK-FS001-T-20260514-008"]) === "XK-FS001-T-20260514-008");
+// 纯税号、抽不出前导零流水号 → 留空（宁空勿错，由 待复核 兜底）
+ok("单号-纯税号无流水号则留空", findOrderNo(["统一社会信用代码 123456789012345678"]) === "");
+ok("单号-短号标签正常保留", findOrderNo(["No:836585"]) === "836585");
+// 集成：富丰一页两单（单号不同=两单），各取尾部红色流水号
+const mdFuShuang =
+  "# 富丰建材送货单\n\n电话：020-85204317 191206840950005876\n\n2026年5月4日\n\n" +
+  "<table border=1><tr><td>序号</td><td>品名及规格</td><td>单位</td><td>数量</td><td>单价</td><td>金额</td></tr>" +
+  "<tr><td>1</td><td>方管</td><td>条</td><td>150</td><td>83</td><td>12450</td></tr></table>\n\n" +
+  "# 富丰建材送货单\n\n电话：020-85204317 191206840950005877\n\n2026年5月4日\n\n" +
+  "<table border=1><tr><td>序号</td><td>品名及规格</td><td>单位</td><td>数量</td><td>单价</td><td>金额</td></tr>" +
+  "<tr><td>1</td><td>321焊条</td><td>箱</td><td>1</td><td>122</td><td>122</td></tr></table>";
+const rFuSh = parseVlToDocs([mdFuShuang]);
+ok("VL 富丰双单拆2单", rFuSh.docs.length === 2);
+ok("VL 富丰单1单号=0005876", rFuSh.docs[0].orderNo === "0005876");
+ok("VL 富丰单2单号=0005877", rFuSh.docs[1].orderNo === "0005877");
+
 console.log("== excel ==");
 const files = [
   {
