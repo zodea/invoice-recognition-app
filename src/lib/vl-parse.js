@@ -41,12 +41,19 @@ function isSeparatorRow(cells) {
 // —— HTML 表格（VL 的实际输出格式）——
 // 一行里可能有一个或多个 <table>…</table>；每个解析成 rows(cells[])。
 // 单格整行（<td colspan=N> 备注/大写合计/说明文字）直接丢弃——它们不是材料行。
+// 从“合计/总计”行取票面合计金额（要求带 ¥，避免误抓规格/大写里的数字）。issue #9
+function extractStatedTotal(text) {
+  const m = String(text).match(/[合总]\s*计[^¥￥\n]{0,12}[¥￥]\s*([0-9][0-9,]*(?:\.[0-9]+)?)/);
+  return m ? Number(m[1].replace(/,/g, "")) : "";
+}
+
 function parseHtmlTables(line) {
   const tables = [];
   const tableRe = /<table\b[^>]*>([\s\S]*?)<\/table>/gi;
   let tm;
   while ((tm = tableRe.exec(line))) {
     const rows = [];
+    let allText = "";
     const trRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
     let rm;
     while ((rm = trRe.exec(tm[1]))) {
@@ -54,10 +61,11 @@ function parseHtmlTables(line) {
       const tdRe = /<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi;
       let cm;
       while ((cm = tdRe.exec(rm[1]))) cells.push(stripInline(cm[1]));
-      if (cells.length <= 1) continue; // 整行说明（备注/大写合计）→ 丢
+      allText += cells.join(" ") + "\n";
+      if (cells.length <= 1) continue; // 整行说明（备注/大写合计）→ 丢（文字仍留 allText 供取合计）
       rows.push(cells);
     }
-    if (rows.length) tables.push(rows);
+    if (rows.length) tables.push({ rows, statedTotal: extractStatedTotal(allText) });
   }
   return tables;
 }
@@ -68,7 +76,7 @@ export function splitMarkdownBlocks(md) {
   let cur = null;
   for (const line of String(md || "").split(/\r?\n/)) {
     if (/<table\b/i.test(line)) {
-      for (const rows of parseHtmlTables(line)) blocks.push({ kind: "table", rows });
+      for (const t of parseHtmlTables(line)) blocks.push({ kind: "table", rows: t.rows, statedTotal: t.statedTotal });
       cur = null;
       continue;
     }
@@ -153,14 +161,24 @@ export function tableToItems(rows) {
     if (/^\d+(?:\.\d+)?$/.test(name)) continue; // 纯数字（印章/数量漏进品名列）→ 丢
     if (/品名|名称|材料|产品/.test(name)) continue; // 重复表头
     if (NOTE_NAME_RE.test(name)) continue; // 说明/备注落到品名列
-    items.push({
-      name,
-      unit: header.unit != null ? cells[header.unit] || "" : "",
-      quantity: header.quantity != null ? toNum(cells[header.quantity]) : "",
-      unitPrice: header.unitPrice != null ? toNum(cells[header.unitPrice]) : "",
-      total: header.total != null ? toNum(cells[header.total]) : "",
-      ...(header.note != null && cells[header.note] ? { note: cells[header.note] } : {}),
-    });
+    const unit = header.unit != null ? cells[header.unit] || "" : "";
+    const quantity = header.quantity != null ? toNum(cells[header.quantity]) : "";
+    const unitPrice = header.unitPrice != null ? toNum(cells[header.unitPrice]) : "";
+    const total = header.total != null ? toNum(cells[header.total]) : "";
+    // 续行并入(M)：品名有字但 单位/数量/单价/金额 全空 → 上一行规格续行，并入上一条品名（issue #9）。
+    // “品名+仅金额”的服务费行（金额非空）不算续行，照常保留。
+    if (unit === "" && quantity === "" && unitPrice === "" && total === "" && items.length) {
+      const prev = items[items.length - 1];
+      prev.name = `${prev.name} ${name}`.trim();
+      continue;
+    }
+    const item = { name, unit, quantity, unitPrice, total };
+    if (header.note != null && cells[header.note]) item.note = cells[header.note];
+    // 行级算术校验：数量×单价 与 金额 不符（容差 1 元）→ 标待复核（issue #9）
+    if (quantity !== "" && unitPrice !== "" && total !== "" && Math.abs(quantity * unitPrice - total) > 1) {
+      item.note = [item.note, "金额≠数量×单价(待复核)"].filter(Boolean).join("；");
+    }
+    items.push(item);
   }
   return items;
 }
@@ -185,6 +203,18 @@ export function pickSupplier(lines) {
     if (!fallback) fallback = s;
   }
   return fallback;
+}
+
+// 汇总一张单的“待复核”原因：行级算术不符 + 合计对账不符（issue #9）。
+function reviewNote(items, statedTotal) {
+  const notes = [];
+  const badRows = items.filter((it) => /待复核/.test(it.note || "")).length;
+  if (badRows) notes.push(`${badRows} 行金额与数量×单价不符(待复核)`);
+  const sum = items.reduce((s, it) => s + (typeof it.total === "number" ? it.total : 0), 0);
+  if (statedTotal !== "" && statedTotal > 0 && sum > 0 && Math.abs(sum - statedTotal) > 1) {
+    notes.push(`合计¥${statedTotal}与明细求和¥${Math.round(sum * 100) / 100}不符(待复核)`);
+  }
+  return notes.join("；");
 }
 
 // markdown 页数组 → { docs, company, rawText }
@@ -218,6 +248,7 @@ export function parseVlToDocs(markdownPages) {
         items,
         itemsSource: "table",
         headText,
+        note: reviewNote(items, b.statedTotal),
       });
       pendingText = []; // 下一张单的头部从这里重新积累
     }
@@ -235,6 +266,7 @@ export function parseVlToDocs(markdownPages) {
       items,
       itemsSource: items.length ? "line" : "",
       headText: "",
+      note: reviewNote(items, ""),
     });
   }
 

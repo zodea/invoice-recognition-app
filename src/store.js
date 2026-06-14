@@ -250,7 +250,10 @@ export const actions = {
       doc.dateText = doc.date || "";
       doc.orderNo = d.orderNo || "";
       if (d.items.length) doc.items = d.items.map((it) => ({ ...makeItem(), ...it }));
-      if (d.itemsSource === "line") doc.note = "材料明细来自散行识别，需复核";
+      const notes = [];
+      if (d.note) notes.push(d.note); // 行级算术/合计对账 待复核（issue #9）
+      if (d.itemsSource === "line") notes.push("材料明细来自散行识别，需复核");
+      if (notes.length) doc.note = notes.join("；");
       return doc;
     });
     f.docs.splice(0, f.docs.length, ...newDocs);

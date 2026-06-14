@@ -129,6 +129,42 @@ ok("VL 富丰双单拆2单", rFuSh.docs.length === 2);
 ok("VL 富丰单1单号=0005876", rFuSh.docs[0].orderNo === "0005876");
 ok("VL 富丰单2单号=0005877", rFuSh.docs[1].orderNo === "0005877");
 
+console.log("== 明细解析增强（issue #9）==");
+// 续行并入(M)：品名有字但 单位/数量/单价/金额 全空 → 并入上一条；"品名+仅金额"的服务费行保留
+const md9cont =
+  "# 富丰建材送货单\n\nNo:0005873\n\n2026年4月26日\n\n" +
+  "<table border=1><tr><td>序号</td><td>品名及规格</td><td>单位</td><td>数量</td><td>单价</td><td>金额</td></tr>" +
+  "<tr><td>1</td><td>彩钢 340大块蓝色</td><td>平米</td><td>201.6</td><td>13</td><td>2620</td></tr>" +
+  "<tr><td>2</td><td>2.4米×84件</td><td></td><td></td><td></td><td></td></tr>" +
+  "<tr><td>3</td><td>车费货拉拉中通</td><td></td><td></td><td></td><td>145</td></tr></table>";
+const r9c = parseVlToDocs([md9cont]);
+ok("续行并入上一条品名", r9c.docs[0].items.some((it) => it.name.includes("彩钢") && it.name.includes("2.4米×84件")));
+ok("续行不单列成项", !r9c.docs[0].items.some((it) => it.name === "2.4米×84件"));
+ok("服务费行(仅金额)保留", r9c.docs[0].items.some((it) => it.name.includes("车费") && it.total === 145));
+// 行级算术：数量×单价≠金额（容差1元）→ item + doc 标待复核
+const md9ar =
+  "# 富丰建材送货单\n\nNo:0005876\n\n2026年5月4日\n\n" +
+  "<table border=1><tr><td>序号</td><td>品名</td><td>单位</td><td>数量</td><td>单价</td><td>金额</td></tr>" +
+  "<tr><td>1</td><td>322焊条</td><td>箱</td><td>1</td><td>122</td><td>1522</td></tr></table>";
+const r9a = parseVlToDocs([md9ar]);
+ok("行级算术不符标 item.note", /待复核/.test(r9a.docs[0].items[0].note || ""));
+ok("行级算术不符标 doc.note", /待复核/.test(r9a.docs[0].note || ""));
+// 合计对账：合计 ¥ 与明细求和不符 → doc 标待复核
+const md9sum =
+  "# 富丰\n\nNo:0005873\n\n2026年4月26日\n\n" +
+  "<table border=1><tr><td>序号</td><td>品名</td><td>单位</td><td>数量</td><td>单价</td><td>金额</td></tr>" +
+  "<tr><td>1</td><td>地推</td><td>套</td><td>4</td><td>17</td><td>68</td></tr>" +
+  '<tr><td colspan="6">合计金额： 伍佰元（¥500）</td></tr></table>';
+const r9s = parseVlToDocs([md9sum]);
+ok("合计与明细不符标待复核", /合计/.test(r9s.docs[0].note || "") && /待复核/.test(r9s.docs[0].note || ""));
+// 合计相符 → 不误报
+const md9ok =
+  "# 富丰\n\nNo:0005873\n\n2026年4月26日\n\n" +
+  "<table border=1><tr><td>序号</td><td>品名</td><td>单位</td><td>数量</td><td>单价</td><td>金额</td></tr>" +
+  "<tr><td>1</td><td>地推</td><td>套</td><td>4</td><td>17</td><td>68</td></tr>" +
+  '<tr><td colspan="6">合计金额： 陆拾捌元（¥68）</td></tr></table>';
+ok("合计相符不误报", !/合计/.test(parseVlToDocs([md9ok]).docs[0].note || ""));
+
 console.log("== excel ==");
 const files = [
   {
