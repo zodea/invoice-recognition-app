@@ -21,6 +21,7 @@ import {
   saveBytesToChosenDir,
   GROUP_DIMENSIONS,
 } from "../lib/invoice-export-package";
+import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 
 const busy = ref(false);
 const msg = ref("");
@@ -80,7 +81,7 @@ async function makeLayout() {
   try {
     return await buildPrintLayout(included.value, { perPage: invoiceStore.perPage });
   } catch (e) {
-    msg.value = "排版失败：" + ((e && e.message) || e);
+    toastError("排版失败：" + ((e && e.message) || e));
     return null;
   } finally {
     busy.value = false;
@@ -92,9 +93,9 @@ async function printNow() {
   if (bytes) {
     openForPrint(bytes);
     pendingPrintedIds.value = included.value.filter((inv) => inv.status === "done").map((inv) => inv.id);
-    msg.value = pendingPrintedIds.value.length
-      ? "已调起打印。打印完成后请确认是否把本次发票标记为已打印。"
-      : "已调起打印。当前没有已识别发票可写入打印台账。";
+    toastInfo(pendingPrintedIds.value.length
+      ? "已调起打印，请在下方确认是否标记为已打印。"
+      : "已调起打印。当前没有已识别发票可写入打印台账。");
   }
 }
 
@@ -102,12 +103,12 @@ function confirmPrinted() {
   const stamp = new Date().toISOString().slice(0, 10);
   const result = invoiceActions.markPrinted(pendingPrintedIds.value, `打印_${stamp}`);
   pendingPrintedIds.value = [];
-  msg.value = `已确认打印并写入台账：${result.printed} 张。`;
+  toast(`已确认打印并写入台账：${result.printed} 张。`);
 }
 
 function cancelPrinted() {
   pendingPrintedIds.value = [];
-  msg.value = "已取消本次打印标记。";
+  toastInfo("已取消本次打印标记。");
 }
 
 async function saveWithDialog(bytes, name, mime, okMsg, dlMsg) {
@@ -115,12 +116,12 @@ async function saveWithDialog(bytes, name, mime, okMsg, dlMsg) {
   msg.value = "请选择保存目录…";
   try {
     const r = await saveBytesToChosenDir(bytes, name);
-    if (r.canceled) { msg.value = "已取消保存。"; return; }
-    if (r.fallbackDownload) { downloadBytes(bytes, name, mime); msg.value = dlMsg; return; }
-    msg.value = `${okMsg}：${r.saved}`;
+    if (r.canceled) { toastInfo("已取消保存。"); return; }
+    if (r.fallbackDownload) { downloadBytes(bytes, name, mime); toastInfo(dlMsg); return; }
+    toast(`${okMsg}：${r.saved}`);
   } catch (e) {
-    if (e && e.name === "AbortError") msg.value = "已取消保存。";
-    else { downloadBytes(bytes, name, mime); msg.value = "保存目录失败，已改为下载。"; }
+    if (e && e.name === "AbortError") toastInfo("已取消保存。");
+    else { downloadBytes(bytes, name, mime); toastWarn("保存目录失败，已改为下载。"); }
   } finally {
     busy.value = false;
   }
@@ -155,7 +156,7 @@ async function exportPackage() {
     let result;
     if (canUseTauriExport()) {
       const dir = await pickTauriExportDir();
-      if (!dir) { msg.value = "已取消导出。"; return; }
+      if (!dir) { toastInfo("已取消导出。"); return; }
       msg.value = "正在整理原文件和统计表…";
       result = await writeInvoiceExportPackageTauri(included.value, dir, { excelBytes, dims: invoiceStore.groupDims });
     } else {
@@ -163,10 +164,10 @@ async function exportPackage() {
       msg.value = "正在整理原文件和统计表…";
       result = await writeInvoiceExportPackage(included.value, dir, { excelBytes, dims: invoiceStore.groupDims });
     }
-    msg.value = `已导出到「${result.parent}」：${result.fileCount} 个文件，统计表：${result.excelName || "未生成"}。`;
+    toast(`已导出到「${result.parent}」：${result.fileCount} 个文件，统计表：${result.excelName || "未生成"}。`, { duration: 6500 });
   } catch (e) {
-    if (e && e.name === "AbortError") msg.value = "已取消导出。";
-    else msg.value = "整理导出失败：" + ((e && e.message) || e);
+    if (e && e.name === "AbortError") toastInfo("已取消导出。");
+    else toastError("整理导出失败：" + ((e && e.message) || e));
   } finally {
     busy.value = false;
   }
@@ -237,7 +238,7 @@ const exportBtnCls = "btn px-2.75 py-1.75 text-[13px]";
       </div>
     </div>
 
-    <div class="mt-2 text-ink-soft text-[13px]" v-if="msg">{{ msg }}</div>
+    <div class="mt-2 text-ink-soft text-[13px]" v-if="busy && msg">{{ msg }}</div>
     <div v-if="pendingPrintedCount" class="mt-2 flex items-center gap-2 flex-wrap p-2 rounded-md border border-[#bbf7d0] bg-[#f0fdf4] text-[#166534] text-[13px]">
       <span>本次 {{ pendingPrintedCount }} 张是否均已打印？</span>
       <button class="btn px-2 py-1.25 border-ok bg-ok text-white" :disabled="busy" @click="confirmPrinted">确认已打印</button>

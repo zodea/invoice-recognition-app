@@ -86,6 +86,17 @@ export function parseInvoice(rawText) {
     const bare = text.match(/\b([0-9]{20})\b/);
     if (bare) f.number = bare[1];
   }
+  // 字符间含空格的版式（每个数字单独定位，抽出来是「2 6 3 3 …」）：去空格后再取。
+  // 只吃同一行的数字+空格（不跨行），避免把后面别行的数字并进来。
+  if (!f.number) {
+    const sp =
+      text.match(/发\s*票\s*号\s*码[:：]?[^\S\n]*([0-9](?:[0-9 ]*[0-9])?)/) ||
+      text.match(/票\s*据\s*号\s*码[:：]?[^\S\n]*([0-9](?:[0-9 ]*[0-9])?)/);
+    if (sp) {
+      const digits = sp[1].replace(/ /g, "");
+      if (digits.length >= 8 && digits.length <= 25) f.number = digits;
+    }
+  }
 
   // 开票日期
   const d = text.match(/开票日期[:：]?\s*([0-9]{4})\s*年\s*([0-9]{1,2})\s*月\s*([0-9]{1,2})\s*日/) ||
@@ -209,8 +220,15 @@ export function parseInvoice(rawText) {
   // 避免把规格型号里的「95%」等无关百分数误当税率。
   const KNOWN_RATES = new Set(["0", "1", "1.5", "2", "3", "4", "5", "6", "9", "10", "11", "13", "16", "17"]);
   const rateSet = new Set();
-  for (const m of text.matchAll(/([0-9]{1,2}(?:\.[0-9])?)\s*%/g)) {
-    if (KNOWN_RATES.has(m[1])) rateSet.add(m[1]);
+  // 字符级空格版式：发票把每个数字单独定位，连续数字被逐个空格拆开（如号码「2 6 3 3 …」、税率「1 3 %」）。
+  // 仅这类版式才用“空格容忍”的税率正则（去空格后比对），否则普通票「431.13 6%」会把「3 6」错并成 36%。
+  const glyphSpaced = /[0-9](?:[^\S\n][0-9]){3,}/.test(text);
+  const rateRe = glyphSpaced
+    ? /([0-9](?:[^\S\n]*[0-9])?(?:[^\S\n]*\.[^\S\n]*[0-9])?)[^\S\n]*%/g
+    : /([0-9]{1,2}(?:\.[0-9])?)[^\S\n]*%/g;
+  for (const m of text.matchAll(rateRe)) {
+    const r = m[1].replace(/\s/g, "");
+    if (KNOWN_RATES.has(r)) rateSet.add(r);
   }
   if (rateSet.size === 1) f.rate = [...rateSet][0] + "%";
   f.remark = extractRemark(text);

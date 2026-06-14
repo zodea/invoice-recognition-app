@@ -5,6 +5,7 @@ import { buildCurrentInputInvoiceReportBytes, buildHistoryReportBytes, currentIn
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
 import { downloadBytes } from "../lib/invoice-layout";
 import InvoiceLedgerViewer from "./InvoiceLedgerViewer.vue";
+import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 
 const viewerOpen = ref(false);
 
@@ -25,16 +26,16 @@ function pickExcelFile(files) {
 async function importLedgerFile(file) {
   if (!file) return;
   if (!/\.(xlsx|xls)$/i.test(file.name)) {
-    msg.value = "请导入税务局导出的 Excel 文件（.xlsx / .xls）。";
+    toastWarn("请导入税务局导出的 Excel 文件（.xlsx / .xls）。");
     return;
   }
   busy.value = true;
   msg.value = "正在导入进项发票历史…";
   try {
     const r = await invoiceActions.importInputInvoiceReport(file);
-    msg.value = `已导入 ${r.imported} 张，新增 ${r.added} 张，更新 ${r.updated} 张。`;
+    toast(`已导入 ${r.imported} 张，新增 ${r.added} 张，更新 ${r.updated} 张。`);
   } catch (err) {
-    msg.value = "导入失败：" + ((err && err.message) || err);
+    toastError("导入失败：" + ((err && err.message) || err));
   } finally {
     busy.value = false;
   }
@@ -46,12 +47,12 @@ async function saveLedgerBytes(bytes, name, okMsg, dlMsg) {
   const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   try {
     const r = await saveBytesToChosenDir(bytes, name);
-    if (r.canceled) msg.value = "已取消导出。";
-    else if (r.fallbackDownload) { downloadBytes(bytes, name, mime); msg.value = dlMsg; }
-    else msg.value = `${okMsg}：${r.saved}`;
+    if (r.canceled) toastInfo("已取消导出。");
+    else if (r.fallbackDownload) { downloadBytes(bytes, name, mime); toastInfo(dlMsg); }
+    else toast(`${okMsg}：${r.saved}`);
   } catch (err) {
-    if (err && err.name === "AbortError") msg.value = "已取消导出。";
-    else { downloadBytes(bytes, name, mime); msg.value = "保存目录失败，已改为下载。"; }
+    if (err && err.name === "AbortError") toastInfo("已取消导出。");
+    else { downloadBytes(bytes, name, mime); toastWarn("保存目录失败，已改为下载。"); }
   } finally {
     busy.value = false;
   }
@@ -78,7 +79,7 @@ async function onDrop(e) {
   if (busy.value) return;
   const file = pickExcelFile(e.dataTransfer?.files);
   if (!file) {
-    msg.value = "没有找到可导入的 Excel 文件，请拖入 .xlsx 或 .xls。";
+    toastWarn("没有找到可导入的 Excel 文件，请拖入 .xlsx 或 .xls。");
     return;
   }
   await importLedgerFile(file);
@@ -89,9 +90,9 @@ function clearLedger() {
   const ok = window.confirm(
     `确认清空历史进项台账吗？\n\n当前共有 ${stats.value.total} 张历史记录。清空后，已认证/已打印状态会被删除；如果是误上传了错误 Excel，可以清空后重新导入正确文件。`
   );
-  if (!ok) { msg.value = "已取消清空。"; return; }
+  if (!ok) { toastInfo("已取消清空。"); return; }
   invoiceActions.clearLedger();
-  msg.value = "已清空历史进项台账，可以重新导入正确的进项 Excel。";
+  toast("已清空历史进项台账，可以重新导入正确的进项 Excel。");
 }
 </script>
 
@@ -129,7 +130,7 @@ function clearLedger() {
       <button class="btn px-2.5 py-1.75" :disabled="busy || !invoiceStore.invoices.length" @click="exportCurrentInputStatus">导出当前进项状态</button>
       <button class="btn px-2.5 py-1.75 border-[#fecaca] text-[#991b1b] bg-[#fef2f2]" :disabled="busy || !stats.total" @click="clearLedger">清空历史台账</button>
     </div>
-    <div class="mt-2 text-ink-soft text-xs" v-if="msg">{{ msg }}</div>
+    <div class="mt-2 text-ink-soft text-xs" v-if="busy && msg">{{ msg }}</div>
     <InvoiceLedgerViewer v-model:open="viewerOpen" />
   </section>
 </template>

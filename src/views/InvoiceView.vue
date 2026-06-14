@@ -6,6 +6,7 @@ import InvoicePreview from "../components/InvoicePreview.vue";
 import InvoiceRow from "../components/InvoiceRow.vue";
 import InvoicePrintPanel from "../components/InvoicePrintPanel.vue";
 import InvoiceLedgerPanel from "../components/InvoiceLedgerPanel.vue";
+import { toast, toastInfo } from "../lib/toast";
 
 const sorted = computed(() => sortedInvoices());
 const unrecognizedCount = computed(() => invoiceStore.invoices.filter((i) => i.status !== "done").length);
@@ -17,26 +18,28 @@ const docTypes = computed(() => docTypeOptions());
 
 function dedupe() {
   const n = invoiceActions.refreshDuplicates();
-  invoiceStore.msg = n ? `已识别并取消勾选 ${n} 张重复发票。` : "未发现重复发票。";
+  if (n) toast(`已识别并取消勾选 ${n} 张重复发票。`);
+  else toastInfo("未发现重复发票。");
 }
 function excludeReused() {
   const n = invoiceActions.excludeReused(visibleInvs.value);
-  invoiceStore.msg = n ? `已排除 ${n} 张历史已用发票（避免重复使用）。` : "勾选中没有历史已用的发票。";
+  if (n) toast(`已排除 ${n} 张历史已用发票（避免重复使用）。`);
+  else toastInfo("勾选中没有历史已用的发票。");
 }
 
 // 打印勾选批量操作：作用于当前筛选后可见的发票
 const visibleInvs = computed(() => sorted.value.map((x) => x.inv));
 function selectAll() {
   invoiceActions.setIncludeAll(visibleInvs.value, true);
-  invoiceStore.msg = `已全选 ${visibleInvs.value.length} 张。`;
+  toastInfo(`已全选 ${visibleInvs.value.length} 张。`, { duration: 2000 });
 }
 function selectNone() {
   invoiceActions.setIncludeAll(visibleInvs.value, false);
-  invoiceStore.msg = "已全部取消勾选。";
+  toastInfo("已全部取消勾选。", { duration: 2000 });
 }
 function invertSelect() {
   invoiceActions.invertInclude(visibleInvs.value);
-  invoiceStore.msg = "已反选。";
+  toastInfo("已反选。", { duration: 2000 });
 }
 
 watch(
@@ -87,7 +90,7 @@ const filterBtn = (active) =>
         <button class="btn px-2.5 py-1.5" @click="invertSelect">反选</button>
         <button class="btn px-2.5 py-1.5" @click="selectNone">全不选</button>
       </div>
-      <span class="text-ink-soft" v-if="invoiceStore.msg">{{ invoiceStore.msg }}</span>
+      <span class="text-ink-soft" v-if="invoiceStore.busy && invoiceStore.msg">{{ invoiceStore.msg }}</span>
     </div>
 
     <div v-if="invoiceStore.invoices.length" class="flex flex-col gap-2 px-2.5 py-2.5 border border-line rounded-lg bg-white">
