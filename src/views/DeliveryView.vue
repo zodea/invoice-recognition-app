@@ -6,21 +6,36 @@ import PartitionBar from "../components/PartitionBar.vue";
 import FileCard from "../components/FileCard.vue";
 import ExportPanel from "../components/ExportPanel.vue";
 
+import DeliveryTree from "../components/DeliveryTree.vue";
+import ProblemDialog from "../components/ProblemDialog.vue";
+import { collectProblems } from "../store";
+
 const visibleFiles = computed(() =>
   store.activePartitionId === "all"
     ? store.files
     : store.files.filter((f) => f.partitionId === store.activePartitionId)
 );
+const problemCount = computed(() => collectProblems().total);
 </script>
 
 <template>
   <div class="flex flex-col gap-3.5">
-    <UploadZone />
-    <PartitionBar />
+    <UploadZone v-if="!store.staging" />
+    <DeliveryTree />
+    <PartitionBar v-if="!store.staging" />
 
-    <div class="flex items-center gap-3" v-if="store.files.length">
+    <div class="flex items-center gap-3" v-if="store.files.length && !store.staging">
       <button class="btn px-3 py-1.75 font-600" :disabled="store.ocrBusy" @click="actions.runOcrAll">
         🔍 识别全部未识别（{{ store.files.filter((f) => f.ocrStatus !== "done").length }}）
+      </button>
+      <button class="btn px-3 py-1.75" title="重新打开整理树，调整文件的工地/公司归属" @click="actions.stageFromStore()">🌲 重新整理</button>
+      <button
+        v-if="problemCount"
+        class="btn px-3 py-1.75 border-warn text-[#92400e] bg-[#fffbeb] font-700"
+        title="查看识别失败/无法读取/公司不一致等待处理事项"
+        @click="store.problemsOpen = true"
+      >
+        ⚠ 问题（{{ problemCount }}）
       </button>
       <span class="text-ink-soft" v-if="store.ocrMsg">{{ store.ocrMsg }}</span>
     </div>
@@ -32,6 +47,7 @@ const visibleFiles = computed(() =>
     </div>
 
     <ExportPanel />
+    <ProblemDialog />
 
     <details class="bg-panel border border-line rounded-card px-3.5 py-3">
       <summary class="cursor-pointer font-600 text-brand">使用说明 / 注意事项</summary>

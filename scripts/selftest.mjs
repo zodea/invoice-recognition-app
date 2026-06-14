@@ -4,7 +4,8 @@ import assert from "node:assert";
 import fs from "node:fs";
 import * as XLSX from "xlsx";
 import { dateRangeLabel, archiveBaseName, safeSheetName } from "../src/lib/naming.js";
-import { parseDoc, findDate, findOrderNo, findCompany } from "../src/lib/parse.js";
+import { parseDoc, findDate, findOrderNo, findCompany, parseItemLines } from "../src/lib/parse.js";
+import { parseVlToDocs, pickSupplier } from "../src/lib/vl-parse.js";
 import { buildWorkbookBytes } from "../src/lib/excel.js";
 import { parseInvoice, classifyDocType, isProbablyInvoiceText } from "../src/lib/invoice-parse.js";
 import { buildInvoiceWorkbookBytes } from "../src/lib/invoice-excel.js";
@@ -48,6 +49,63 @@ ok("单号", findOrderNo(lines) === "0005864");
 ok("公司", findCompany(lines) === "广州富丰建材贸易有限公司");
 const parsed = parseDoc(lines);
 ok("候选品名含扎丝", parsed.itemCandidates.some((s) => s.includes("扎丝")));
+ok("散行明细：扎丝", parsed.items.some((it) => it.name.includes("扎丝") && it.unit === "盒" && it.quantity === 1 && it.unitPrice === 30 && it.total === 30));
+const looseItems = parseItemLines(["1 白水泥 包 5 30 150", "跑腿费 13元", "镀锌管 6米 12.5 75", "合计 238元"]);
+ok("散行明细：完整行", looseItems.some((it) => it.name === "白水泥" && it.unit === "包" && it.quantity === 5 && it.total === 150));
+ok("散行明细：服务费金额", looseItems.some((it) => it.name === "跑腿费" && it.unit === "次" && it.quantity === 1 && it.total === 13));
+ok("散行明细：数量单位粘连", looseItems.some((it) => it.name === "镀锌管" && it.unit === "米" && it.quantity === 6 && it.unitPrice === 12.5 && it.total === 75));
+
+console.log("== vl-parse (PaddleOCR-VL HTML 表格) ==");
+// VL 实际输出：表格是 HTML <table>（整段一行），抬头带 # / <div> / $^{®}$ 记号。
+const mdDb =
+  "# 广州市大板东建材有限公司\n\nNO.XS202605210034\n\n销售日期：2026-05-23\n\n" +
+  "<table border=1><tr><td>编号</td><td>产品</td><td>单位</td><td>总数量</td><td>单价</td><td>金额</td></tr>" +
+  "<tr><td>1</td><td>8*6美固钉</td><td>包</td><td>46</td><td>7.65</td><td>351.90</td></tr>" +
+  "<tr><td>2</td><td>2厘夹板</td><td>张</td><td>50</td><td>23.2</td><td>1,160.00</td></tr>" +
+  "<tr><td></td><td>合计</td><td>151</td><td></td><td></td><td>2,833.90</td></tr>" +
+  '<tr><td colspan="6">合计金额：贰仟捌佰叁拾叁元玖角整2,833.90</td></tr></table>';
+const rDb = parseVlToDocs([mdDb]);
+ok("VL HTML 表格出明细2行", rDb.docs[0].items.length === 2);
+ok("VL 公司去 # 记号", rDb.company === "广州市大板东建材有限公司");
+ok("VL 保留尺寸 8*6", rDb.docs[0].items[0].name === "8*6美固钉");
+ok("VL 单价/金额数字化", rDb.docs[0].items[0].unitPrice === 7.65 && rDb.docs[0].items[0].total === 351.9);
+ok("VL 千分位金额", rDb.docs[0].items[1].total === 1160);
+ok("VL 单号(NO.)", rDb.docs[0].orderNo === "XS202605210034");
+ok("VL 合计行不入明细", !rDb.docs[0].items.some((it) => /合计/.test(it.name)));
+
+// 公司名：避开"客户名称/送货地址"，取居中 <div> 抬头
+const mdZd =
+  '<div style="text-align: center;">佛山市智道建筑材料有限公司</div>\n\n客户名称：广州睿璟装饰工程有限公司\n\n单号：20260511001\n\n送货日期：2026年5月11日\n\n' +
+  "<table border=1><tr><td>编号</td><td>产品名称</td><td>规格</td><td>单位</td><td>数量</td><td>单价</td><td>金额/元</td></tr>" +
+  "<tr><td>1</td><td>地面垫层砂浆M20</td><td>50KG/包</td><td>吨</td><td>35</td><td></td><td></td></tr></table>";
+const rZd = parseVlToDocs([mdZd]);
+ok("VL 公司避开客户名称", rZd.company === "佛山市智道建筑材料有限公司");
+ok("VL 中文日期", rZd.docs[0].date === "2026-05-11");
+ok("VL 明细(规格列不混入名)", rZd.docs[0].items[0].name === "地面垫层砂浆M20" && rZd.docs[0].items[0].quantity === 35);
+
+// 一份文件多页 → 自动拆多单；公司剥离"送货单"后缀
+const mkPage = (no) =>
+  `# 富丰建材送货单\n\n地址：广州市天河区\n\nNo:${no}\n\n2026年4月26日\n\n` +
+  "<table border=1><tr><td>序号</td><td>品名及规格</td><td>单位</td><td>数量</td></tr>" +
+  "<tr><td>1</td><td>彩钢</td><td>平米</td><td>201.6</td></tr></table>";
+const rFf = parseVlToDocs([mkPage("836585"), mkPage("836584")]);
+ok("VL 多页拆多单", rFf.docs.length === 2);
+ok("VL 公司剥离送货单后缀", rFf.company === "富丰建材");
+ok("VL 公司不取地址行", !/地址/.test(rFf.company));
+ok("VL 各单单号独立", rFf.docs[0].orderNo === "836585" && rFf.docs[1].orderNo === "836584");
+
+// 扫描差：表头无"品名"列 → 默认首列为品名；印章/数量漏进首列的纯数字行丢弃
+const mdPc =
+  "# 销货清单\n\n收货单位：\n\n0034671\n\n" +
+  "<table border=1><tr><td>地址：</td><td>单位</td><td>数量</td><td>单价</td><td>金额</td></tr>" +
+  "<tr><td>5</td><td></td><td></td><td></td><td></td></tr>" +
+  "<tr><td>液压钳</td><td></td><td></td><td></td><td></td></tr>" +
+  "<tr><td>16铝铣耳</td><td>个</td><td>50</td><td></td><td></td></tr></table>";
+const rPc = parseVlToDocs([mdPc]);
+ok("VL 无品名表头默认首列", rPc.docs[0].items.some((it) => it.name === "液压钳"));
+ok("VL 纯数字品名丢弃", !rPc.docs[0].items.some((it) => it.name === "5"));
+ok("VL 首列名+单位+数量", rPc.docs[0].items.some((it) => it.name === "16铝铣耳" && it.unit === "个" && it.quantity === 50));
+ok("pickSupplier 直接调用", pickSupplier(["# 销货清单", "客户名称：某某公司", "广州市大板东建材有限公司"]) === "广州市大板东建材有限公司");
 
 console.log("== excel ==");
 const files = [
@@ -154,6 +212,141 @@ const rateMixed = parseInvoice([
 ok("多种税率混票 -> 留空", rateMixed.rate === "");
 // 无税率（如免税/不征税，文本无 %）-> 留空
 ok("无税率 -> 留空", parseInvoice("价税合计（小写）¥300.00 免税").rate === "");
+// 字符级空格版式（每个字单独定位）：号码/税率 去空格后正确（issue #2）
+const glyph = parseInvoice([
+  "电子发票（普通发票） 发票号码： 2 6 3 3 2 0 0 0 0 0 2 9 7 7 3 4 4 3 1 6",
+  "开票日期： 2 0 2 6 年0 4 月1 3 日",
+  "购 名称： 广东瑞航建设工程有限公司 销 名称： 杭州丰畅科技有限公司",
+  "项目名称 规格型号 单位 数量 单价 金额 税率/征收率 税额",
+  "*洗涤剂*洗碗机专用粉 套 1 6 0 . 4 4 6 0 . 4 4 1 3 % 7 . 8 6",
+  "合 计 ¥ 5 9 . 4 0 ¥ 7 . 7 2",
+  "价税合计（大写） 陆拾柒圆壹角贰分 （小写） ¥ 6 7 . 1 2",
+].join("\n"));
+ok("空格版 发票号码", glyph.number === "26332000002977344316");
+ok("空格版 税率 13%（非 3%）", glyph.rate === "13%");
+
+console.log("== 分供方库（issue #6）==");
+const { normalizeCompanyName, coreCompanyName, matchSupplier, collectFromInvoices, sellerTaxNoFromRawText, importSuppliersWorkbookBytes, exportSuppliersWorkbookBytes } = await import("../src/lib/supplier-db.js");
+ok("归一化：去空格", normalizeCompanyName("兆鑫建 材") === "兆鑫建材");
+ok("归一化：去尾部(1)", normalizeCompanyName("佛山市智道建筑材料有限公司(1)") === "佛山市智道建筑材料有限公司");
+ok("核心名：去后缀", coreCompanyName("广州市大板东建材有限公司").includes("大板东"));
+const supList = [
+  { id: "a", name: "广州市大板东建材有限公司", aliases: [] },
+  { id: "b", name: "佛山市智道建筑材料有限公司", aliases: ["智道"] },
+];
+ok("模糊匹配：简称→全称", matchSupplier(supList, "大板东")?.supplier.id === "a");
+ok("别名匹配", matchSupplier(supList, "智道")?.supplier.id === "b");
+ok("带(1)文件夹名匹配", matchSupplier(supList, "佛山市智道建筑材料有限公司(1)")?.supplier.id === "b");
+ok("不存在的不乱配", matchSupplier(supList, "完全无关公司") === null);
+const rawT = "购 信 统一社会信用代码/纳税人识别号： 91440101MA9XPYYU4M 信 统一社会信用代码/纳税人识别号： 91440703MABLK2EL12";
+ok("销售方税号取第2个", sellerTaxNoFromRawText(rawT) === "91440703MABLK2EL12");
+const colList = [];
+collectFromInvoices(colList, [{ status: "done", fields: { seller: "江门市海豚电器有限公司" }, rawText: rawT }]);
+ok("发票收集新增", colList.length === 1 && colList[0].taxNo === "91440703MABLK2EL12");
+const supXlsx = exportSuppliersWorkbookBytes(colList);
+const reList = [];
+const imp = importSuppliersWorkbookBytes(reList, supXlsx);
+ok("Excel 导出→导入回读", imp.added === 1 && reList[0].name === "江门市海豚电器有限公司" && reList[0].taxNo === "91440703MABLK2EL12");
+
+console.log("== VL 云识别解析（vl-parse）==");
+const vp = await import("../src/lib/vl-parse.js");
+const ov = await import("../src/lib/ocr-vl.js");
+ok("VL job 响应解 data", ov.unwrapVlEnvelope({ code: 0, msg: "Success", data: { jobId: "job-1" } }).jobId === "job-1");
+ok("VL 状态响应解 extractProgress", ov.unwrapVlEnvelope({ data: { state: "running", extractProgress: { totalPages: 2, extractedPages: 1 } } }).extractProgress.totalPages === 2);
+const vlResultJson = ov.parseVlResultText(JSON.stringify({ result: { layoutParsingResults: [{ markdown: { text: "单页结果" } }] } }));
+ok("VL 结果 JSON 解 result", vlResultJson.layoutParsingResults[0].markdown.text === "单页结果");
+const vlResultJsonl = ov.parseVlResultText(
+  [
+    JSON.stringify({ result: { layoutParsingResults: [{ markdown: { text: "第一页" } }] } }),
+    JSON.stringify({ result: { layoutParsingResults: [{ markdown: { text: "第二页" } }] } }),
+  ].join("\n")
+);
+ok("VL 结果 JSONL 合并", vlResultJsonl.layoutParsingResults.length === 2 && vlResultJsonl.layoutParsingResults[1].markdown.text === "第二页");
+const vlMd = [
+  [
+    "广州市大板东建材有限公司销货清单",
+    "单号：XS202605230011  2026年5月23日",
+    "| 序号 | 品名及规格 | 单位 | 数量 | 单价 | 金额 |",
+    "| --- | --- | --- | --- | --- | --- |",
+    "| 1 | 9厘夹板 | 张 | 10 | 52 | 520 |",
+    "| 2 | 车费 | 次 | 1 | 120 | 120 |",
+    "| 合计 |  |  |  |  | 640 |",
+    "",
+    "广州富丰建材贸易有限公司送货单",
+    "№ 0005880  2026年5月11日",
+    "| 品名 | 单位 | 数量 | 单价 | 金额 |",
+    "| --- | --- | --- | --- | --- |",
+    "| 30镀锌消防门铰 | 件 | 1 | 135 | 135 |",
+  ].join("\n"),
+];
+const vlRes = vp.parseVlToDocs(vlMd);
+ok("一页两表→拆成2张单", vlRes.docs.length === 2);
+ok("单1 公司", vlRes.docs[0].company.includes("大板东"));
+ok("单1 日期", vlRes.docs[0].date === "2026-05-23");
+ok("单1 明细2行(合计行剔除)", vlRes.docs[0].items.length === 2 && vlRes.docs[0].items[0].name === "9厘夹板");
+ok("单1 数量/单价/总价数字化", vlRes.docs[0].items[0].quantity === 10 && vlRes.docs[0].items[0].unitPrice === 52 && vlRes.docs[0].items[0].total === 520);
+ok("单2 公司", vlRes.docs[1].company.includes("富丰"));
+ok("单2 单号", vlRes.docs[1].orderNo === "0005880");
+ok("无表格→兜底单张", vp.parseVlToDocs(["只有 一行文字 广州市大板东建材有限公司 2026年5月1日"]).docs.length === 1);
+ok("无表头表格→按列序猜", vp.tableToItems([["1", "白水泥", "包", "5", "30", "150"]]).length === 1);
+const vlLoose = vp.parseVlToDocs([["广州市大板东建材有限公司送货单", "2026年5月1日", "白水泥 包 5 30 150", "跑腿费 13元"].join("\n")]);
+ok("VL 无表格→散行材料", vlLoose.docs[0].items.length === 2 && vlLoose.docs[0].itemsSource === "line");
+
+console.log("== 整理树（issue #5）==");
+const dt = await import("../src/lib/delivery-tree.js");
+ok("文件名日期 2026.5.23", dt.dateFromFilename("2026.5.23大板东.pdf") === "2026-05-23");
+ok("文件名日期 横杠", dt.dateFromFilename("2026-04-29佛山智道.png") === "2026-04-29");
+ok("无年份不猜", dt.dateFromFilename("5.10大沥浩臻.pdf") === "");
+ok("工地名建议", dt.suggestSiteName("合和新城送货单共享文件夹") === "合和新城");
+ok("特殊夹：序号前缀", dt.isSpecialFolderName("4-未签合同-送货单") === true);
+ok("特殊夹：纯数字", dt.isSpecialFolderName("1") === true);
+ok("供应商夹不是特殊", dt.isSpecialFolderName("大板东") === false);
+
+const treeSuppliers = [
+  { id: "s1", name: "广州市大板东建材有限公司", aliases: ["大板东"] },
+  { id: "s2", name: "佛山市智道建筑材料有限公司", aliases: ["智道"] },
+  { id: "s3", name: "广东鹏程电气设备有限公司", aliases: ["广东鹏程"] },
+];
+const mkEntry = (relPath) => ({ file: { name: relPath.split("/").pop() }, relPath });
+const tree = dt.buildTree(
+  [
+    mkEntry("合和新城送货单共享文件夹/大板东/2026.5.23大板东.pdf"),
+    mkEntry("合和新城送货单共享文件夹/佛山市智道建筑材料有限公司/2026.5.10智道.pdf"),
+    mkEntry("合和新城送货单共享文件夹/佛山市智道建筑材料有限公司(1)/2026.5.12智道.pdf"),
+    mkEntry("合和新城送货单共享文件夹/4-未签合同-送货单/2026.5.23广东鹏程.pdf"),
+    mkEntry("合和新城送货单共享文件夹/合和新城7期室内装修材料台帐.xlsx"),
+    mkEntry("合和新城送货单共享文件夹/散单.pdf"),
+  ],
+  treeSuppliers
+);
+ok("单根=一个工地", tree.sites.length === 1);
+ok("工地名已清洗", tree.sites[0].name === "合和新城");
+ok("台帐被忽略", tree.ignored === 1);
+const groups = tree.sites[0].groups;
+ok("同名(1)文件夹自动合并", groups.filter((g) => g.rawName.includes("智道")).length === 1);
+const zd = groups.find((g) => g.rawName.includes("智道"));
+ok("简称映射到全称", zd.company === "佛山市智道建筑材料有限公司");
+const sp = groups.find((g) => g.rawName === "4-未签合同-送货单");
+ok("特殊组识别", sp && sp.kind === "special" && sp.company === "未签合同-送货单");
+ok("特殊组文件名疑似建议", sp.files[0].suggestLabel.includes("鹏程") === false || sp.files[0].suggestGroupKey === "");
+ok("散文件进待分组", groups.some((g) => g.rawName === dt.PENDING_GROUP && g.files.some((f) => f.name === "散单.pdf")));
+
+// 根文件夹名=供应商简称 → 挂（未命名工地）
+const tree2 = dt.buildTree([mkEntry("大板东/2026.5.5.pdf")], treeSuppliers);
+ok("供应商根→未命名工地", tree2.sites[0].name === dt.UNNAMED_SITE && tree2.sites[0].groups[0].company === "广州市大板东建材有限公司");
+
+// 升级/降级/移动/拍平
+const pg = dt.promoteGroupToSite(tree, zd.key);
+ok("组升级为工地", tree.sites.length === 2 && pg.groups.length === 1);
+ok("降级并回", dt.demoteSiteToGroup(tree, pg.key, tree.sites[0].key) === true && tree.sites.length === 1);
+const spFile = sp.files[0];
+ok("移动文件", dt.moveFile(tree, spFile.key, zd.key) === true && zd.files.some((f) => f.key === spFile.key));
+const flat = dt.flattenForApply(tree);
+ok("拍平条数", flat.length === 5);
+const flatZd = flat.filter((e) => e.company === "佛山市智道建筑材料有限公司");
+ok("拍平公司预填", flatZd.length === 3);
+ok("拍平日期预填", flat.some((e) => e.dateGuess === "2026-05-23"));
+ok("特殊组标记", flat.every((e) => (e.groupName === dt.PENDING_GROUP ? e.special : true)));
 
 console.log("== invoice filename fallback ==");
 const byName = parseInvoiceFilename("260120_980.00_比音勒芬服饰股份有限公司广州海珠第一分公司.pdf");

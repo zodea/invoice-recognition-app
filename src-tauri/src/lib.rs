@@ -82,10 +82,121 @@ fn write_export_file(
         .ok_or_else(|| "导出路径不是有效 UTF-8".to_string())
 }
 
+/// —— PaddleOCR 官方异步 API（云识别）代理 ——
+/// 该 API 不带 CORS 头，WebView 里直接 fetch 会被拦，故在 Rust 侧发请求。
+/// 仅允许官方域名，避免被当成通用代理滥用。
+fn vl_check_url(url: &str) -> Result<(), String> {
+    if url.starts_with("https://paddleocr.aistudio-app.com/")
+        || url.starts_with("https://aistudio.baidu.com/")
+        || url.contains(".bcebos.com/")
+        || url.contains(".aistudio-hub.baidu.com/")
+    {
+        Ok(())
+    } else {
+        Err("仅允许访问 PaddleOCR 官方服务地址".to_string())
+    }
+}
+
+#[tauri::command]
+async fn vl_submit_file(
+    base_url: String,
+    token: String,
+    model: String,
+    optional_payload: String,
+    file_name: String,
+    file_base64: String,
+) -> Result<String, String> {
+    let url = format!("{}/api/v2/ocr/jobs", base_url.trim_end_matches('/'));
+    vl_check_url(&url)?;
+    let bytes = general_purpose::STANDARD
+        .decode(file_base64)
+        .map_err(|e| e.to_string())?;
+    let part = reqwest::multipart::Part::bytes(bytes).file_name(file_name);
+    let form = reqwest::multipart::Form::new()
+        .text("model", model)
+        .text("optionalPayload", optional_payload)
+        .part("file", part);
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("bearer {token}"))
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = resp.status();
+    let text = resp.text().await.map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(format!("提交失败 {status}：{}", &text[..text.len().min(200)]));
+    }
+    Ok(text)
+}
+
+#[tauri::command]
+async fn vl_get_json(url: String, token: String) -> Result<String, String> {
+    vl_check_url(&url)?;
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = resp.status();
+    let text = resp.text().await.map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(format!("查询失败 {status}：{}", &text[..text.len().min(200)]));
+    }
+    Ok(text)
+}
+
+#[tauri::command]
+async fn vl_get_text(url: String) -> Result<String, String> {
+    vl_check_url(&url)?;
+    let resp = reqwest::get(&url).await.map_err(|e| e.to_string())?;
+    let status = resp.status();
+    let text = resp.text().await.map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(format!("下载结果失败 {status}"));
+    }
+    Ok(text)
+}
+
+/// 用系统默认浏览器打开外部链接（仅允许 http/https，防止被喂本地路径或其它协议）。
+#[tauri::command]
+fn open_external(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("仅允许打开 http/https 链接".to_string());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &url])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+        std::process::Command::new(opener)
+            .arg(&url)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![pick_export_dir, write_export_file])
+        .invoke_handler(tauri::generate_handler![
+            pick_export_dir,
+            write_export_file,
+            open_external,
+            vl_submit_file,
+            vl_get_json,
+            vl_get_text
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

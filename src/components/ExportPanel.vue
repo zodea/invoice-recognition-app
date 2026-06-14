@@ -2,6 +2,7 @@
 import { ref, computed } from "vue";
 import { store } from "../store";
 import { exportToDirectory, exportByDownload, fsAccessSupported } from "../lib/export";
+import { toast, toastError, toastInfo } from "../lib/toast";
 
 const busy = ref(false);
 const logs = ref([]);
@@ -41,11 +42,11 @@ async function doExport() {
       log("当前环境不支持选择文件夹，改为逐个下载（建议用 Chrome / Edge）。");
       res = await exportByDownload(payload, log);
     }
-    log(`✅ 完成，共导出 ${res.files} 个文件的整理结果。`);
     done.value = true;
+    toast(`已导出 ${res.files} 个文件的整理结果。`, { duration: 6000 });
   } catch (e) {
-    if (e && (e.name === "AbortError" || /abort/i.test(e.message || ""))) log("已取消选择文件夹。");
-    else log("❌ 导出出错：" + ((e && e.message) || e));
+    if (e && (e.name === "AbortError" || /abort/i.test(e.message || ""))) toastInfo("已取消选择文件夹。");
+    else toastError("导出出错：" + ((e && e.message) || e));
   } finally {
     busy.value = false;
   }
@@ -64,7 +65,7 @@ async function doExport() {
       {{ busy ? "导出中…" : "📁 导出到文件夹" }}
     </button>
     <div class="text-ink-soft text-xs mt-1.5" v-if="!supported">※ 选择文件夹需 Chrome / Edge / 桌面应用；当前环境将改为逐个下载。</div>
-    <div class="mt-2.5 bg-[#0b1020] text-[#cbd5e1] rounded-md p-2.5 text-xs font-mono max-h-50 overflow-auto" v-if="logs.length">
+    <div class="mt-2.5 bg-[#0b1020] text-[#cbd5e1] rounded-md p-2.5 text-xs font-mono max-h-50 overflow-auto" v-if="busy && logs.length">
       <div v-for="(l, i) in logs" :key="i" :class="l.startsWith('✅') || l.startsWith('❌') ? 'text-white font-700' : ''">{{ l }}</div>
     </div>
   </div>

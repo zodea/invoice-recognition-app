@@ -10,6 +10,15 @@ export default defineConfig({
   server: {
     port: 5173,
     open: true,
+    proxy: {
+      // PaddleOCR 官方异步 API 不带 CORS 头，浏览器开发期经本代理同源转发；
+      // 打包后的桌面端走 Rust 侧请求（lib.rs http_request），不经此代理。
+      "/vl-api": {
+        target: "https://paddleocr.aistudio-app.com",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/vl-api/, ""),
+      },
+    },
   },
   optimizeDeps: {
     // 这些库体积大或含 worker，交给 Vite 预构建
