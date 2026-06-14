@@ -182,7 +182,24 @@ export async function vlParseDocument({ blob, filename } = {}, onProgress) {
   if (!blob) throw new Error("没有可识别的内容");
 
   if (onProgress) onProgress("提交云识别任务…");
-  const job = await submitJob(blob, filename || blob.name || "scan");
+  // 免费额度高峰服务端会返回「队列已满(code 10010)」——不是账号/代码问题，退避重试几次再放弃。
+  let job;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      job = await submitJob(blob, filename || blob.name || "scan");
+      break;
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      const queueFull = /队列已满|10010/.test(msg);
+      if (queueFull && attempt <= 3) {
+        if (onProgress) onProgress(`云端排队已满，${attempt * 4}秒后重试（第 ${attempt}/3 次）…`);
+        await new Promise((r) => setTimeout(r, attempt * 4000));
+        continue;
+      }
+      if (queueFull) throw new Error("云端排队已满，请过几分钟重试（不是账号问题，是免费额度高峰拥堵）。");
+      throw e;
+    }
+  }
   const jobId = job && (job.jobId || job.id);
   if (!jobId) throw new Error(`云服务未返回任务ID：${JSON.stringify(job).slice(0, 120)}`);
 
