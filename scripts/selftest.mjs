@@ -182,6 +182,50 @@ ok("横向印刷单-2行明细", r10.docs[0].items.length === 2);
 ok("横向印刷单-名/单价/金额", r10.docs[0].items[0].name === "201不锈钢膨胀栓10*120" && r10.docs[0].items[0].unitPrice === 0.88 && r10.docs[0].items[0].total === 352);
 ok("横向印刷单-无误报待复核", !r10.docs[0].note);
 
+console.log("== 单价对比（issue #7）==");
+const pc = await import("../src/lib/price-compare.js");
+// 归一化：厘→mm、×/x→*、全半角、去空格、大小写；规格写法差异归一致
+ok("归一化 厘→mm", pc.normalizeMaterial("9厘夹板") === "9mm夹板");
+ok("归一化 ×→*", pc.normalizeMaterial("8×6 美固钉") === "8*6美固钉");
+ok("归一化 x→*", pc.normalizeMaterial("8X6美固钉") === "8*6美固钉");
+ok("归一化 规格写法归一致", pc.normalizeMaterial("75*40*0.6 竖骨") === pc.normalizeMaterial("75 * 40 * 0.6竖骨"));
+// 聚合（含单价由 总价/数量 推导）+ 对比表（最近价/min~max/最低价）
+const pcParts = [{ id: "p1", name: "工地A" }, { id: "p2", name: "工地B" }];
+const pcFiles = [
+  { company: "甲", partitionId: "p1", docs: [{ date: "2026-05-01", items: [{ name: "9厘夹板", unit: "张", unitPrice: 50 }] }] },
+  { company: "甲", partitionId: "p1", docs: [{ date: "2026-05-20", items: [{ name: "9厘夹板", unit: "张", unitPrice: 48 }] }] },
+  { company: "乙", partitionId: "p2", docs: [{ date: "2026-05-10", items: [{ name: "9 厘 夹板", unit: "张", total: 90, quantity: 2 }] }] },
+];
+const obs = pc.aggregateItems(pcFiles, pcParts);
+ok("聚合-单价由总价/数量推导=45", obs.some((o) => o.supplier === "乙" && o.price === 45));
+const cmp = pc.buildPriceCompare(obs);
+ok("对比-同材料归一行", cmp.rows.length === 1);
+ok("对比-甲最近价48/区间48~50", cmp.rows[0].bySupplier["甲"].recent === 48 && cmp.rows[0].bySupplier["甲"].min === 48 && cmp.rows[0].bySupplier["甲"].max === 50);
+ok("对比-最低价供应商=乙(45)", cmp.rows[0].lowest === "乙" && cmp.rows[0].bySupplier["乙"].recent === 45);
+ok("对比-按工地A筛选只剩甲", Object.keys(pc.buildPriceCompare(obs, { site: "工地A" }).rows[0].bySupplier).join() === "甲");
+// 手动并组/拆组：把不同 normKey 的两种板材并成一组、再拆开
+const obs2 = pc.aggregateItems([
+  { company: "甲", partitionId: "p1", docs: [{ date: "2026-05-01", items: [{ name: "9厘夹板", unit: "张", unitPrice: 50 }] }] },
+  { company: "乙", partitionId: "p1", docs: [{ date: "2026-05-01", items: [{ name: "9mm多层板", unit: "张", unitPrice: 40 }] }] },
+], pcParts);
+ok("并组前-两行", pc.buildPriceCompare(obs2).rows.length === 2);
+const mg = pc.mergeGroups({}, "9mm夹板", ["9mm多层板"]);
+ok("并组后-一行", pc.buildPriceCompare(obs2, { manualGroups: mg }).rows.length === 1);
+ok("拆组-恢复两行", pc.buildPriceCompare(obs2, { manualGroups: pc.splitGroup(mg, "9mm多层板") }).rows.length === 2);
+// 历史 Excel 导入（导出格式：每工作表=公司，跳过待复核清单）
+const histWb = XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(histWb, XLSX.utils.aoa_to_sheet([
+  ["日期", "单号", "材料名称", "单价", "数量", "总价", "单位", "备注", "来源档案"],
+  ["2026-04-01", "X1", "9厘夹板", 52, 3, 156, "张", "", "a.pdf"],
+]), "丙");
+XLSX.utils.book_append_sheet(histWb, XLSX.utils.aoa_to_sheet([["公司", "日期"]]), "待复核清单");
+const histObs = pc.importHistoryWorkbookItems(XLSX.write(histWb, { type: "array", bookType: "xlsx" }));
+ok("历史导入-跳过待复核清单+取价+归一化", histObs.length === 1 && histObs[0].supplier === "丙" && histObs[0].price === 52 && histObs[0].normKey === "9mm夹板");
+// 导出对比 Excel
+const expWb = XLSX.read(pc.exportPriceCompareWorkbookBytes(cmp), { type: "array" });
+ok("导出-含单价对比表", expWb.SheetNames.includes("单价对比"));
+ok("导出-表头含供应商+最低价列", (() => { const h = XLSX.utils.sheet_to_json(expWb.Sheets["单价对比"], { header: 1 })[0]; return h.includes("甲") && h.includes("乙") && h.includes("最低价供应商"); })());
+
 console.log("== excel ==");
 const files = [
   {

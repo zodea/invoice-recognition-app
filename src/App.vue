@@ -8,6 +8,7 @@ import ToastHost from "./components/ToastHost.vue";
 const DeliveryView = defineAsyncComponent(() => import("./views/DeliveryView.vue"));
 const InvoiceView = defineAsyncComponent(() => import("./views/InvoiceView.vue"));
 const SupplierView = defineAsyncComponent(() => import("./views/SupplierView.vue"));
+const PriceCompareView = defineAsyncComponent(() => import("./views/PriceCompareView.vue"));
 const SettingsDialog = defineAsyncComponent(() => import("./components/SettingsDialog.vue"));
 
 const settingsOpen = ref(false);
@@ -25,6 +26,7 @@ const tabCls =
         <TabsTrigger value="invoice" :class="tabCls">🧾 发票批量打印</TabsTrigger>
         <TabsTrigger value="delivery" :class="tabCls">📦 送货单整理</TabsTrigger>
         <TabsTrigger value="supplier" :class="tabCls">🏢 分供方</TabsTrigger>
+        <TabsTrigger value="price" :class="tabCls">💰 单价对比</TabsTrigger>
       </TabsList>
       <button class="ml-auto border-none bg-white/12 text-white px-3 py-1.75 rounded-lg text-sm font-600 cursor-pointer hover:bg-white/24" title="云识别等设置" @click="settingsOpen = true">⚙ 设置</button>
     </header>
@@ -39,6 +41,9 @@ const tabCls =
       </TabsContent>
       <TabsContent value="supplier" class="outline-none">
         <SupplierView />
+      </TabsContent>
+      <TabsContent value="price" class="outline-none">
+        <PriceCompareView />
       </TabsContent>
     </main>
 
