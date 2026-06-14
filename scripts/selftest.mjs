@@ -165,6 +165,23 @@ const md9ok =
   '<tr><td colspan="6">合计金额： 陆拾捌元（¥68）</td></tr></table>';
 ok("合计相符不误报", !/合计/.test(parseVlToDocs([md9ok]).docs[0].note || ""));
 
+console.log("== 多形态回归（issue #10）==");
+// 竖向手写（富丰）见 #9 用例；一页两张不同单（富丰 5.4）见 #8 rFuSh；此处补 横向/印刷销售单（广东磊轶 5.14）。
+// 印刷单表头多出 出货仓库/备注 列、单价多位小数、正规 NO 单号；方向横躺已由 VL useDocOrientationClassify 转正。
+const md10ml =
+  "# 广东磊轶五金有限公司 销售单\n\n客户名称：广东瑞航建设工程有限公司 日期：2026-05-14 NO：XK-FS001-T-20260514-008\n\n" +
+  "<table border=1><tr><td>行号</td><td>品名规格</td><td>单位</td><td>数量</td><td>单价</td><td>金额</td><td>出货仓库</td><td>备注</td></tr>" +
+  "<tr><td>1</td><td>201不锈钢膨胀栓10*120</td><td>个</td><td>400</td><td>0.88000</td><td>352.00</td><td>大仓库</td><td></td></tr>" +
+  "<tr><td>2</td><td>201不锈钢膨胀栓8*80</td><td>个</td><td>8190</td><td>0.38000</td><td>3112.20</td><td>大仓库</td><td></td></tr>" +
+  '<tr><td colspan="5">合计金额大写：叁仟肆佰陆拾肆元贰角</td><td>3464.20</td><td></td><td></td></tr></table>';
+const r10 = parseVlToDocs([md10ml]);
+ok("横向印刷单-公司", r10.company === "广东磊轶五金有限公司");
+ok("横向印刷单-日期", r10.docs[0].date === "2026-05-14");
+ok("横向印刷单-真实单号(NO 不被税号逻辑误伤)", r10.docs[0].orderNo === "XK-FS001-T-20260514-008");
+ok("横向印刷单-2行明细", r10.docs[0].items.length === 2);
+ok("横向印刷单-名/单价/金额", r10.docs[0].items[0].name === "201不锈钢膨胀栓10*120" && r10.docs[0].items[0].unitPrice === 0.88 && r10.docs[0].items[0].total === 352);
+ok("横向印刷单-无误报待复核", !r10.docs[0].note);
+
 console.log("== excel ==");
 const files = [
   {
