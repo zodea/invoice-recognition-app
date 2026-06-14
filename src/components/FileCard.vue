@@ -2,7 +2,7 @@
 import { computed, ref } from "vue";
 import { CheckboxIndicator, CheckboxRoot } from "reka-ui";
 import { store, actions, makeItem, partitionName } from "../store";
-import { appSettings, saveAppSettings } from "../lib/app-settings";
+import { appSettings } from "../lib/app-settings";
 import FieldsTable from "./FieldsTable.vue";
 import HoverZoom from "./HoverZoom.vue";
 
@@ -35,42 +35,29 @@ function useCandidate(name) {
   else d.items.push({ ...makeItem(), name });
 }
 
-function toggleZoom() {
-  appSettings.hoverZoom = !appSettings.hoverZoom;
-  saveAppSettings();
-}
-
 const fieldInput = "w-full min-w-0 border border-line-strong rounded-md px-2.5 py-1.5 font-inherit bg-white text-ink";
 </script>
 
 <template>
   <article class="panel overflow-hidden">
-    <div class="grid grid-cols-1 lg:grid-cols-[176px_minmax(0,1fr)]">
-      <aside class="bg-[#f8fafc] border-b lg:border-b-0 lg:border-r border-line p-3">
+    <div class="grid grid-cols-1 lg:grid-cols-[150px_minmax(0,1fr)]">
+      <aside class="bg-[#f8fafc] border-b lg:border-b-0 lg:border-r border-line p-2.5">
         <div class="flex items-center justify-between gap-2 mb-2">
           <span class="chip border" :class="statusClass">{{ statusText }}</span>
-          <div class="flex items-center gap-1.5">
-            <button
-              class="text-[11px] leading-none px-1.5 py-0.75 rounded border transition-colors"
-              :class="appSettings.hoverZoom ? 'border-brand text-brand bg-brand-soft' : 'border-line text-ink-soft bg-white'"
-              :title="appSettings.hoverZoom ? '悬停放大镜：开（点击关闭）' : '悬停放大镜：关（点击开启）'"
-              @click="toggleZoom"
-            >🔍{{ appSettings.hoverZoom ? "开" : "关" }}</button>
-            <span class="text-[11px] text-ink-soft">{{ file.kind === "pdf" ? "PDF" : "图片" }}</span>
-          </div>
+          <span class="text-[11px] text-ink-soft">{{ file.kind === "pdf" ? "PDF" : "图片" }}</span>
         </div>
 
-        <div v-if="file.rendering" class="h-44 flex items-center justify-center text-ink-soft text-xs border border-dashed border-line-strong rounded-md bg-white">
+        <div v-if="file.rendering" class="h-32 flex items-center justify-center text-ink-soft text-xs border border-dashed border-line-strong rounded-md bg-white">
           正在读取预览
         </div>
-        <div v-else-if="file.renderError" class="h-44 flex items-center justify-center text-danger text-xs p-2 text-center border border-dashed border-line-strong rounded-md bg-white" :title="file.renderError">
+        <div v-else-if="file.renderError" class="h-32 flex items-center justify-center text-danger text-xs p-2 text-center border border-dashed border-line-strong rounded-md bg-white" :title="file.renderError">
           无法读取预览
         </div>
         <template v-else>
           <HoverZoom
             :src="file.pages[0]?.dataUrl"
             :enabled="appSettings.hoverZoom"
-            img-class="block w-full h-44 object-contain border border-line rounded-md bg-white"
+            img-class="block w-full h-32 object-contain border border-line rounded-md bg-white"
             :title="appSettings.hoverZoom ? '悬停放大；点击看大图' : '点击看大图'"
             @open="preview = file.pages[0]?.dataUrl"
           />
@@ -94,8 +81,8 @@ const fieldInput = "w-full min-w-0 border border-line-strong rounded-md px-2.5 p
         </div>
       </aside>
 
-      <section class="min-w-0 p-3.5">
-        <header class="flex items-start gap-3 border-b border-line pb-3">
+      <section class="min-w-0 p-3">
+        <header class="flex items-start gap-3 border-b border-line pb-2.5">
           <div class="min-w-0 flex-1">
             <h3 class="m-0 text-base font-700 truncate" :title="file.name">{{ file.name }}</h3>
             <div class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-ink-soft">
@@ -110,7 +97,7 @@ const fieldInput = "w-full min-w-0 border border-line-strong rounded-md px-2.5 p
           <button class="btn-danger px-2.5 py-1.25 shrink-0" @click="actions.removeFile(file.id)">移除</button>
         </header>
 
-        <div class="grid grid-cols-1 xl:grid-cols-[180px_minmax(260px,1fr)_auto] gap-3 mt-3 items-end">
+        <div class="grid grid-cols-1 xl:grid-cols-[180px_minmax(260px,1fr)_auto] gap-2.5 mt-2.5 items-end">
           <label class="field-label">工地 / 分区
             <select :class="fieldInput" :value="file.partitionId" @change="actions.moveFile(file.id, $event.target.value)">
               <option v-for="p in store.partitions" :key="p.id" :value="p.id">{{ p.name }}</option>
@@ -164,7 +151,7 @@ const fieldInput = "w-full min-w-0 border border-line-strong rounded-md px-2.5 p
             候选品名：
             <button v-for="(c, i) in file.itemCandidates" :key="i" class="border border-line-strong bg-white rounded-full px-2 py-0.25 m-0.5 text-xs" @click="useCandidate(c)">{{ c }}</button>
           </div>
-          <pre class="m-0 max-h-44 overflow-auto text-xs whitespace-pre-wrap text-ink">{{ file.ocrText }}</pre>
+          <pre class="m-0 max-h-32 overflow-auto text-xs whitespace-pre-wrap text-ink">{{ file.ocrText }}</pre>
         </div>
 
         <div class="mt-3">

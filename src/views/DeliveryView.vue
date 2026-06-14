@@ -24,7 +24,7 @@ const problemCount = computed(() => collectProblems().total);
     <DeliveryTree />
     <PartitionBar v-if="!store.staging" />
 
-    <div class="flex items-center gap-3" v-if="store.files.length && !store.staging">
+    <div class="flex items-center gap-3 flex-wrap sticky top-[54px] z-10 bg-panel border border-line rounded-card px-3 py-2 shadow-card" v-if="store.files.length && !store.staging">
       <button class="btn px-3 py-1.75 font-600" :disabled="store.ocrBusy" @click="actions.runOcrAll">
         🔍 识别全部未识别（{{ store.files.filter((f) => f.ocrStatus !== "done").length }}）
       </button>

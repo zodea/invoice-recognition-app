@@ -48,7 +48,7 @@ function onPick(e) {
 
 <template>
   <div
-    class="upload border-2 border-dashed rounded-card bg-panel px-5 py-7 text-center cursor-pointer transition-colors"
+    class="upload border-2 border-dashed rounded-card bg-panel px-3.5 py-2.5 cursor-pointer transition-colors flex items-center gap-3"
     :class="rejected ? 'border-danger bg-[#fef2f2]' : dragging ? 'border-brand bg-brand-soft' : 'border-line-strong hover:border-brand'"
     @dragover.prevent="onDragOver"
     @dragleave.prevent="onDragLeave"
@@ -57,13 +57,11 @@ function onPick(e) {
   >
     <input ref="input" type="file" multiple accept=".pdf,image/*" hidden @change="onPick" />
     <input ref="folderInput" type="file" webkitdirectory multiple hidden @change="onPick" />
-    <div class="text-2xl" :class="rejected ? 'text-danger' : 'text-brand'">{{ rejected ? "🚫" : "⬆" }}</div>
-    <div class="text-base font-600 mt-1.5">
-      {{ rejected ? "该类型不支持，请拖入 PDF / 图片 / 文件夹" : "把 PDF / 图片 / 文件夹 拖到这里，或点击选择" }}
+    <div class="text-xl shrink-0" :class="rejected ? 'text-danger' : 'text-brand'">{{ rejected ? "🚫" : "⬆" }}</div>
+    <div class="min-w-0 flex-1">
+      <div class="text-sm font-600 truncate">{{ rejected ? "该类型不支持，请拖入 PDF / 图片 / 文件夹" : "拖入 PDF / 图片 / 文件夹，或点击选择" }}</div>
+      <div class="text-ink-soft text-xs truncate">支持多选、可拖整个文件夹；上传后分配到项目分区再识别、合并、导出</div>
     </div>
-    <div class="text-ink-soft mt-1">支持多选、可拖整个文件夹；上传后可分配到不同项目分区，并逐份识别、合并、导出</div>
-    <div class="mt-2">
-      <button type="button" class="btn px-2.5 py-1.25 text-xs" @click.stop="folderInput.click()">📁 选择文件夹</button>
-    </div>
+    <button type="button" class="btn px-2.5 py-1.25 text-xs shrink-0" @click.stop="folderInput.click()">📁 选择文件夹</button>
   </div>
 </template>
