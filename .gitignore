@@ -30,6 +30,7 @@ public/发票测试/
 
 # Temporary/self-test artifacts
 scripts/_*.xlsx
+scripts/vl-out/
 *.log
 ._*
 
@@ -41,3 +42,8 @@ todo.md
 .claude/
 .DS_Store
 Thumbs.db
+
+# 真实测试发票/送货单（本地点检用，含客户与价格隐私，绝不入库）
+/发票/
+/送货单/
+public/octest/
