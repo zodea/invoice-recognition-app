@@ -226,6 +226,25 @@ const expWb = XLSX.read(pc.exportPriceCompareWorkbookBytes(cmp), { type: "array"
 ok("导出-含单价对比表", expWb.SheetNames.includes("单价对比"));
 ok("导出-表头含供应商+最低价列", (() => { const h = XLSX.utils.sheet_to_json(expWb.Sheets["单价对比"], { header: 1 })[0]; return h.includes("甲") && h.includes("乙") && h.includes("最低价供应商"); })());
 
+console.log("== 证照识别（ADR-0002）==");
+const cred = await import("../src/lib/credential-ocr.js");
+const bizLines = ["统一社会信用代码 914403003500317390", "营业执照", "名称 深圳朗生整装科技有限公司", "类型 有限责任公司", "法定代表人 凌开舟", "成立日期 2015年09月02日", "住所 深圳市龙岗区龙岗街道南联社区爱南路368号", "登记机关 深圳市市场监督管理局"];
+ok("归类-营业执照", cred.classifyDoc(bizLines) === "营业执照");
+const bizF = cred.extractCredentialFields("营业执照", bizLines);
+ok("营业执照-公司名", bizF.name === "深圳朗生整装科技有限公司");
+ok("营业执照-税号", bizF.taxNo === "914403003500317390");
+ok("营业执照-法人", bizF.legalRep === "凌开舟");
+ok("营业执照-地址含龙岗", /龙岗/.test(bizF.address || ""));
+const idLines = ["姓名 凌开舟", "性别 男 民族 汉", "公民身份号码 440301199001011234"];
+ok("归类-身份证", cred.classifyDoc(idLines) === "法人身份证");
+ok("身份证-姓名→法人", cred.extractCredentialFields("法人身份证", idLines).legalRep === "凌开舟");
+const bankLines = ["中国人民银行", "开户许可证", "核准号 J5810", "存款人 深圳朗生整装科技有限公司", "开户银行 招商银行深圳分行", "账号 755912345678901"];
+ok("归类-开户许可证", cred.classifyDoc(bankLines) === "银行开户许可证");
+const bankF = cred.extractCredentialFields("银行开户许可证", bankLines);
+ok("开户许可证-开户行", bankF.bank === "招商银行深圳分行");
+ok("开户许可证-账号", bankF.bankAccount === "755912345678901");
+ok("归类-不确定返回空", cred.classifyDoc(["随便一些文字", "与证照无关"]) === "");
+
 console.log("== excel ==");
 const files = [
   {

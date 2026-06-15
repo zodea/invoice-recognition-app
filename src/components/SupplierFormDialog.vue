@@ -5,7 +5,8 @@
 import { reactive, ref, computed, watch } from "vue";
 import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
 import { emptySupplier, ATTACHMENT_CATEGORIES } from "../lib/supplier-db";
-import { toastWarn } from "../lib/toast";
+import { toast, toastWarn } from "../lib/toast";
+import { recognizeCredentialFile } from "../lib/credential-ocr.js";
 
 const props = defineProps({
   open: Boolean,
@@ -19,11 +20,16 @@ const auid = () => `att_${Date.now().toString(36)}_${(seq++).toString(36)}`;
 const draft = reactive(emptySupplier());
 const aliasesText = ref("");
 const isNew = computed(() => !props.supplier);
+const autoFilled = ref(new Set()); // 被 OCR 自动回填的字段（高亮“请核对”）
+const autoCls = "!border-ok !bg-[#f0fdf4]";
+const hl = (k) => (autoFilled.value.has(k) ? autoCls : "");
+const FIELD_LABEL = { name: "公司全称", taxNo: "税号", legalRep: "法人", address: "注册地址", bank: "开户行", bankAccount: "银行账号", contact: "联系人" };
 
 function resetDraft() {
   Object.assign(draft, emptySupplier(), props.supplier ? JSON.parse(JSON.stringify(props.supplier)) : {});
   if (!Array.isArray(draft.attachments)) draft.attachments = [];
   aliasesText.value = (draft.aliases || []).join("、");
+  autoFilled.value = new Set();
 }
 watch(() => props.open, (v) => { if (v) resetDraft(); });
 
@@ -48,7 +54,7 @@ function onUpload(e) {
       continue;
     }
     const ext = (file.name.split(".").pop() || "").toLowerCase();
-    draft.attachments.push({
+    const att = {
       id: auid(),
       category: classifyByName(file.name),
       fileName: file.name,
@@ -57,8 +63,41 @@ function onUpload(e) {
       addedAt: new Date().toISOString().slice(0, 10),
       _url: URL.createObjectURL(file), // 仅当前界面预览，不持久化
       _isImg: file.type.startsWith("image/"),
-    });
+      _ocr: "",
+    };
+    draft.attachments.push(att);
+    ocrAttachment(att, file); // 本地 OCR：归类 + 字段回填（ADR-0002）
   }
+}
+
+async function ocrAttachment(att, file) {
+  att._ocr = "识别中…";
+  try {
+    const { category, fields } = await recognizeCredentialFile(file);
+    if (category) att.category = category;
+    applyAutofill(fields, att.category);
+  } catch (e) {
+    /* 识别失败不阻断：保留文件名归类 */
+  } finally {
+    att._ocr = "";
+  }
+}
+function applyAutofill(fields, category) {
+  const filled = [];
+  const conflicts = [];
+  for (const [k, v] of Object.entries(fields || {})) {
+    if (!(k in FIELD_LABEL) || !v) continue;
+    const cur = String(draft[k] || "").trim();
+    if (!cur) {
+      draft[k] = v;
+      autoFilled.value = new Set(autoFilled.value).add(k);
+      filled.push(FIELD_LABEL[k]);
+    } else if (cur !== String(v).trim()) {
+      conflicts.push(`${FIELD_LABEL[k]} 识别为「${v}」`);
+    }
+  }
+  if (filled.length) toast(`已从${category || "证照"}自动回填：${filled.join("、")}（请核对）`);
+  if (conflicts.length) toastWarn(`与现有不一致，未覆盖：${conflicts.join("；")}`);
 }
 function viewAttachment(att) {
   if (att._url) window.open(att._url, "_blank", "noopener");
@@ -87,6 +126,7 @@ function resetDraftNew() {
   for (const a of draft.attachments || []) if (a._url) URL.revokeObjectURL(a._url);
   Object.assign(draft, emptySupplier());
   aliasesText.value = "";
+  autoFilled.value = new Set();
 }
 
 const fi = "field-input";
@@ -107,11 +147,11 @@ const fi = "field-input";
           <section class="panel p-3">
             <h3 class="m-0 mb-2.5 text-sm font-700 text-brand">基础信息</h3>
             <div class="grid grid-cols-2 lt-md:grid-cols-1 gap-x-4 gap-y-2.5">
-              <label class="field-label col-span-2">公司全称 <span class="text-danger">*</span><input :class="fi" v-model="draft.name" placeholder="如：广州市大板东建材有限公司" /></label>
+              <label class="field-label col-span-2">公司全称 <span class="text-danger">*</span><input :class="[fi, hl('name')]" v-model="draft.name" placeholder="如：广州市大板东建材有限公司" /></label>
               <label class="field-label col-span-2">简称 / 别名（顿号分隔，用于文件夹名对应）<input :class="fi" v-model="aliasesText" placeholder="如：大板东、大板东建材" /></label>
-              <label class="field-label">公司税号（统一社会信用代码）<input :class="fi" v-model="draft.taxNo" /></label>
-              <label class="field-label">法人（法定代表人）<input :class="fi" v-model="draft.legalRep" /></label>
-              <label class="field-label col-span-2">注册地址<input :class="fi" v-model="draft.address" /></label>
+              <label class="field-label">公司税号（统一社会信用代码）<input :class="[fi, hl('taxNo')]" v-model="draft.taxNo" /></label>
+              <label class="field-label">法人（法定代表人）<input :class="[fi, hl('legalRep')]" v-model="draft.legalRep" /></label>
+              <label class="field-label col-span-2">注册地址<input :class="[fi, hl('address')]" v-model="draft.address" /></label>
             </div>
           </section>
 
@@ -119,8 +159,8 @@ const fi = "field-input";
           <section class="panel p-3">
             <h3 class="m-0 mb-2.5 text-sm font-700 text-brand">开票信息</h3>
             <div class="grid grid-cols-2 lt-md:grid-cols-1 gap-x-4 gap-y-2.5">
-              <label class="field-label">开户行<input :class="fi" v-model="draft.bank" /></label>
-              <label class="field-label">银行账号<input :class="fi" v-model="draft.bankAccount" /></label>
+              <label class="field-label">开户行<input :class="[fi, hl('bank')]" v-model="draft.bank" /></label>
+              <label class="field-label">银行账号<input :class="[fi, hl('bankAccount')]" v-model="draft.bankAccount" /></label>
             </div>
           </section>
 
@@ -128,7 +168,7 @@ const fi = "field-input";
           <section class="panel p-3">
             <h3 class="m-0 mb-2.5 text-sm font-700 text-brand">联系人信息</h3>
             <div class="grid grid-cols-2 lt-md:grid-cols-1 gap-x-4 gap-y-2.5">
-              <label class="field-label">联系人（签约代表）<input :class="fi" v-model="draft.contact" /></label>
+              <label class="field-label">联系人（签约代表）<input :class="[fi, hl('contact')]" v-model="draft.contact" /></label>
               <label class="field-label">电话<input :class="fi" v-model="draft.phone" /></label>
               <label class="field-label col-span-2">备注<input :class="fi" v-model="draft.note" /></label>
             </div>
@@ -154,6 +194,7 @@ const fi = "field-input";
                   <option v-for="c in ATTACHMENT_CATEGORIES" :key="c" :value="c">{{ c }}</option>
                 </select>
                 <span class="min-w-0 flex-1 truncate text-xs text-ink" :title="att.fileName">{{ att.fileName }}</span>
+                <span v-if="att._ocr" class="text-xs text-brand shrink-0">{{ att._ocr }}</span>
                 <button class="btn px-2 py-0.75 text-xs shrink-0" @click="viewAttachment(att)">查看</button>
                 <button class="btn-danger px-2 py-0.75 text-xs shrink-0" @click="removeAttachment(att)">删除</button>
               </div>
