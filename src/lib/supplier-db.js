@@ -29,16 +29,22 @@ export function emptySupplier() {
     name: "",
     aliases: [],
     taxNo: "",
+    legalRep: "", // 法人(法定代表人) —— 营业执照/法人身份证回填
+    address: "",  // 注册地址 —— 营业执照回填
     bank: "",
     bankAccount: "",
     contact: "",
     phone: "",
     note: "",
     source: "manual",
+    attachments: [], // 附件档案 [{id,category,fileName,relPath,ext,addedAt}]（ADR-0002）
     purchases: [], // 采购记录 [{id,date,site,item,unit,quantity,unitPrice,total,note}]
     payments: [],  // 支付记录 [{id,date,site,amount,method,note}]
   };
 }
+
+// 附件类别（取自 送货单/公司信息 模板的命名）。
+export const ATTACHMENT_CATEGORIES = ["营业执照", "法人身份证", "银行开户许可证", "签约代表身份证", "品牌授权证明", "其他"];
 
 export function emptyPurchase() {
   return { id: uid(), date: "", site: "", item: "", unit: "", quantity: "", unitPrice: "", total: "", note: "" };
@@ -154,15 +160,15 @@ export function collectFromInvoices(list, invoices) {
 }
 
 // —— Excel 导入/导出 ——
-const EXPORT_HEADERS = ["公司全称", "简称/别名", "公司税号", "开户行", "银行账号", "联系人", "电话", "备注"];
+const EXPORT_HEADERS = ["公司全称", "简称/别名", "公司税号", "法人", "注册地址", "开户行", "银行账号", "联系人", "电话", "备注"];
 
 export function exportSuppliersWorkbookBytes(list) {
   const rows = [EXPORT_HEADERS.slice()];
   for (const s of list) {
-    rows.push([s.name, (s.aliases || []).join("、"), s.taxNo, s.bank, s.bankAccount, s.contact, s.phone, s.note]);
+    rows.push([s.name, (s.aliases || []).join("、"), s.taxNo, s.legalRep || "", s.address || "", s.bank, s.bankAccount, s.contact, s.phone, s.note]);
   }
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws["!cols"] = [{ wch: 30 }, { wch: 20 }, { wch: 22 }, { wch: 24 }, { wch: 22 }, { wch: 10 }, { wch: 14 }, { wch: 20 }];
+  ws["!cols"] = [{ wch: 30 }, { wch: 20 }, { wch: 22 }, { wch: 10 }, { wch: 30 }, { wch: 24 }, { wch: 22 }, { wch: 10 }, { wch: 14 }, { wch: 20 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "分供方");
   return XLSX.write(wb, { type: "array", bookType: "xlsx" });
@@ -190,6 +196,8 @@ export function importSuppliersWorkbookBytes(list, bytes) {
     if (iName < 0) continue;
     const iAlias = headerIndex(head, ["简称", "别名"]);
     const iTax = headerIndex(head, ["税号", "纳税人识别号", "信用代码"]);
+    const iLegalRep = headerIndex(head, ["法人", "法定代表人"]);
+    const iAddress = headerIndex(head, ["注册地址", "地址"]);
     const iBank = headerIndex(head, ["开户行", "开户银行"]);
     const iAcct = headerIndex(head, ["银行账号", "账号", "账户"]);
     const iContact = headerIndex(head, ["联系人"]);
@@ -202,6 +210,8 @@ export function importSuppliersWorkbookBytes(list, bytes) {
       const aliases = iAlias >= 0 ? String(r[iAlias] || "").split(/[、,，;；/]+/).map((x) => x.trim()).filter(Boolean) : [];
       const patch = {
         taxNo: iTax >= 0 ? String(r[iTax] || "").trim() : "",
+        legalRep: iLegalRep >= 0 ? String(r[iLegalRep] || "").trim() : "",
+        address: iAddress >= 0 ? String(r[iAddress] || "").trim() : "",
         bank: iBank >= 0 ? String(r[iBank] || "").trim() : "",
         bankAccount: iAcct >= 0 ? String(r[iAcct] || "").trim() : "",
         contact: iContact >= 0 ? String(r[iContact] || "").trim() : "",

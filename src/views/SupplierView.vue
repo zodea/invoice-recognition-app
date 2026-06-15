@@ -4,7 +4,6 @@ import { invoiceStore } from "../invoiceStore";
 import {
   loadSuppliers,
   saveSuppliers,
-  emptySupplier,
   collectFromInvoices,
   exportSuppliersWorkbookBytes,
   importSuppliersWorkbookBytes,
@@ -16,14 +15,15 @@ import { downloadBytes } from "../lib/invoice-layout";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 import SupplierDetail from "../components/SupplierDetail.vue";
+import SupplierFormDialog from "../components/SupplierFormDialog.vue";
 
 const db = reactive({ list: loadSuppliers() });
 const query = ref("");
 const importInput = ref(null);
 
-// 编辑状态：editingId = 行 id；新增时先 push 草稿再编辑
-const editingId = ref("");
-const draft = reactive(emptySupplier());
+// 新增/编辑走弹窗（SupplierFormDialog），不再内联 div（避免列表重排）。
+const formOpen = ref(false);
+const formSupplier = ref(null); // null = 新增
 
 function persist() {
   saveSuppliers(db.list);
@@ -39,55 +39,31 @@ const filtered = computed(() => {
 });
 
 function startAdd() {
-  Object.assign(draft, emptySupplier());
-  draft.aliasesText = "";
-  editingId.value = "__new__";
+  formSupplier.value = null;
+  formOpen.value = true;
 }
 function startEdit(s) {
-  Object.assign(draft, JSON.parse(JSON.stringify(s)));
-  draft.aliasesText = (s.aliases || []).join("、");
-  editingId.value = s.id;
+  formSupplier.value = s;
+  formOpen.value = true;
 }
-function cancelEdit() {
-  editingId.value = "";
-}
-function commitEdit() {
-  const name = (draft.name || "").trim();
-  if (name.length < 2) {
-    toastWarn("公司全称至少 2 个字。");
-    return;
-  }
-  const aliases = String(draft.aliasesText || "")
-    .split(/[、,，;；/]+/)
-    .map((x) => x.trim())
-    .filter(Boolean);
-  const dup = db.list.find((s) => s.id !== draft.id && normalizeCompanyName(s.name) === normalizeCompanyName(name));
+// 弹窗保存：dup 校验 + 新增/替换 + 持久化；keepOpen=保存并继续新增。
+function onFormSubmit({ record, isNew, keepOpen }) {
+  const name = (record.name || "").trim();
+  const dup = db.list.find((s) => s.id !== record.id && normalizeCompanyName(s.name) === normalizeCompanyName(name));
   if (dup) {
     toastWarn(`已存在同名分供方：${dup.name}`);
     return;
   }
-  const record = {
-    id: draft.id,
-    name,
-    aliases,
-    taxNo: (draft.taxNo || "").trim(),
-    bank: (draft.bank || "").trim(),
-    bankAccount: (draft.bankAccount || "").trim(),
-    contact: (draft.contact || "").trim(),
-    phone: (draft.phone || "").trim(),
-    note: (draft.note || "").trim(),
-    source: draft.source || "manual",
-  };
-  if (editingId.value === "__new__") {
+  if (isNew) {
     db.list.push(record);
     toast(`已新增分供方：${name}`);
   } else {
-    const i = db.list.findIndex((s) => s.id === editingId.value);
+    const i = db.list.findIndex((s) => s.id === record.id);
     if (i >= 0) db.list.splice(i, 1, record);
     toast(`已保存：${name}`);
   }
   persist();
-  editingId.value = "";
+  if (!keepOpen) formOpen.value = false;
 }
 function remove(s) {
   if (!window.confirm(`删除分供方「${s.name}」？不影响已导出的文件。`)) return;
@@ -178,25 +154,6 @@ async function onImportPick(e) {
       </div>
     </div>
 
-    <!-- 新增/编辑表单 -->
-    <div v-if="editingId" class="panel p-3">
-      <h3 class="m-0 mb-2 text-sm font-700">{{ editingId === "__new__" ? "新增分供方" : "编辑分供方" }}</h3>
-      <div class="grid grid-cols-4 lt-lg:grid-cols-2 gap-2.5">
-        <label class="field-label col-span-2">公司全称 *<input class="field-input" v-model="draft.name" placeholder="如：广州市大板东建材有限公司" /></label>
-        <label class="field-label col-span-2">简称/别名（顿号分隔，用于文件夹名对应）<input class="field-input" v-model="draft.aliasesText" placeholder="如：大板东、大板东建材" /></label>
-        <label class="field-label">公司税号<input class="field-input" v-model="draft.taxNo" placeholder="统一社会信用代码" /></label>
-        <label class="field-label">开户行<input class="field-input" v-model="draft.bank" /></label>
-        <label class="field-label">银行账号<input class="field-input" v-model="draft.bankAccount" /></label>
-        <label class="field-label">联系人<input class="field-input" v-model="draft.contact" /></label>
-        <label class="field-label">电话<input class="field-input" v-model="draft.phone" /></label>
-        <label class="field-label col-span-3">备注<input class="field-input" v-model="draft.note" /></label>
-      </div>
-      <div class="mt-2.5 flex gap-2">
-        <button class="btn-primary px-3 py-1.5" @click="commitEdit">保存</button>
-        <button class="btn px-3 py-1.5" @click="cancelEdit">取消</button>
-      </div>
-    </div>
-
     <!-- 列表：vxe-table，固定表头 + 固定首列(公司全称)/尾列(操作)，超宽超高滚动 -->
     <div class="panel p-2">
       <vxe-table
@@ -240,6 +197,7 @@ async function onImportPick(e) {
       </vxe-table>
     </div>
 
+    <SupplierFormDialog v-model:open="formOpen" :supplier="formSupplier" @submit="onFormSubmit" />
     <SupplierDetail v-model:open="detailOpen" :supplier="detailSupplier" @changed="persist" />
   </div>
 </template>
