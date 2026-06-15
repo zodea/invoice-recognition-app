@@ -61,8 +61,9 @@ function onUpload(e) {
       ext,
       relPath: "", // 落盘后填（Tauri）
       addedAt: new Date().toISOString().slice(0, 10),
-      _url: URL.createObjectURL(file), // 仅当前界面预览，不持久化
+      _url: URL.createObjectURL(file), // 当前界面即时预览
       _isImg: file.type.startsWith("image/"),
+      _file: file, // 原始文件，保存时落盘
       _ocr: "",
     };
     draft.attachments.push(att);
@@ -101,7 +102,8 @@ function applyAutofill(fields, category) {
 }
 function viewAttachment(att) {
   if (att._url) window.open(att._url, "_blank", "noopener");
-  else toastWarn("该附件在本机未保存预览（桌面端落盘后可打开）。");
+  else if (att.relPath) window.open(`/sup-attach?path=${encodeURIComponent(att.relPath)}`, "_blank", "noopener");
+  else toastWarn("该附件没有可预览的文件。");
 }
 function removeAttachment(att) {
   if (att._url) URL.revokeObjectURL(att._url);
@@ -117,8 +119,20 @@ function buildRecord() {
   return { ...JSON.parse(JSON.stringify({ ...draft, attachments: [] })), aliases, attachments, name: (draft.name || "").trim() };
 }
 
-function submit(keepOpen) {
+// 保存时把新附件落盘（dev：vite /sup-attach 中间件写到 分供方附件/<公司>/<公司-类别>）。
+async function persistNewAttachments(company) {
+  for (const att of draft.attachments) {
+    if (!att._file || att.relPath) continue;
+    try {
+      const q = `company=${encodeURIComponent(company)}&category=${encodeURIComponent(att.category)}&name=${encodeURIComponent(att.fileName)}`;
+      const resp = await fetch(`/sup-attach?${q}`, { method: "POST", body: att._file });
+      if (resp.ok) att.relPath = (await resp.json()).relPath || "";
+    } catch (e) { /* 中间件不可用（如打包端未接 Rust）→ 跳过落盘，仅留元数据 */ }
+  }
+}
+async function submit(keepOpen) {
   if ((draft.name || "").trim().length < 2) { toastWarn("公司全称至少 2 个字。"); return; }
+  await persistNewAttachments((draft.name || "").trim());
   emit("submit", { record: buildRecord(), isNew: isNew.value, keepOpen });
   if (keepOpen) resetDraftNew();
 }
@@ -189,7 +203,7 @@ const fi = "field-input";
             </div>
             <div v-else class="flex flex-col gap-1.5">
               <div v-for="att in draft.attachments" :key="att.id" class="flex items-center gap-2 border border-line rounded-md px-2.5 py-1.5 bg-white">
-                <span class="text-base shrink-0">{{ att._isImg ? "🖼" : "📄" }}</span>
+                <span class="text-base shrink-0">{{ /(png|jpe?g|bmp|webp|gif|tiff?)/i.test(att.ext) ? "🖼" : "📄" }}</span>
                 <select v-model="att.category" class="field-input w-36 py-1 text-xs shrink-0">
                   <option v-for="c in ATTACHMENT_CATEGORIES" :key="c" :value="c">{{ c }}</option>
                 </select>
