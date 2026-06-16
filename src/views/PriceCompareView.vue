@@ -11,6 +11,7 @@ import {
   loadManualGroups,
   saveManualGroups,
   importHistoryWorkbookItems,
+  buildImportTemplateBytes,
   exportPriceCompareWorkbookBytes,
   loadExcludeRules,
   saveExcludeRules,
@@ -86,6 +87,21 @@ async function onImportPick(e) {
   }
 }
 
+async function downloadTemplate() {
+  const bytes = buildImportTemplateBytes();
+  const name = "单价对比导入模板.xlsx";
+  const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  try {
+    const r = await saveBytesToChosenDir(bytes, name);
+    if (r.canceled) toastInfo("已取消。");
+    else if (r.fallbackDownload) { downloadBytes(bytes, name, mime); toastInfo("已下载导入模板。"); }
+    else toast(`已保存：${r.saved}`);
+  } catch (e) {
+    downloadBytes(bytes, name, mime);
+    toastInfo("已下载导入模板。");
+  }
+}
+
 async function exportExcel() {
   if (!compare.value.rows.length) {
     toastWarn("没有可导出的对比数据。");
@@ -116,6 +132,7 @@ async function exportExcel() {
           <option v-for="o in siteOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
         </select>
         <button class="btn px-2.75 py-1.5" :disabled="!compare.rows.length" @click="mergeSelected">并组所选</button>
+        <button class="btn px-2.75 py-1.5" title="下载空白模板，填好后导入" @click="downloadTemplate">下载模板</button>
         <button class="btn px-2.75 py-1.5" @click="importInput.click()">导入历史 Excel</button>
         <button class="btn px-2.75 py-1.5" :disabled="!compare.rows.length" @click="exportExcel">导出 Excel</button>
         <input ref="importInput" type="file" accept=".xlsx,.xls" hidden @change="onImportPick" />

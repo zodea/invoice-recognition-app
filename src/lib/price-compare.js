@@ -146,19 +146,48 @@ export function setExcludeRule(rules, normKey, excluded) {
   return m;
 }
 
-// 从历史导出的「…送货单整理汇总.xlsx」读回观测点（每工作表=一个公司；跳过待复核清单）。
+// 下载用的空白导入模板（issue #19）：单 sheet + 「供应商」列 + 示例行 + 说明 sheet。
+export function buildImportTemplateBytes() {
+  const header = ["供应商", "工地", "日期", "材料", "单位", "单价", "数量", "总价"];
+  const rows = [
+    header,
+    ["广州XX建材有限公司", "合和新城", "2026-06-01", "螺纹钢 HRB400 Φ12", "吨", 4050, 2, 8100],
+    ["广州XX建材有限公司", "合和新城", "2026-06-08", "水泥 P.O 42.5", "吨", 380, 10, 3800],
+    ["广州YY贸易有限公司", "", "2026-06-10", "多层板 1220*2440*9mm", "张", 95, 50, 4750],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws["!cols"] = [{ wch: 24 }, { wch: 14 }, { wch: 12 }, { wch: 26 }, { wch: 8 }, { wch: 10 }, { wch: 8 }, { wch: 10 }];
+  const note = XLSX.utils.aoa_to_sheet([
+    ["填写说明"],
+    ["1. 一行一条材料明细；「供应商」「材料」「单价」必填（无单价时填「数量 + 总价」也可自动算单价）。"],
+    ["2. 「工地」可留空（留空＝跨工地汇总对比）。"],
+    ["3. 同一供应商的多行，供应商列可只在首行填、下面留空（导入时自动沿用上一行）。"],
+    ["4. 运费 / 搬运费 等会自动从单价对比剔除（可在对比页「已剔除」里恢复）。"],
+    ["5. 填好后回「单价对比」页点「导入历史 Excel」。"],
+  ]);
+  note["!cols"] = [{ wch: 84 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "单价明细");
+  XLSX.utils.book_append_sheet(wb, note, "填写说明");
+  return XLSX.write(wb, { type: "array", bookType: "xlsx" });
+}
+
+// 从历史 Excel 读回观测点。两种格式都认：
+//  ① 新模板 / 单 sheet：表头含「供应商」列，每行带供应商(+可选工地)；
+//  ② 旧「送货单整理汇总.xlsx」：每个工作表=一个公司（表名即供应商）。
 export function importHistoryWorkbookItems(bytes) {
   const wb = XLSX.read(bytes, { type: "array" });
   const obs = [];
   for (const sheetName of wb.SheetNames) {
-    if (/待复核/.test(sheetName)) continue;
+    if (/待复核|说明/.test(sheetName)) continue;
     const grid = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1 });
     if (!grid.length) continue;
     const header = (grid[0] || []).map((h) => String(h || ""));
     const idx = (label) => header.findIndex((h) => h.includes(label));
-    const ci = { date: idx("日期"), name: idx("材料"), price: idx("单价"), qty: idx("数量"), total: idx("总价"), unit: idx("单位") };
+    const ci = { supplier: idx("供应商"), site: idx("工地"), date: idx("日期"), name: idx("材料"), price: idx("单价"), qty: idx("数量"), total: idx("总价"), unit: idx("单位") };
     if (ci.name < 0) continue;
-    const supplier = sheetName.trim() || "未命名公司";
+    const sheetSupplier = sheetName.trim() || "未命名公司";
+    let lastSupplier = ""; // 单 sheet 模式：供应商可只在每段首行填，向下沿用
     for (let r = 1; r < grid.length; r++) {
       const row = grid[r];
       if (!row) continue;
@@ -166,9 +195,15 @@ export function importHistoryWorkbookItems(bytes) {
       if (!name || name === "（无明细）") continue;
       const price = toPrice(ci.price >= 0 ? row[ci.price] : "", ci.total >= 0 ? row[ci.total] : "", ci.qty >= 0 ? row[ci.qty] : "");
       if (price == null) continue;
+      let supplier = sheetSupplier;
+      if (ci.supplier >= 0) {
+        const sv = String(row[ci.supplier] || "").trim();
+        if (sv) lastSupplier = sv;
+        supplier = lastSupplier || sheetSupplier;
+      }
       obs.push({
         supplier,
-        site: "",
+        site: ci.site >= 0 ? String(row[ci.site] || "") : "",
         name,
         normKey: normalizeMaterial(name),
         unit: ci.unit >= 0 ? String(row[ci.unit] || "") : "",
