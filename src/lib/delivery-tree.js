@@ -266,6 +266,28 @@ export function moveGroup(tree, groupKey, targetSiteKey) {
   return true;
 }
 
+// —— 删除（issue #15）：仅从 staging 树移除，不动磁盘原文件，确认导入后不入库 ——
+export function removeFile(tree, fileKey) {
+  const hit = findFile(tree, fileKey);
+  if (!hit) return false;
+  hit.group.files.splice(hit.index, 1);
+  return true;
+}
+
+export function removeGroup(tree, groupKey) {
+  const hit = findGroup(tree, groupKey);
+  if (!hit) return false;
+  hit.site.groups.splice(hit.site.groups.indexOf(hit.group), 1);
+  return true;
+}
+
+export function removeSite(tree, siteKey) {
+  const i = tree.sites.findIndex((s) => s.key === siteKey);
+  if (i < 0) return false;
+  tree.sites.splice(i, 1);
+  return true;
+}
+
 // 组 → 升级为工地（"是工地"勾上）：新工地名取组名，文件归入"（待分组）"等待细分？
 // 不——按用户场景（拖了父文件夹，第二层才是工地），升级后该组的文件多半还带着
 // 第三层文件夹信息丢失，保守做法：整组变成新工地下的同名组。

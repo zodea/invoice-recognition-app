@@ -9,6 +9,9 @@ import {
   demoteSiteToGroup,
   addSite,
   addGroup,
+  removeFile,
+  removeGroup,
+  removeSite,
   computeSuggestions,
   PENDING_GROUP,
 } from "../lib/delivery-tree";
@@ -81,6 +84,21 @@ function applySuggestion(f) {
   }
 }
 
+// —— 删除（issue #15）：单文件免确认；整组/整工地带数量二次确认 ——
+function onRemoveFile(f) {
+  if (removeFile(tree.value, f.key)) computeSuggestions(tree.value);
+}
+function onRemoveGroup(g) {
+  const n = g.files.length;
+  if (n && !window.confirm(`删除「${g.rawName}」整组 ${n} 个文件？（仅从整理树移除，不动磁盘原文件）`)) return;
+  removeGroup(tree.value, g.key);
+}
+function onRemoveSite(site) {
+  const n = site.groups.reduce((s, g) => s + g.files.length, 0);
+  if (n && !window.confirm(`删除工地「${site.name || site.rawName}」及其 ${n} 个文件？（仅从整理树移除，不动磁盘原文件）`)) return;
+  removeSite(tree.value, site.key);
+}
+
 function confirmApply() {
   const r = actions.applyStaging();
   toast(mode.value === "reorg" ? `调整完成：${r.moved} 个文件已更新归属。` : `导入完成：新增 ${r.added} 个文件${r.moved ? `，调整 ${r.moved} 个` : ""}。`);
@@ -136,6 +154,7 @@ const viaLabel = { name: "全称", alias: "别名", fuzzy: "模糊" };
             :title="'原文件夹名：' + (site.rawName || '（无）')"
           />
           <span class="text-ink-soft text-xs">{{ site.groups.reduce((n, g) => n + g.files.length, 0) }} 个文件 · Excel：{{ site.name || "工地" }}-送货单整理汇总.xlsx</span>
+          <button class="ml-auto btn-ghost px-2 py-0.75 text-xs text-danger" title="删除该工地（仅整理树，不动磁盘原文件）" @click="onRemoveSite(site)">✕ 删工地</button>
         </header>
 
         <div class="p-2 flex flex-col gap-1.5">
@@ -164,6 +183,7 @@ const viaLabel = { name: "全称", alias: "别名", fuzzy: "模糊" };
                 :placeholder="g.kind === 'special' ? '（中转组，公司待识别）' : '导出用公司全称'"
               />
               <span class="text-ink-soft text-xs">{{ g.files.length }}</span>
+              <button class="btn-ghost px-1.5 py-0.5 text-xs text-danger" title="删除该组（仅整理树，不动磁盘原文件）" @click.stop="onRemoveGroup(g)" @mousedown.stop>✕</button>
             </div>
             <ul class="m-0 p-1 list-none flex flex-col">
               <li
@@ -184,6 +204,7 @@ const viaLabel = { name: "全称", alias: "别名", fuzzy: "模糊" };
                 >
                   疑似→{{ f.suggestLabel }}
                 </button>
+                <button class="ml-auto btn-ghost px-1.5 py-0.5 text-xs text-danger opacity-60 hover:opacity-100" title="删除该文件（仅整理树）" @click.stop="onRemoveFile(f)" @mousedown.stop>✕</button>
               </li>
               <li v-if="!g.files.length" class="px-1.5 py-1 text-ink-soft text-xs">（空组，可拖文件进来）</li>
             </ul>
