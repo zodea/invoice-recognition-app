@@ -4,9 +4,18 @@
 import { buildPdfFromFiles } from "./pdf.js";
 import { buildWorkbookBytes } from "./excel.js";
 import { archiveBaseName, sanitize } from "./naming.js";
+import { isTauri, invoke } from "./tauri.js";
 
 export function fsAccessSupported() {
   return typeof window !== "undefined" && typeof window.showDirectoryPicker === "function";
+}
+
+function bytesToBase64(bytes) {
+  const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < arr.length; i += chunk) bin += String.fromCharCode.apply(null, arr.subarray(i, i + chunk));
+  return btoa(bin);
 }
 
 async function writeFileUnique(dirHandle, name, bytes, used) {
@@ -100,6 +109,34 @@ export async function exportToDirectory({ partitions, files }, log) {
     const xlsx = buildWorkbookBytes(pfiles);
     const xlsxName = `${sanitize(part.name) || "工地"}-送货单整理汇总.xlsx`;
     await writeFileUnique(dir, xlsxName, xlsx);
+    if (log) log(`  Excel：${xlsxName}`);
+    total += pfiles.length;
+  }
+  return { ok: true, files: total };
+}
+
+// Tauri 桌面端：用 Rust 选目录 + 写文件。WebView2 的 showDirectoryPicker 对含系统文件的目录会报
+// 「http://tauri.localhost 无法将其打开」，故桌面端一律走 Rust（pick_export_dir / write_export_file）。
+export async function exportToDirectoryTauri({ partitions, files }, log) {
+  const root = await invoke("pick_export_dir");
+  if (!root) { const e = new Error("已取消选择文件夹"); e.name = "AbortError"; throw e; }
+  let total = 0;
+  for (const part of partitions) {
+    const pfiles = files.filter((f) => f.partitionId === part.id);
+    if (!pfiles.length) continue;
+    if (log) log(`工地【${part.name}】→ ${sanitize(part.name) || "未命名工地"}/`);
+    await exportPartitionPdfs(
+      pfiles,
+      async (companyDir, name, bytes) => {
+        const rel = await invoke("write_export_file", { root, parts: [part.name, companyDir], fileName: name, dataBase64: bytesToBase64(bytes) });
+        if (log) log(`  ${rel}`);
+        return String(rel).split(/[\\/]/).pop();
+      },
+      null
+    );
+    const xlsx = buildWorkbookBytes(pfiles);
+    const xlsxName = `${sanitize(part.name) || "工地"}-送货单整理汇总.xlsx`;
+    await invoke("write_export_file", { root, parts: [part.name], fileName: xlsxName, dataBase64: bytesToBase64(xlsx) });
     if (log) log(`  Excel：${xlsxName}`);
     total += pfiles.length;
   }

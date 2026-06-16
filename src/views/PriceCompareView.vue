@@ -5,7 +5,6 @@ import { computed, onMounted, ref } from "vue";
 import { store } from "../store";
 import { useRecognizedStore } from "../stores/recognized";
 import {
-  aggregateItems,
   buildPriceCompare,
   mergeGroups,
   splitGroup,
@@ -34,7 +33,8 @@ const tableRef = ref(null);
 const importInput = ref(null);
 
 const siteOptions = computed(() => [{ value: "", label: "全部工地（汇总）" }, ...store.partitions.map((p) => ({ value: p.name, label: p.name }))]);
-const obs = computed(() => dedupObs([...aggregateItems(store.files, store.partitions), ...obsFromDeliveryItems(recognized.allDeliveryItems()), ...importedObs.value]));
+// 只读「已保存入库」的识别明细库 + 历史导入；未点「保存到分供方&单价对比」的本次会话数据不在此显示（issue：显式保存语义）。
+const obs = computed(() => dedupObs([...obsFromDeliveryItems(recognized.allDeliveryItems()), ...importedObs.value]));
 const compare = computed(() => buildPriceCompare(obs.value, { manualGroups: manualGroups.value, site: siteFilter.value, excludeRules: excludeRules.value }));
 
 function fmtCell(v) {

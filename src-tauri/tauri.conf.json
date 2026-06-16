@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "送货单发票识别助手",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "identifier": "com.zodea.songhuodanocr",
   "build": {
     "beforeDevCommand": "npm run dev",

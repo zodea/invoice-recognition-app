@@ -2,7 +2,8 @@
 import { ref, computed } from "vue";
 import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
 import { store, actions, collectIncomplete, fileIncompleteReasons, partitionName } from "../store";
-import { exportToDirectory, exportByDownload, fsAccessSupported } from "../lib/export";
+import { exportToDirectory, exportToDirectoryTauri, exportByDownload, fsAccessSupported } from "../lib/export";
+import { isTauri } from "../lib/tauri";
 import { toast, toastError, toastInfo } from "../lib/toast";
 
 const busy = ref(false);
@@ -43,7 +44,10 @@ async function doExport() {
   try {
     const payload = { partitions: store.partitions, files: store.files };
     let res;
-    if (supported) {
+    if (isTauri()) {
+      log("请选择导出目标文件夹…");
+      res = await exportToDirectoryTauri(payload, log);
+    } else if (supported) {
       log("请选择导出目标文件夹…");
       res = await exportToDirectory(payload, log);
     } else {
