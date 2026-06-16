@@ -7,6 +7,7 @@ import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, Di
 import { emptySupplier, ATTACHMENT_CATEGORIES } from "../lib/supplier-db";
 import { toast, toastWarn } from "../lib/toast";
 import { recognizeCredentialFile } from "../lib/credential-ocr.js";
+import { isTauri, invoke, blobToBase64 } from "../lib/tauri";
 
 const props = defineProps({
   open: Boolean,
@@ -102,6 +103,7 @@ function applyAutofill(fields, category) {
 }
 function viewAttachment(att) {
   if (att._url) window.open(att._url, "_blank", "noopener");
+  else if (att.relPath && isTauri()) invoke("sup_attach_open", { relPath: att.relPath }).catch(() => toastWarn("打开附件失败。"));
   else if (att.relPath) window.open(`/sup-attach?path=${encodeURIComponent(att.relPath)}`, "_blank", "noopener");
   else toastWarn("该附件没有可预览的文件。");
 }
@@ -124,10 +126,14 @@ async function persistNewAttachments(company) {
   for (const att of draft.attachments) {
     if (!att._file || att.relPath) continue;
     try {
-      const q = `company=${encodeURIComponent(company)}&category=${encodeURIComponent(att.category)}&name=${encodeURIComponent(att.fileName)}`;
-      const resp = await fetch(`/sup-attach?${q}`, { method: "POST", body: att._file });
-      if (resp.ok) att.relPath = (await resp.json()).relPath || "";
-    } catch (e) { /* 中间件不可用（如打包端未接 Rust）→ 跳过落盘，仅留元数据 */ }
+      if (isTauri()) {
+        att.relPath = await invoke("sup_attach_save", { company, category: att.category, fileName: att.fileName, dataBase64: await blobToBase64(att._file) });
+      } else {
+        const q = `company=${encodeURIComponent(company)}&category=${encodeURIComponent(att.category)}&name=${encodeURIComponent(att.fileName)}`;
+        const resp = await fetch(`/sup-attach?${q}`, { method: "POST", body: att._file });
+        if (resp.ok) att.relPath = (await resp.json()).relPath || "";
+      }
+    } catch (e) { /* 落盘失败不阻断保存，仅保留元数据 */ }
   }
 }
 async function submit(keepOpen) {

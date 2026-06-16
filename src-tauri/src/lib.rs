@@ -1,6 +1,7 @@
 use base64::{engine::general_purpose, Engine as _};
 use std::fs;
 use std::path::{Path, PathBuf};
+use tauri::Manager;
 
 fn clean_path_part(value: &str, fallback: &str) -> String {
     let cleaned = value
@@ -186,6 +187,107 @@ fn open_external(url: String) -> Result<(), String> {
     Ok(())
 }
 
+// —— 分供方附件 / 识别明细库 的本地落盘（生产桌面端，appData 目录；ADR-0002 / ADR-0003）——
+// dev 走 vite 中间件写项目内文件夹；打包桌面端走这些命令写 appData。
+fn app_data_sub(app: &tauri::AppHandle, sub: &str) -> Result<PathBuf, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    Ok(base.join(sub))
+}
+
+fn open_local(fp: &Path) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &fp.to_string_lossy()])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+        std::process::Command::new(opener).arg(fp).spawn().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn sup_attach_save(
+    app: tauri::AppHandle,
+    company: String,
+    category: String,
+    file_name: String,
+    data_base64: String,
+) -> Result<String, String> {
+    let company = clean_path_part(&company, "未命名");
+    let category = clean_path_part(&category, "其他");
+    let ext: String = file_name
+        .rsplit('.')
+        .next()
+        .unwrap_or("bin")
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect();
+    let ext = if ext.is_empty() { "bin".to_string() } else { ext };
+    let dir = app_data_sub(&app, "分供方附件")?.join(&company);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let mut name = format!("{company}-{category}.{ext}");
+    let mut i = 2;
+    while dir.join(&name).exists() {
+        name = format!("{company}-{category}({i}).{ext}");
+        i += 1;
+    }
+    let bytes = general_purpose::STANDARD
+        .decode(data_base64)
+        .map_err(|e| e.to_string())?;
+    fs::write(dir.join(&name), bytes).map_err(|e| e.to_string())?;
+    Ok(format!("{company}/{name}"))
+}
+
+#[tauri::command]
+fn sup_attach_open(app: tauri::AppHandle, rel_path: String) -> Result<(), String> {
+    let fp = app_data_sub(&app, "分供方附件")?.join(rel_path);
+    if !fp.exists() {
+        return Err("附件文件不存在".to_string());
+    }
+    open_local(&fp)
+}
+
+#[tauri::command]
+fn recognized_save(app: tauri::AppHandle, site: String, json: String) -> Result<(), String> {
+    let site = clean_path_part(&site, "未命名工地");
+    let dir = app_data_sub(&app, "识别明细库")?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    fs::write(dir.join(format!("{site}.json")), json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn recognized_load_all(app: tauri::AppHandle) -> Result<String, String> {
+    let dir = app_data_sub(&app, "识别明细库")?;
+    let mut out = serde_json::Map::new();
+    if dir.exists() {
+        for entry in fs::read_dir(&dir).map_err(|e| e.to_string())? {
+            let path = entry.map_err(|e| e.to_string())?.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("json") {
+                continue;
+            }
+            if let Ok(txt) = fs::read_to_string(&path) {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
+                    let site = v
+                        .get("site")
+                        .and_then(|s| s.as_str())
+                        .map(String::from)
+                        .unwrap_or_else(|| path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string());
+                    let records = v.get("records").cloned().unwrap_or_else(|| serde_json::Value::Array(vec![]));
+                    out.insert(site, records);
+                }
+            }
+        }
+    }
+    serde_json::to_string(&serde_json::Value::Object(out)).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -195,7 +297,11 @@ pub fn run() {
             open_external,
             vl_submit_file,
             vl_get_json,
-            vl_get_text
+            vl_get_text,
+            sup_attach_save,
+            sup_attach_open,
+            recognized_save,
+            recognized_load_all
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
