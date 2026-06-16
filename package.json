@@ -1,7 +1,7 @@
 {
   "name": "songhuodan-ocr-app",
   "private": true,
-  "version": "0.4.1",
+  "version": "0.4.2",
   "type": "module",
   "description": "送货单扫描件识别整理 - 本地 Vue 应用（PaddleOCR.js 识别、分区、同类合并、导出 Excel+PDF）",
   "scripts": {

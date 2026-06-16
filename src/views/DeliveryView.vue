@@ -40,6 +40,7 @@ const problemCount = computed(() => collectProblems().total);
       <button class="btn px-3 py-1.75 font-600" :disabled="store.ocrBusy" @click="actions.requestOcrAll">
         🔍 识别全部未识别（{{ store.files.filter((f) => f.ocrStatus !== "done").length }}）
       </button>
+      <SaveToStorePanel />
       <button class="btn px-3 py-1.75" title="重新打开整理树，调整文件的工地/公司归属" @click="actions.stageFromStore()">🌲 重新整理</button>
       <button
         v-if="problemCount"
@@ -65,7 +66,6 @@ const problemCount = computed(() => collectProblems().total);
       <div v-else-if="!visibleFiles.length" class="text-center text-ink-soft p-7.5 bg-panel border border-dashed border-line-strong rounded-card">该分区暂无文件。可在文件卡片上用“分区”下拉移动。</div>
     </div>
 
-    <SaveToStorePanel v-if="store.files.length && !store.staging" />
     <ExportPanel />
     <ProblemDialog />
     <OcrGateDialog />

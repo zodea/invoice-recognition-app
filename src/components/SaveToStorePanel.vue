@@ -18,13 +18,17 @@ const heldBackList = ref([]);
 
 // 待入库（已识别但库里没有或有变）的单数 → 角标 + 离开提醒
 const pending = computed(() => {
-  const { records } = buildRecordsFromFiles(store.files, store.partitions);
-  let n = 0;
-  for (const r of records) {
-    const cls = classifyUpsert(recognized.bySite.value[r.site] || [], [r]);
-    if (cls.inserted.length || cls.conflicts.length) n++;
+  try {
+    const { records } = buildRecordsFromFiles(store.files, store.partitions);
+    let n = 0;
+    for (const r of records) {
+      const cls = classifyUpsert(recognized.bySite.value[r.site] || [], [r]);
+      if (cls.inserted.length || cls.conflicts.length) n++;
+    }
+    return n;
+  } catch (e) {
+    return 0;
   }
-  return n;
 });
 
 function itemsBrief(rec) {
@@ -95,20 +99,17 @@ onUnmounted(() => window.removeEventListener("beforeunload", onBeforeUnload));
 </script>
 
 <template>
-  <div class="panel p-3">
-    <div class="flex items-center gap-2.5 flex-wrap">
-      <button
-        class="border-none bg-brand text-white font-700 px-4 py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-default"
-        :disabled="busy || !store.files.length"
-        @click="saveToStore"
-      >
-        💾 保存到 分供方 &amp; 单价对比{{ pending ? `（${pending} 单待入库）` : "" }}
-      </button>
-      <span class="text-ink-soft text-xs">入库后两屏共读、重开仍在；与「导出归档」分开，互不替代。缺单号的单不会入库。</span>
-    </div>
+  <button
+    class="btn px-3 py-1.75 font-700 border-brand text-brand bg-brand-soft disabled:opacity-50 disabled:cursor-default"
+    :disabled="busy || !store.files.length"
+    title="把已识别的送货单入库；入库后『分供方 / 单价对比』才显示、重开仍在。缺单号的单不会入库。"
+    @click="saveToStore"
+  >
+    💾 保存到 分供方 &amp; 单价对比{{ pending ? `（${pending} 单待入库）` : "" }}
+  </button>
 
-    <!-- 冲突核对弹窗：键命中但内容有变，逐条勾选，默认不勾，勾中才覆盖 -->
-    <DialogRoot :open="reviewOpen" @update:open="reviewOpen = $event">
+  <!-- 冲突核对弹窗：键命中但内容有变，逐条勾选，默认不勾，勾中才覆盖 -->
+  <DialogRoot :open="reviewOpen" @update:open="reviewOpen = $event">
       <DialogPortal>
         <DialogOverlay class="fixed inset-0 z-50 bg-black/40" />
         <DialogContent class="fixed z-51 top-[6vh] left-1/2 -translate-x-1/2 w-[min(760px,94vw)] max-h-[86vh] overflow-auto bg-bg rounded-card shadow-pop p-4 outline-none">
@@ -131,5 +132,4 @@ onUnmounted(() => window.removeEventListener("beforeunload", onBeforeUnload));
         </DialogContent>
       </DialogPortal>
     </DialogRoot>
-  </div>
 </template>
