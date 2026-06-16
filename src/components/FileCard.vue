@@ -136,7 +136,7 @@ const fieldInput = "w-full min-w-0 border border-line-strong rounded-md px-2.5 p
         </label>
 
         <div class="mt-3 flex items-center gap-2.5 flex-wrap rounded-md border border-line bg-[#fbfcfe] px-3 py-2">
-          <button class="btn-primary px-3 py-1.5" :disabled="file.rendering || store.ocrBusy" @click="actions.runOcr(file)">
+          <button class="btn-primary px-3 py-1.5" :disabled="file.rendering || store.ocrBusy" @click="actions.requestOcr(file)">
             {{ file.ocrStatus === "running" ? "识别中" : "OCR 识别本件" }}
           </button>
           <span v-if="file.ocrStatus === 'done'" class="text-ok text-sm">已识别，请核对明细</span>

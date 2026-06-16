@@ -8,7 +8,10 @@ import ExportPanel from "../components/ExportPanel.vue";
 
 import DeliveryTree from "../components/DeliveryTree.vue";
 import ProblemDialog from "../components/ProblemDialog.vue";
+import OcrGateDialog from "../components/OcrGateDialog.vue";
 import { collectProblems } from "../store";
+import { vlConfigured } from "../lib/app-settings";
+import { openSettings } from "../lib/ui";
 
 const visibleFiles = computed(() =>
   store.activePartitionId === "all"
@@ -20,12 +23,18 @@ const problemCount = computed(() => collectProblems().total);
 
 <template>
   <div class="flex flex-col gap-3.5">
+    <!-- 未配置云识别：常驻提示条（issue #13）。配好账号自动消失；选"用本地继续"也照常显示 -->
+    <div v-if="!vlConfigured()" class="flex items-center gap-2 flex-wrap px-3 py-2 rounded-card border border-warn bg-[#fffbeb] text-[#92400e] text-[13px]">
+      <span class="font-700">⚠ 正在用本地小模型识别</span>
+      <span class="min-w-0">手写 / 表格明细可能识别不出，建议配置云端 PaddleOCR-VL。</span>
+      <button class="btn px-2.5 py-1 text-xs border-warn text-[#92400e] ml-auto" @click="openSettings()">去配置</button>
+    </div>
     <UploadZone v-if="!store.staging" />
     <DeliveryTree />
     <PartitionBar v-if="!store.staging" />
 
     <div class="flex items-center gap-3 flex-wrap sticky top-[54px] z-10 bg-panel border border-line rounded-card px-3 py-2 shadow-card" v-if="store.files.length && !store.staging">
-      <button class="btn px-3 py-1.75 font-600" :disabled="store.ocrBusy" @click="actions.runOcrAll">
+      <button class="btn px-3 py-1.75 font-600" :disabled="store.ocrBusy" @click="actions.requestOcrAll">
         🔍 识别全部未识别（{{ store.files.filter((f) => f.ocrStatus !== "done").length }}）
       </button>
       <button class="btn px-3 py-1.75" title="重新打开整理树，调整文件的工地/公司归属" @click="actions.stageFromStore()">🌲 重新整理</button>
@@ -48,6 +57,7 @@ const problemCount = computed(() => collectProblems().total);
 
     <ExportPanel />
     <ProblemDialog />
+    <OcrGateDialog />
 
     <details class="bg-panel border border-line rounded-card px-3.5 py-3">
       <summary class="cursor-pointer font-600 text-brand">使用说明 / 注意事项</summary>

@@ -5,6 +5,7 @@ import { parseDoc } from "./lib/parse";
 import { buildTree, buildTreeFromStore, flattenForApply } from "./lib/delivery-tree";
 import { loadSuppliers, matchSupplier, normalizeCompanyName } from "./lib/supplier-db";
 import { vlConfigured, vlParseDocument } from "./lib/ocr-vl";
+import { appSettings, ackLocalOcr } from "./lib/app-settings";
 import { parseVlToDocs } from "./lib/vl-parse";
 import { rotateImageUrl } from "./lib/pdftext";
 import { toastWarn } from "./lib/toast";
@@ -27,6 +28,7 @@ export const store = reactive({
   ocrMsg: "",
   staging: null, // 整理树（导入向导/重新整理）：{ tree, mode: 'import'|'reorg' }，确认才生效
   problemsOpen: false, // 问题弹窗（识别失败/无法读取/公司不一致 等需人工处理的事项）
+  ocrGate: { open: false, mode: "", file: null }, // OCR 拦截弹窗（issue #13）：未配置云识别时先确认
 });
 
 // 汇总当前所有"需要人解决的问题"，问题弹窗和工具栏角标共用。
@@ -342,6 +344,28 @@ export const actions = {
       await actions.runOcr(f);
     }
     if (collectProblems().total > 0) store.problemsOpen = true;
+  },
+
+  // —— OCR 拦截门（issue #13）——
+  // 未配置云识别且未确认"仍用本地"时先弹窗；否则直接识别。两个识别入口都改走这里。
+  requestOcr(f) {
+    if (vlConfigured() || appSettings.localOcrAck) return actions.runOcr(f);
+    store.ocrGate = { open: true, mode: "one", file: f };
+  },
+  requestOcrAll() {
+    if (vlConfigured() || appSettings.localOcrAck) return actions.runOcrAll();
+    store.ocrGate = { open: true, mode: "all", file: null };
+  },
+  cancelOcrGate() {
+    store.ocrGate = { open: false, mode: "", file: null };
+  },
+  // 选"仍用本地，以后别再问"：记住选择并继续原识别动作。
+  proceedLocalOcr() {
+    ackLocalOcr();
+    const g = store.ocrGate;
+    store.ocrGate = { open: false, mode: "", file: null };
+    if (g.mode === "all") return actions.runOcrAll();
+    if (g.file) return actions.runOcr(g.file);
   },
 };
 

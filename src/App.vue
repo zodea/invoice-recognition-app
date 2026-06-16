@@ -3,6 +3,7 @@ import { defineAsyncComponent, ref } from "vue";
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from "reka-ui";
 import ToastHost from "./components/ToastHost.vue";
 import { appSettings, saveAppSettings } from "./lib/app-settings";
+import { ui } from "./lib/ui";
 
 // 按需懒加载：两视图分别代码分包，仅在激活时加载并挂载（不再同时渲染）。
 // 数据存于 store 单例（store.js / invoiceStore.js），切换 tab 卸载组件也不丢数据。
@@ -11,8 +12,6 @@ const InvoiceView = defineAsyncComponent(() => import("./views/InvoiceView.vue")
 const SupplierView = defineAsyncComponent(() => import("./views/SupplierView.vue"));
 const PriceCompareView = defineAsyncComponent(() => import("./views/PriceCompareView.vue"));
 const SettingsDialog = defineAsyncComponent(() => import("./components/SettingsDialog.vue"));
-
-const settingsOpen = ref(false);
 
 // 悬停放大镜是全局统一开关（与"按张旋转"不同），固定在顶部。issue #12
 function toggleHoverZoom() {
@@ -41,7 +40,7 @@ const tabCls =
         :title="appSettings.hoverZoom ? '悬停放大镜：开（统一对所有预览生效，点击关闭）' : '悬停放大镜：关（点击开启）'"
         @click="toggleHoverZoom"
       >🔍 放大镜{{ appSettings.hoverZoom ? "开" : "关" }}</button>
-      <button class="ml-2 border-none bg-white/12 text-white px-3 py-1.75 rounded-lg text-sm font-600 cursor-pointer hover:bg-white/24" title="云识别等设置" @click="settingsOpen = true">⚙ 设置</button>
+      <button class="ml-2 border-none bg-white/12 text-white px-3 py-1.75 rounded-lg text-sm font-600 cursor-pointer hover:bg-white/24" title="云识别等设置" @click="ui.settingsOpen = true">⚙ 设置</button>
     </header>
 
     <main class="max-w-[1480px] mx-auto p-4">
@@ -61,6 +60,6 @@ const tabCls =
     </main>
 
     <ToastHost />
-    <SettingsDialog v-model:open="settingsOpen" />
+    <SettingsDialog v-model:open="ui.settingsOpen" />
   </TabsRoot>
 </template>
