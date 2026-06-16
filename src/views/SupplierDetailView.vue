@@ -5,9 +5,11 @@ import { computed, reactive } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useSupplierStore } from "../stores/supplier";
 import { store } from "../store";
-import { aggregateSupplierDelivery, emptyPurchase, emptyPayment, companySearchUrl } from "../lib/supplier-db";
+import { aggregateSupplierDelivery, emptyPurchase, emptyPayment, companySearchUrl, exportSupplierLedgerWorkbookBytes } from "../lib/supplier-db";
 import { openExternal } from "../lib/open-external";
-import { toast, toastError, toastWarn } from "../lib/toast";
+import { downloadBytes } from "../lib/invoice-layout";
+import { saveBytesToChosenDir } from "../lib/invoice-export-package";
+import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 
 const route = useRoute();
 const router = useRouter();
@@ -71,6 +73,23 @@ async function jumpSearch() {
   }
 }
 
+// 导出对账 Excel（issue #18）：单文件多 sheet（对账汇总/材料明细/采购/支付）。
+async function exportLedger() {
+  if (!supplier.value) return;
+  const bytes = exportSupplierLedgerWorkbookBytes(supplier.value, coop.value);
+  const name = `${supplier.value.name || "分供方"}-对账.xlsx`;
+  const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  try {
+    const r = await saveBytesToChosenDir(bytes, name);
+    if (r.canceled) toastInfo("已取消导出。");
+    else if (r.fallbackDownload) { downloadBytes(bytes, name, mime); toastInfo("已下载对账 Excel。"); }
+    else toast(`已保存：${r.saved}`);
+  } catch (e) {
+    downloadBytes(bytes, name, mime);
+    toastWarn("保存目录失败，已改为下载。");
+  }
+}
+
 const money = (v) => (Number(v) || 0).toFixed(2);
 </script>
 
@@ -81,6 +100,7 @@ const money = (v) => (Number(v) || 0).toFixed(2);
       <h2 class="m-0 text-base font-700">{{ supplier?.name || "分供方详情" }}</h2>
       <button v-if="supplier" class="btn px-2 py-1 text-xs text-brand border-brand" @click="jumpSearch">爱企查</button>
       <span class="text-ink-soft text-xs">税号：{{ supplier?.taxNo || "—" }}　开户行：{{ supplier?.bank || "—" }}　账号：{{ supplier?.bankAccount || "—" }}</span>
+      <button v-if="supplier" class="btn-primary px-2.5 py-1.5 ml-auto" title="导出 对账汇总+材料明细+采购+支付 多表 Excel" @click="exportLedger">导出对账 Excel</button>
     </div>
 
     <div v-if="!supplier" class="panel p-6 text-center text-ink-soft">未找到该分供方，可能已被删除。<button class="btn px-2.5 py-1 ml-2" @click="router.push('/supplier')">返回列表</button></div>

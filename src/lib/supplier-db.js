@@ -245,6 +245,46 @@ export function importSuppliersWorkbookBytes(list, bytes) {
   return { imported, added, updated };
 }
 
+// 分供方对账 Excel（issue #18）：单文件多工作表——对账汇总 + 材料明细(合作) + 采购记录 + 支付记录。
+// coop 来自 aggregateSupplierDelivery（送货单整理自动汇总）。
+export function exportSupplierLedgerWorkbookBytes(supplier, coop) {
+  const s = supplier || {};
+  const c = coop || { items: [], sites: [], totalAmount: 0 };
+  const money = (v) => Math.round((Number(v) || 0) * 100) / 100;
+  const purchaseSum = (s.purchases || []).reduce((a, r) => a + (Number(r.total) || 0), 0);
+  const paySum = (s.payments || []).reduce((a, r) => a + (Number(r.amount) || 0), 0);
+  const wb = XLSX.utils.book_new();
+
+  const sum = XLSX.utils.aoa_to_sheet([
+    ["分供方", s.name || ""],
+    ["税号", s.taxNo || ""],
+    ["开户行", s.bank || ""],
+    ["银行账号", s.bankAccount || ""],
+    [],
+    ["项目", "金额"],
+    ["送货单合计", money(c.totalAmount)],
+    ["手记采购合计", money(purchaseSum)],
+    ["已支付合计", money(paySum)],
+    ["差额（应付）", money(c.totalAmount + purchaseSum - paySum)],
+  ]);
+  sum["!cols"] = [{ wch: 16 }, { wch: 42 }];
+  XLSX.utils.book_append_sheet(wb, sum, "对账汇总");
+
+  const itemRows = [["日期", "工地", "材料名称", "单位", "数量", "单价", "总价"]];
+  for (const it of c.items || []) itemRows.push([it.date, it.site, it.name, it.unit, it.quantity, it.unitPrice, it.total]);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(itemRows), "材料明细");
+
+  const pRows = [["日期", "工地", "材料/事项", "数量", "单价", "总价", "备注"]];
+  for (const r of s.purchases || []) pRows.push([r.date, r.site, r.item, r.quantity, r.unitPrice, r.total, r.note]);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(pRows), "采购记录");
+
+  const mRows = [["日期", "工地", "金额", "方式", "备注"]];
+  for (const r of s.payments || []) mRows.push([r.date, r.site, r.amount, r.method, r.note]);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(mRows), "支付记录");
+
+  return XLSX.write(wb, { type: "array", bookType: "xlsx" });
+}
+
 // 公司信息查询：用爱企查（百度，免登录可看基本信息；企查查要登录体验差）
 export function companySearchUrl(name) {
   return `https://aiqicha.baidu.com/s?q=${encodeURIComponent(String(name || "").trim())}`;

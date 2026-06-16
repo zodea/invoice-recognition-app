@@ -364,7 +364,14 @@ ok("空格版 发票号码", glyph.number === "26332000002977344316");
 ok("空格版 税率 13%（非 3%）", glyph.rate === "13%");
 
 console.log("== 分供方库（issue #6）==");
-const { normalizeCompanyName, coreCompanyName, matchSupplier, collectFromInvoices, sellerTaxNoFromRawText, importSuppliersWorkbookBytes, exportSuppliersWorkbookBytes } = await import("../src/lib/supplier-db.js");
+const { normalizeCompanyName, coreCompanyName, matchSupplier, collectFromInvoices, sellerTaxNoFromRawText, importSuppliersWorkbookBytes, exportSuppliersWorkbookBytes, exportSupplierLedgerWorkbookBytes } = await import("../src/lib/supplier-db.js");
+// 分供方对账导出（issue #18）：单文件多 sheet + 差额对账
+const _ledgerWb = XLSX.read(exportSupplierLedgerWorkbookBytes(
+  { name: "测试供应商", taxNo: "T1", purchases: [{ date: "2026-06-01", item: "水泥", total: 100 }], payments: [{ date: "2026-06-02", amount: 60 }] },
+  { items: [{ date: "2026-05-01", site: "工地A", name: "砖", unit: "块", quantity: 10, unitPrice: 5, total: 50 }], totalAmount: 50 }
+), { type: "array" });
+ok("对账导出含 4 个工作表", ["对账汇总", "材料明细", "采购记录", "支付记录"].every((n) => _ledgerWb.SheetNames.includes(n)));
+ok("对账汇总差额=送货单+采购-支付", (() => { const g = XLSX.utils.sheet_to_json(_ledgerWb.Sheets["对账汇总"], { header: 1 }); const r = g.find((x) => String(x[0]).includes("差额")); return Number(r[1]) === 90; })());
 ok("归一化：去空格", normalizeCompanyName("兆鑫建 材") === "兆鑫建材");
 ok("归一化：去尾部(1)", normalizeCompanyName("佛山市智道建筑材料有限公司(1)") === "佛山市智道建筑材料有限公司");
 ok("核心名：去后缀", coreCompanyName("广州市大板东建材有限公司").includes("大板东"));
