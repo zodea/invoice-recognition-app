@@ -5,6 +5,7 @@ import UploadZone from "../components/UploadZone.vue";
 import PartitionBar from "../components/PartitionBar.vue";
 import FileCard from "../components/FileCard.vue";
 import ExportPanel from "../components/ExportPanel.vue";
+import SaveToStorePanel from "../components/SaveToStorePanel.vue";
 
 import DeliveryTree from "../components/DeliveryTree.vue";
 import ProblemDialog from "../components/ProblemDialog.vue";
@@ -64,6 +65,7 @@ const problemCount = computed(() => collectProblems().total);
       <div v-else-if="!visibleFiles.length" class="text-center text-ink-soft p-7.5 bg-panel border border-dashed border-line-strong rounded-card">该分区暂无文件。可在文件卡片上用“分区”下拉移动。</div>
     </div>
 
+    <SaveToStorePanel v-if="store.files.length && !store.staging" />
     <ExportPanel />
     <ProblemDialog />
     <OcrGateDialog />

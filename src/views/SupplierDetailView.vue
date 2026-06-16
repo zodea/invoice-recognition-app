@@ -1,11 +1,11 @@
 <script setup>
 // 分供方详情（路由页 /supplier/:id，issue #21）：取代原模态弹窗，去掉模态叠模态的深嵌套。
 // 合作数据来自送货单整理（aggregateSupplierDelivery）；采购/支付手记，持久化在分供方库。
-import { computed, reactive } from "vue";
+import { computed, onMounted, reactive } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useSupplierStore } from "../stores/supplier";
-import { store } from "../store";
-import { aggregateSupplierDelivery, emptyPurchase, emptyPayment, companySearchUrl, exportSupplierLedgerWorkbookBytes } from "../lib/supplier-db";
+import { useRecognizedStore } from "../stores/recognized";
+import { matchSupplier, emptyPurchase, emptyPayment, companySearchUrl, exportSupplierLedgerWorkbookBytes } from "../lib/supplier-db";
 import { openExternal } from "../lib/open-external";
 import { downloadBytes } from "../lib/invoice-layout";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
@@ -14,11 +14,30 @@ import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 const route = useRoute();
 const router = useRouter();
 const supplierStore = useSupplierStore();
+const recognized = useRecognizedStore();
+onMounted(() => recognized.ensureLoaded()); // 读已入库识别明细库（issue #14：保存后才在此可见）
 const supplier = computed(() => supplierStore.byId(route.params.id));
 
+// 合作工地/材料来自「识别明细库」（已入库的送货单）；未保存的不显示，与「保存到分供方」一致。
 const coop = computed(() => {
   if (!supplier.value) return { sites: [], items: [], totalAmount: 0 };
-  return aggregateSupplierDelivery(supplier.value, store.files, store.partitions);
+  const recs = recognized.allRecords().filter((r) => matchSupplier([supplier.value], r.company));
+  const sites = new Map();
+  const items = [];
+  let total = 0;
+  for (const r of recs) {
+    if (!sites.has(r.site)) sites.set(r.site, { name: r.site || "(未分区)", fileCount: 0, amount: 0 });
+    const s = sites.get(r.site);
+    s.fileCount++;
+    for (const it of r.items || []) {
+      const t = Number(it.total) || 0;
+      s.amount += t;
+      total += t;
+      items.push({ site: r.site, date: r.date, name: it.name, unit: it.unit, quantity: it.quantity, unitPrice: it.unitPrice, total: it.total });
+    }
+  }
+  items.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  return { sites: [...sites.values()], items, totalAmount: Math.round(total * 100) / 100 };
 });
 const purchases = computed(() => supplier.value?.purchases || []);
 const payments = computed(() => supplier.value?.payments || []);

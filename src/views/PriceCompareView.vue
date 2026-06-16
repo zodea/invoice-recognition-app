@@ -1,8 +1,9 @@
 <script setup>
 // 单价对比（issue #7）：行=材料（归一化+手动并组），列=供应商，单元格=最近价(+区间)，高亮最低价。
 // 数据源：store 当前已识别明细 + 导入的历史「送货单整理汇总.xlsx」。
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { store } from "../store";
+import { useRecognizedStore } from "../stores/recognized";
 import {
   aggregateItems,
   buildPriceCompare,
@@ -16,12 +17,16 @@ import {
   loadExcludeRules,
   saveExcludeRules,
   setExcludeRule,
+  obsFromDeliveryItems,
+  dedupObs,
 } from "../lib/price-compare";
 import { downloadBytes } from "../lib/invoice-layout";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 
 const importedObs = ref([]); // 历史 Excel 导入的观测点
+const recognized = useRecognizedStore();
+onMounted(() => recognized.ensureLoaded()); // 读回已入库的识别明细库（issue #14）
 const manualGroups = ref(loadManualGroups());
 const excludeRules = ref(loadExcludeRules()); // 排除集（运费类等不参与对比，issue #20）
 const siteFilter = ref(""); // "" = 全部工地汇总
@@ -29,7 +34,7 @@ const tableRef = ref(null);
 const importInput = ref(null);
 
 const siteOptions = computed(() => [{ value: "", label: "全部工地（汇总）" }, ...store.partitions.map((p) => ({ value: p.name, label: p.name }))]);
-const obs = computed(() => [...aggregateItems(store.files, store.partitions), ...importedObs.value]);
+const obs = computed(() => dedupObs([...aggregateItems(store.files, store.partitions), ...obsFromDeliveryItems(recognized.allDeliveryItems()), ...importedObs.value]));
 const compare = computed(() => buildPriceCompare(obs.value, { manualGroups: manualGroups.value, site: siteFilter.value, excludeRules: excludeRules.value }));
 
 function fmtCell(v) {

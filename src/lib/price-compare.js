@@ -60,6 +60,32 @@ export function aggregateItems(files, partitions) {
   return obs;
 }
 
+// 从"已入库"明细（recognized-store.recordsToDeliveryItems 形）建观测点，供单价对比读回持久库。issue #14
+export function obsFromDeliveryItems(items) {
+  const obs = [];
+  for (const it of items || []) {
+    const name = String(it.name || "").trim();
+    if (!name) continue;
+    const price = toPrice(it.unitPrice, it.total, it.quantity);
+    if (price == null) continue;
+    obs.push({ supplier: (it.supplier || "").trim() || "未命名公司", site: it.site || "", name, normKey: normalizeMaterial(name), unit: it.unit || "", price, date: String(it.date || "") });
+  }
+  return obs;
+}
+
+// 观测点去重（会话 store.files 与已入库库会重叠）：同 供应商|工地|归一名|价|日期 视为一条。issue #14
+export function dedupObs(obs) {
+  const seen = new Set();
+  const out = [];
+  for (const o of obs || []) {
+    const k = `${o.supplier}|${o.site}|${o.normKey}|${o.price}|${o.date}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(o);
+  }
+  return out;
+}
+
 // 观测点 → 对比表 { suppliers:[名], rows:[{ key, name, names[], unit, bySupplier{ 供应商:{recent,min,max,count} }, lowest }] }
 // manualGroups: { normKey: 组主键 }（手动并组的映射）；site: 仅统计该工地（空=跨工地汇总）。
 export function buildPriceCompare(obs, { manualGroups = {}, site = "", excludeRules = {} } = {}) {
