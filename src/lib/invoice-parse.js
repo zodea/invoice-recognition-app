@@ -55,6 +55,20 @@ export function classifyDocType(rawText) {
   return "未识别";
 }
 
+// 专票/普票分类（导出表格按种类区分用）：与报销口径(classifyReimburseKind)一致，
+// 专用→专票；普通→普票；增值税发票未分专普→归普票；行程单/货运/未识别→其他。
+// 入参可为 fields 对象，或带 .fields 的 invoice 对象。
+export function taxKindOf(fields) {
+  const f = (fields && fields.fields) || fields || {};
+  const doc = f.docType || "";
+  if (doc === "行程单" || doc === "货物运输凭证" || doc === "未识别") return "其他";
+  const t = `${f.taxKind || ""}${f.type || ""}`;
+  if (/专用/.test(t)) return "专票";
+  if (/普通/.test(t)) return "普票";
+  if (doc === "增值税发票") return "普票"; // 增票未分专普 → 归普票
+  return "其他";
+}
+
 export function parseInvoice(rawText) {
   // NFKC 归一：全角→半角、兼容字符（兼容冒号/￥/数字、康熙部首⼴→广 等）统一，
   // 显著提升“开票日期/价税合计/名称”等字段的命中率（如麦当劳那张日期原本抽不到）。
