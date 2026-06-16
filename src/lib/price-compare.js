@@ -18,6 +18,18 @@ export function normalizeMaterial(name) {
   return s.trim();
 }
 
+// 运费类关键词（issue #20）：默认从单价对比剔除（运费是真实成本，仍保留在送货单明细/导出）。
+export const FREIGHT_KEYWORDS = ["运费", "运输费", "送货费", "搬运费", "装卸费", "配送费", "上楼费", "吊装费", "卸车费"];
+export function isFreightName(name) {
+  const s = normalizeMaterial(name);
+  return FREIGHT_KEYWORDS.some((k) => s.includes(k));
+}
+// 某观测点是否排除：用户显式规则优先（true=排除/false=强制保留），否则按运费关键词默认。
+export function isObsExcluded(o, rules = {}) {
+  if (o && Object.prototype.hasOwnProperty.call(rules, o.normKey)) return Boolean(rules[o.normKey]);
+  return isFreightName(o ? o.name : "");
+}
+
 function toPrice(unitPrice, total, quantity) {
   let p = Number(unitPrice);
   if (Number.isFinite(p) && p > 0) return Math.round(p * 100) / 100;
@@ -50,15 +62,23 @@ export function aggregateItems(files, partitions) {
 
 // 观测点 → 对比表 { suppliers:[名], rows:[{ key, name, names[], unit, bySupplier{ 供应商:{recent,min,max,count} }, lowest }] }
 // manualGroups: { normKey: 组主键 }（手动并组的映射）；site: 仅统计该工地（空=跨工地汇总）。
-export function buildPriceCompare(obs, { manualGroups = {}, site = "" } = {}) {
+export function buildPriceCompare(obs, { manualGroups = {}, site = "", excludeRules = {} } = {}) {
   const rows = new Map();
   const supplierSet = new Set();
+  const excludedMap = new Map(); // normKey -> { normKey, name, count }：被剔除项的留痕汇总
   for (const o of obs) {
     if (site && o.site !== site) continue;
+    if (isObsExcluded(o, excludeRules)) {
+      let e = excludedMap.get(o.normKey);
+      if (!e) { e = { normKey: o.normKey, name: o.name, count: 0 }; excludedMap.set(o.normKey, e); }
+      e.count++;
+      continue;
+    }
     const key = manualGroups[o.normKey] || o.normKey;
     supplierSet.add(o.supplier);
     let row = rows.get(key);
-    if (!row) { row = { key, names: new Map(), units: new Set(), suppliers: new Map() }; rows.set(key, row); }
+    if (!row) { row = { key, names: new Map(), units: new Set(), suppliers: new Map(), keys: new Set() }; rows.set(key, row); }
+    row.keys.add(o.normKey);
     row.names.set(o.name, (row.names.get(o.name) || 0) + 1);
     if (o.unit) row.units.add(o.unit);
     let sup = row.suppliers.get(o.supplier);
@@ -79,10 +99,11 @@ export function buildPriceCompare(obs, { manualGroups = {}, site = "" } = {}) {
         bySupplier[sname] = { recent, min: Math.min(...prices), max: Math.max(...prices), count: list.length };
         if (recent < lowestPrice) { lowestPrice = recent; lowest = sname; }
       }
-      return { key: row.key, name, names: [...row.names.keys()], unit: [...row.units].join("/"), bySupplier, lowest };
+      return { key: row.key, name, names: [...row.names.keys()], keys: [...row.keys], unit: [...row.units].join("/"), bySupplier, lowest };
     })
     .sort((a, b) => a.name.localeCompare(b.name, "zh"));
-  return { suppliers, rows: outRows };
+  const excluded = [...excludedMap.values()].sort((a, b) => a.name.localeCompare(b.name, "zh"));
+  return { suppliers, rows: outRows, excluded };
 }
 
 // —— 手动并组/拆组（纯函数，返回新映射） ——
@@ -109,6 +130,20 @@ export function loadManualGroups() {
 }
 export function saveManualGroups(m) {
   try { if (typeof localStorage !== "undefined") localStorage.setItem(LS_KEY, JSON.stringify(m || {})); } catch { /* ignore */ }
+}
+
+// 排除集（issue #20）：normKey → true=排除 / false=强制保留。持久化，沿用 manualGroups 模式。
+const EXCLUDE_KEY = "priceCompareExcludeRules";
+export function loadExcludeRules() {
+  try { return JSON.parse((typeof localStorage !== "undefined" && localStorage.getItem(EXCLUDE_KEY)) || "{}"); } catch { return {}; }
+}
+export function saveExcludeRules(rules) {
+  try { if (typeof localStorage !== "undefined") localStorage.setItem(EXCLUDE_KEY, JSON.stringify(rules || {})); } catch { /* ignore */ }
+}
+export function setExcludeRule(rules, normKey, excluded) {
+  const m = { ...rules };
+  m[normKey] = Boolean(excluded);
+  return m;
 }
 
 // 从历史导出的「…送货单整理汇总.xlsx」读回观测点（每工作表=一个公司；跳过待复核清单）。

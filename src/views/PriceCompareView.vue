@@ -12,6 +12,9 @@ import {
   saveManualGroups,
   importHistoryWorkbookItems,
   exportPriceCompareWorkbookBytes,
+  loadExcludeRules,
+  saveExcludeRules,
+  setExcludeRule,
 } from "../lib/price-compare";
 import { downloadBytes } from "../lib/invoice-layout";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
@@ -19,13 +22,14 @@ import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 
 const importedObs = ref([]); // 历史 Excel 导入的观测点
 const manualGroups = ref(loadManualGroups());
+const excludeRules = ref(loadExcludeRules()); // 排除集（运费类等不参与对比，issue #20）
 const siteFilter = ref(""); // "" = 全部工地汇总
 const tableRef = ref(null);
 const importInput = ref(null);
 
 const siteOptions = computed(() => [{ value: "", label: "全部工地（汇总）" }, ...store.partitions.map((p) => ({ value: p.name, label: p.name }))]);
 const obs = computed(() => [...aggregateItems(store.files, store.partitions), ...importedObs.value]);
-const compare = computed(() => buildPriceCompare(obs.value, { manualGroups: manualGroups.value, site: siteFilter.value }));
+const compare = computed(() => buildPriceCompare(obs.value, { manualGroups: manualGroups.value, site: siteFilter.value, excludeRules: excludeRules.value }));
 
 function fmtCell(v) {
   if (!v) return "";
@@ -46,6 +50,20 @@ function splitRow(row) {
   manualGroups.value = splitGroup(manualGroups.value, row.key);
   saveManualGroups(manualGroups.value);
   toastInfo(`已拆分「${row.name}」。`);
+}
+
+// 排除集（issue #20）：把某材料从对比剔除 / 恢复，持久化、下次同名自动生效。
+function excludeRow(row) {
+  let m = excludeRules.value;
+  for (const k of (row.keys && row.keys.length ? row.keys : [row.key])) m = setExcludeRule(m, k, true);
+  excludeRules.value = m;
+  saveExcludeRules(m);
+  toastInfo(`已从对比剔除「${row.name}」。`);
+}
+function restoreExcluded(e) {
+  excludeRules.value = setExcludeRule(excludeRules.value, e.normKey, false);
+  saveExcludeRules(excludeRules.value);
+  toast(`已恢复「${e.name}」参与对比。`);
 }
 
 async function onImportPick(e) {
@@ -104,6 +122,16 @@ async function exportExcel() {
       </div>
     </div>
 
+    <details v-if="compare.excluded.length" class="panel p-2.5">
+      <summary class="cursor-pointer text-ink-soft text-[13px]">已从对比剔除 {{ compare.excluded.length }} 类（运费类等不参与最低价对比；送货单明细 / 导出仍保留）</summary>
+      <div class="flex flex-wrap gap-1.5 mt-2">
+        <span v-for="e in compare.excluded" :key="e.normKey" class="chip border border-line bg-white px-2 py-1 inline-flex items-center gap-1.5">
+          {{ e.name }}<span class="text-ink-soft text-xs">×{{ e.count }}</span>
+          <button class="border-none bg-transparent text-brand cursor-pointer text-xs" title="恢复参与对比" @click="restoreExcluded(e)">恢复</button>
+        </span>
+      </div>
+    </details>
+
     <div class="panel p-2">
       <vxe-table
         ref="tableRef"
@@ -136,9 +164,12 @@ async function exportExcel() {
         <vxe-column title="最低价供应商" width="130" fixed="right">
           <template #default="{ row }"><span class="text-success font-600">{{ row.lowest || "—" }}</span></template>
         </vxe-column>
-        <vxe-column title="操作" width="84" fixed="right">
+        <vxe-column title="操作" width="128" fixed="right">
           <template #default="{ row }">
-            <button v-if="row.names.length > 1" class="btn px-2 py-1 text-xs" title="解除该组的手动并组" @click="splitRow(row)">拆分</button>
+            <div class="flex gap-1.5">
+              <button v-if="row.names.length > 1" class="btn px-2 py-1 text-xs" title="解除该组的手动并组" @click="splitRow(row)">拆分</button>
+              <button class="btn px-2 py-1 text-xs" title="把该材料从单价对比剔除（如运费类）" @click="excludeRow(row)">排除</button>
+            </div>
           </template>
         </vxe-column>
       </vxe-table>
