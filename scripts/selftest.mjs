@@ -245,6 +245,29 @@ ok("开户许可证-开户行", bankF.bank === "招商银行深圳分行");
 ok("开户许可证-账号", bankF.bankAccount === "755912345678901");
 ok("归类-不确定返回空", cred.classifyDoc(["随便一些文字", "与证照无关"]) === "");
 
+console.log("== 识别明细库（issue #14 / ADR-0003）==");
+const rs = await import("../src/lib/recognized-store.js");
+const parts14 = [{ id: "p1", name: "工地甲" }];
+const files14 = [
+  { name: "a.pdf", company: "富丰建材", partitionId: "p1", docs: [{ date: "2026-05-04", orderNo: "0005876", items: [{ name: "方管", unit: "条", unitPrice: 83, quantity: 150, total: 12450 }] }] },
+  { name: "b.pdf", company: "富丰建材", partitionId: "p1", docs: [{ date: "2026-05-04", orderNo: "", items: [{ name: "焊条", total: 122 }] }] },
+  { name: "c.pdf", company: "", partitionId: "p1", docs: [{ date: "2026-05-05", orderNo: "X1", items: [{ name: "砖" }] }] },
+];
+const built = rs.buildRecordsFromFiles(files14, parts14);
+ok("入库-有单号入库", built.records.length === 1 && built.records[0].orderNo === "0005876");
+ok("入库-缺单号扣下", built.heldBack.some((h) => h.reason === "缺单号"));
+ok("入库-缺公司扣下", built.heldBack.some((h) => h.reason === "缺公司名"));
+const existing14 = JSON.parse(JSON.stringify(built.records));
+ok("upsert-完全相同静默", (() => { const c = rs.classifyUpsert(existing14, built.records); return c.identical.length === 1 && !c.inserted.length && !c.conflicts.length; })());
+const changed14 = JSON.parse(JSON.stringify(built.records));
+changed14[0].items[0].unitPrice = 80;
+const cls14 = rs.classifyUpsert(existing14, changed14);
+ok("upsert-内容变成冲突", cls14.conflicts.length === 1 && !cls14.inserted.length);
+ok("upsert-勾选覆盖", rs.applyUpsert(existing14, cls14, cls14.conflicts.map((c) => c.key))[0].items[0].unitPrice === 80);
+ok("upsert-不勾保留旧", rs.applyUpsert(existing14, cls14, [])[0].items[0].unitPrice === 83);
+ok("upsert-全新key入库", rs.classifyUpsert(existing14, [{ site: "工地甲", company: "富丰建材", orderNo: "0005877", date: "2026-05-04", items: [{ name: "角码", total: 2400 }] }]).inserted.length === 1);
+ok("库序列化往返", rs.parseSite(rs.serializeSite("工地甲", built.records)).length === 1);
+
 console.log("== excel ==");
 const files = [
   {
