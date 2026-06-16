@@ -1,9 +1,9 @@
 <script setup>
-import { computed, reactive, ref } from "vue";
+import { computed, ref } from "vue";
+import { useRouter } from "vue-router";
 import { invoiceStore } from "../invoiceStore";
+import { useSupplierStore } from "../stores/supplier";
 import {
-  loadSuppliers,
-  saveSuppliers,
   collectFromInvoices,
   exportSuppliersWorkbookBytes,
   importSuppliersWorkbookBytes,
@@ -12,25 +12,21 @@ import {
 import { downloadBytes } from "../lib/invoice-layout";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
-import SupplierDetail from "../components/SupplierDetail.vue";
 import SupplierFormDialog from "../components/SupplierFormDialog.vue";
 
-const db = reactive({ list: loadSuppliers() });
+const router = useRouter();
+const supplierStore = useSupplierStore();
 const query = ref("");
 const importInput = ref(null);
 
-// 新增/编辑走弹窗（SupplierFormDialog），不再内联 div（避免列表重排）。
+// 新增/编辑走弹窗（SupplierFormDialog）；详情改路由页 /supplier/:id（issue #21，去模态嵌套）。
 const formOpen = ref(false);
 const formSupplier = ref(null); // null = 新增
 
-function persist() {
-  saveSuppliers(db.list);
-}
-
 const filtered = computed(() => {
   const q = normalizeCompanyName(query.value);
-  if (!q) return db.list;
-  return db.list.filter((s) => {
+  if (!q) return supplierStore.list;
+  return supplierStore.list.filter((s) => {
     const hay = [s.name, ...(s.aliases || []), s.taxNo, s.contact, s.phone, s.note].map(normalizeCompanyName).join("|");
     return hay.includes(q);
   });
@@ -47,36 +43,27 @@ function startEdit(s) {
 // 弹窗保存：dup 校验 + 新增/替换 + 持久化；keepOpen=保存并继续新增。
 function onFormSubmit({ record, isNew, keepOpen }) {
   const name = (record.name || "").trim();
-  const dup = db.list.find((s) => s.id !== record.id && normalizeCompanyName(s.name) === normalizeCompanyName(name));
+  const dup = supplierStore.findDuplicate(name, record.id);
   if (dup) {
     toastWarn(`已存在同名分供方：${dup.name}`);
     return;
   }
   if (isNew) {
-    db.list.push(record);
+    supplierStore.add(record);
     toast(`已新增分供方：${name}`);
   } else {
-    const i = db.list.findIndex((s) => s.id === record.id);
-    if (i >= 0) db.list.splice(i, 1, record);
+    supplierStore.update(record);
     toast(`已保存：${name}`);
   }
-  persist();
   if (!keepOpen) formOpen.value = false;
 }
 function remove(s) {
   if (!window.confirm(`删除分供方「${s.name}」？不影响已导出的文件。`)) return;
-  const i = db.list.findIndex((x) => x.id === s.id);
-  if (i >= 0) db.list.splice(i, 1);
-  persist();
+  supplierStore.remove(s.id);
   toastInfo(`已删除：${s.name}`);
 }
-
-// 公司详情（合作工地/材料单价/采购支付记录）
-const detailOpen = ref(false);
-const detailSupplier = ref(null);
 function openDetail(s) {
-  detailSupplier.value = s;
-  detailOpen.value = true;
+  router.push(`/supplier/${s.id}`);
 }
 
 function collectNow() {
@@ -85,18 +72,18 @@ function collectNow() {
     toastWarn("发票页还没有已识别的发票，先去「发票批量打印」识别。");
     return;
   }
-  const r = collectFromInvoices(db.list, done);
-  persist();
+  const r = collectFromInvoices(supplierStore.list, done);
+  supplierStore.persist();
   if (r.added || r.updated) toast(`从发票收集完成：新增 ${r.added} 家，补充 ${r.updated} 家。`);
   else toastInfo("没有新的销售方可收集。");
 }
 
 async function exportExcel() {
-  if (!db.list.length) {
+  if (!supplierStore.list.length) {
     toastWarn("分供方列表为空。");
     return;
   }
-  const bytes = exportSuppliersWorkbookBytes(db.list);
+  const bytes = exportSuppliersWorkbookBytes(supplierStore.list);
   const name = "分供方资料.xlsx";
   const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   try {
@@ -119,27 +106,26 @@ async function onImportPick(e) {
   }
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const r = importSuppliersWorkbookBytes(db.list, bytes);
-    persist();
+    const r = importSuppliersWorkbookBytes(supplierStore.list, bytes);
+    supplierStore.persist();
     toast(`导入完成：读取 ${r.imported} 行，新增 ${r.added} 家，补充 ${r.updated} 家。`);
   } catch (err) {
     toastError("导入失败：" + ((err && err.message) || err));
   }
 }
-
 </script>
 
 <template>
   <div class="flex flex-col gap-3">
     <div class="panel p-3 flex items-center gap-2.5 flex-wrap">
       <h2 class="m-0 text-[15px] font-700">分供方资料库</h2>
-      <span class="text-ink-soft text-xs">共 {{ db.list.length }} 家；供送货单文件夹简称映射、单价对比与对账使用</span>
+      <span class="text-ink-soft text-xs">共 {{ supplierStore.list.length }} 家；供送货单文件夹简称映射、单价对比与对账使用</span>
       <div class="ml-auto flex items-center gap-2 flex-wrap">
         <input v-model="query" class="field-input w-56 py-1.5" placeholder="搜索 名称/别名/税号/联系人" />
         <button class="btn-primary px-2.75 py-1.5" @click="startAdd">＋ 新增分供方</button>
         <button class="btn px-2.75 py-1.5" @click="collectNow">从已识别发票收集</button>
         <button class="btn px-2.75 py-1.5" @click="importInput.click()">导入 Excel</button>
-        <button class="btn px-2.75 py-1.5" :disabled="!db.list.length" @click="exportExcel">导出 Excel</button>
+        <button class="btn px-2.75 py-1.5" :disabled="!supplierStore.list.length" @click="exportExcel">导出 Excel</button>
         <input ref="importInput" type="file" accept=".xlsx,.xls" hidden @change="onImportPick" />
       </div>
     </div>
@@ -154,7 +140,7 @@ async function onImportPick(e) {
         show-overflow
         :row-config="{ isHover: true }"
         :column-config="{ resizable: true }"
-        :empty-text="db.list.length ? '没有匹配的分供方。' : '还没有分供方。可手动新增、从已识别发票收集，或导入现有 Excel。'"
+        :empty-text="supplierStore.list.length ? '没有匹配的分供方。' : '还没有分供方。可手动新增、从已识别发票收集，或导入现有 Excel。'"
       >
         <vxe-column type="seq" title="#" width="52" fixed="left" />
         <vxe-column field="name" title="公司全称" min-width="230" fixed="left">
@@ -187,6 +173,5 @@ async function onImportPick(e) {
     </div>
 
     <SupplierFormDialog v-model:open="formOpen" :supplier="formSupplier" @submit="onFormSubmit" />
-    <SupplierDetail v-model:open="detailOpen" :supplier="detailSupplier" @changed="persist" />
   </div>
 </template>
