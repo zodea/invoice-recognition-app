@@ -20,6 +20,11 @@ export function makeDoc() {
   return { id: uid("d"), date: null, dateText: "", orderNo: "", items: [makeItem()] };
 }
 
+const INCOMPLETE_ONLY_KEY = "deliveryIncompleteOnly";
+function loadIncompleteOnly() {
+  try { return (typeof localStorage !== "undefined" && localStorage.getItem(INCOMPLETE_ONLY_KEY)) === "1"; } catch { return false; }
+}
+
 export const store = reactive({
   partitions: [{ id: "p_default", name: "默认项目" }],
   activePartitionId: "all", // 'all' 或某个分区 id（仅用于过滤显示）
@@ -29,6 +34,8 @@ export const store = reactive({
   staging: null, // 整理树（导入向导/重新整理）：{ tree, mode: 'import'|'reorg' }，确认才生效
   problemsOpen: false, // 问题弹窗（识别失败/无法读取/公司不一致 等需人工处理的事项）
   ocrGate: { open: false, mode: "", file: null }, // OCR 拦截弹窗（issue #13）：未配置云识别时先确认
+  exportGateOpen: false, // 导出前「不完善」校验弹窗（issue #16）
+  incompleteOnly: loadIncompleteOnly(), // 「只看未完善」筛选（issue #16），持久化
 });
 
 // 汇总当前所有"需要人解决的问题"，问题弹窗和工具栏角标共用。
@@ -38,6 +45,26 @@ export function collectProblems() {
   const conflicts = store.files.filter((f) => f.companyConflict && f.companyOcr);
   const partial = store.files.filter((f) => f.ocrStatus === "done" && f.ocrPartial);
   return { ocrFailed, unreadable, conflicts, partial, total: ocrFailed.length + unreadable.length + conflicts.length + partial.length };
+}
+
+// 「不完善」判定（issue #16，最严）：识别问题 + 关键字段为空/0明细/缺单号/待复核标记。
+// 返回原因数组（空数组=完善）。导出前 gate 与「只看未完善」筛选共用。
+export function fileIncompleteReasons(f) {
+  const reasons = [];
+  if (f.ocrStatus === "error") reasons.push("识别失败");
+  if (f.renderError && !f.pages.length) reasons.push("无法读取");
+  if (f.companyConflict && f.companyOcr) reasons.push("公司冲突未解决");
+  if (f.ocrStatus === "done" && f.ocrPartial) reasons.push("部分识别");
+  if (!(f.company || "").trim()) reasons.push("公司为空");
+  const docs = f.docs || [];
+  if (docs.some((d) => !String(d.date || d.dateText || "").trim())) reasons.push("日期为空");
+  if (docs.some((d) => !String(d.orderNo || "").trim())) reasons.push("单号为空");
+  if (docs.some((d) => !(d.items || []).some((it) => String(it.name || "").trim()))) reasons.push("0 明细行");
+  if (docs.some((d) => /复核/.test(d.note || "")) || /复核/.test(f.note || "")) reasons.push("待复核");
+  return reasons;
+}
+export function collectIncomplete() {
+  return store.files.filter((f) => fileIncompleteReasons(f).length);
 }
 
 // 两个公司名是否指同一家：归一化相等，或经分供方库匹配到同一家。
@@ -366,6 +393,12 @@ export const actions = {
     store.ocrGate = { open: false, mode: "", file: null };
     if (g.mode === "all") return actions.runOcrAll();
     if (g.file) return actions.runOcr(g.file);
+  },
+
+  // 「只看未完善」筛选（issue #16），持久化。
+  setIncompleteOnly(v) {
+    store.incompleteOnly = Boolean(v);
+    try { if (typeof localStorage !== "undefined") localStorage.setItem(INCOMPLETE_ONLY_KEY, v ? "1" : "0"); } catch { /* ignore */ }
   },
 };
 

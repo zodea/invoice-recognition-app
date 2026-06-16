@@ -9,15 +9,17 @@ import ExportPanel from "../components/ExportPanel.vue";
 import DeliveryTree from "../components/DeliveryTree.vue";
 import ProblemDialog from "../components/ProblemDialog.vue";
 import OcrGateDialog from "../components/OcrGateDialog.vue";
-import { collectProblems } from "../store";
+import { collectProblems, fileIncompleteReasons } from "../store";
 import { vlConfigured } from "../lib/app-settings";
 import { openSettings } from "../lib/ui";
 
-const visibleFiles = computed(() =>
-  store.activePartitionId === "all"
+const visibleFiles = computed(() => {
+  let list = store.activePartitionId === "all"
     ? store.files
-    : store.files.filter((f) => f.partitionId === store.activePartitionId)
-);
+    : store.files.filter((f) => f.partitionId === store.activePartitionId);
+  if (store.incompleteOnly) list = list.filter((f) => fileIncompleteReasons(f).length);
+  return list;
+});
 const problemCount = computed(() => collectProblems().total);
 </script>
 
@@ -47,6 +49,13 @@ const problemCount = computed(() => collectProblems().total);
         ⚠ 问题（{{ problemCount }}）
       </button>
       <span class="text-ink-soft" v-if="store.ocrMsg">{{ store.ocrMsg }}</span>
+    </div>
+
+    <!-- 只看未完善 常驻条（issue #16）：防止以为文件丢了 -->
+    <div v-if="store.incompleteOnly" class="flex items-center gap-2 flex-wrap px-3 py-2 rounded-card border border-warn bg-[#fffbeb] text-[#92400e] text-[13px]">
+      <span class="font-700">🔎 只看未完善（{{ visibleFiles.length }}）</span>
+      <span class="min-w-0">已过滤掉完善的单据；补完后请清除筛选再导出。</span>
+      <button class="btn px-2.5 py-1 text-xs border-warn text-[#92400e] ml-auto" @click="actions.setIncompleteOnly(false)">✕ 清除筛选</button>
     </div>
 
     <div class="flex flex-col gap-3">
