@@ -7,10 +7,8 @@ import {
   collectFromInvoices,
   exportSuppliersWorkbookBytes,
   importSuppliersWorkbookBytes,
-  companySearchUrl,
   normalizeCompanyName,
 } from "../lib/supplier-db";
-import { openExternal } from "../lib/open-external";
 import { downloadBytes } from "../lib/invoice-layout";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
@@ -71,14 +69,6 @@ function remove(s) {
   if (i >= 0) db.list.splice(i, 1);
   persist();
   toastInfo(`已删除：${s.name}`);
-}
-
-async function jumpSearch(s) {
-  try {
-    await openExternal(companySearchUrl(s.name));
-  } catch (e) {
-    toastError("打开爱企查失败：" + ((e && e.message) || e));
-  }
 }
 
 // 公司详情（合作工地/材料单价/采购支付记录）
@@ -188,7 +178,6 @@ async function onImportPick(e) {
           <template #default="{ row }">
             <div class="flex gap-1.5 flex-wrap">
               <button class="btn px-2 py-1 text-xs" @click="openDetail(row)">详情</button>
-              <button class="btn px-2 py-1 text-xs text-brand border-brand" title="在爱企查搜索该公司（免登录）" @click="jumpSearch(row)">爱企查</button>
               <button class="btn px-2 py-1 text-xs" @click="startEdit(row)">编辑</button>
               <button class="btn-danger px-2 py-1 text-xs" @click="remove(row)">删除</button>
             </div>
