@@ -167,7 +167,7 @@ const menuItemCls = "flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cu
       </div>
       <div
         ref="viewport"
-        class="relative h-[64vh] overflow-auto rounded-card border border-line bg-[#eef1f5] touch-none"
+        class="relative h-[64vh] overflow-auto rounded-card border border-line bg-surface-sink touch-none p-3"
         :class="zoomLevel > 1 ? (dragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'"
         @pointerdown="onDown"
         @wheel="onWheel"
@@ -176,7 +176,7 @@ const menuItemCls = "flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cu
           v-if="zoomSrc"
           :src="zoomSrc"
           :style="{ width: zoomWidth }"
-          class="block max-w-none select-none mx-auto bg-white"
+          class="block max-w-none select-none bg-white"
           draggable="false"
           alt=""
         />

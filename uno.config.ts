@@ -12,6 +12,10 @@ export default defineConfig({
       bg: "#f5f6f8", // Level 0 画布
       panel: "#ffffff", // Level 1 卡片
       line: { DEFAULT: "#e3e6ea", strong: "#c9ced6" },
+      // 表面层次（DESIGN surface-container 系）：收敛此前散落的硬编码浅灰
+      "surface-2": "#f8fafc", // 表头 / 卡片次级底
+      "surface-3": "#f3f4f6", // 占位 / 行 hover 底
+      "surface-sink": "#eef1f5", // 预览区凹底
       ink: { DEFAULT: "#1f2329", soft: "#5b6470", faint: "#8b93a1" },
       brand: { DEFAULT: "#2563eb", soft: "#e8f0fe", deep: "#1e3a8a" },
       // 功能状态三档：DEFAULT 实色 / soft 浅底 / ink 深字（DESIGN「三层系统」）

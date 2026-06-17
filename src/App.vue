@@ -60,13 +60,13 @@ const navBase =
             navBase,
             isActive(item)
               ? '!bg-brand-soft text-brand shadow-[inset_3px_0_0_#2563eb] lt-lg:shadow-[inset_0_-3px_0_#2563eb]'
-              : 'text-ink-soft hover:bg-[#f3f4f6] hover:text-ink',
+              : 'text-ink-soft hover:bg-surface-3 hover:text-ink',
           ]"
           @click="go(item.path)"
         >
           <span
             class="grid place-items-center flex-none w-8 h-8 rounded-lg border text-sm font-800"
-            :class="isActive(item) ? 'bg-white border-brand/25 text-brand' : 'bg-[#f8fafc] border-line text-ink-soft'"
+            :class="isActive(item) ? 'bg-white border-brand/25 text-brand' : 'bg-surface-2 border-line text-ink-soft'"
           >{{ item.mark }}</span>
           <span class="min-w-0">
             <span class="block text-sm font-800 leading-tight">{{ item.label }}</span>
@@ -91,10 +91,17 @@ const navBase =
             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint text-sm">⌕</span>
             <input
               v-model="ui.searchText"
-              class="field-input pl-8 py-2 rounded-full bg-[#f8fafc]"
+              class="field-input pl-8 pr-8 py-2 rounded-full bg-surface-2"
               type="search"
               placeholder="搜索发票号、公司、供应商或项目"
             />
+            <button
+              v-if="ui.searchText"
+              class="absolute right-2 top-1/2 -translate-y-1/2 w-5.5 h-5.5 rounded-full border border-line bg-white text-ink-soft text-xs leading-none hover:(border-brand text-brand)"
+              type="button"
+              title="清空搜索"
+              @click="ui.searchText = ''"
+            >×</button>
           </label>
         </div>
 
