@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+
+<html class="light" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>分供方管理 - OCR 管理系统</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "error": "#ba1a1a",
+                        "on-primary-container": "#eeefff",
+                        "on-secondary-fixed": "#00164e",
+                        "on-secondary-container": "#1d3989",
+                        "surface-container-low": "#f3f4f6",
+                        "surface": "#f8f9fb",
+                        "secondary-fixed-dim": "#b6c4ff",
+                        "primary-fixed": "#dbe1ff",
+                        "primary": "#004ac6",
+                        "primary-fixed-dim": "#b4c5ff",
+                        "on-secondary": "#ffffff",
+                        "on-primary-fixed": "#00174b",
+                        "tertiary": "#006329",
+                        "surface-tint": "#0053db",
+                        "on-surface": "#191c1e",
+                        "surface-dim": "#d9dadc",
+                        "on-tertiary-fixed": "#002109",
+                        "outline-variant": "#c3c6d7",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "primary-container": "#2563eb",
+                        "surface-bright": "#f8f9fb",
+                        "on-secondary-fixed-variant": "#264191",
+                        "on-tertiary": "#ffffff",
+                        "secondary-container": "#8fa7fe",
+                        "surface-container-high": "#e7e8ea",
+                        "inverse-on-surface": "#f0f1f3",
+                        "inverse-surface": "#2e3132",
+                        "error-container": "#ffdad6",
+                        "on-primary": "#ffffff",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-fixed-dim": "#62df7d",
+                        "surface-container-highest": "#e1e2e4",
+                        "on-tertiary-fixed-variant": "#005320",
+                        "on-surface-variant": "#434655",
+                        "on-error": "#ffffff",
+                        "surface-variant": "#e1e2e4",
+                        "on-error-container": "#93000a",
+                        "surface-container": "#edeef0",
+                        "tertiary-container": "#007f36",
+                        "on-tertiary-container": "#c7ffca",
+                        "outline": "#737686",
+                        "inverse-primary": "#b4c5ff",
+                        "secondary": "#4059aa",
+                        "on-background": "#191c1e",
+                        "background": "#f8f9fb",
+                        "tertiary-fixed": "#7ffc97",
+                        "secondary-fixed": "#dce1ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "xs": "4px",
+                        "xxl": "32px",
+                        "xl": "24px",
+                        "base": "4px",
+                        "gutter": "16px",
+                        "container-max": "1480px",
+                        "lg": "16px",
+                        "sm": "8px",
+                        "md": "12px"
+                    },
+                    "fontFamily": {
+                        "label-caps": ["Hanken Grotesk"],
+                        "display-lg": ["Hanken Grotesk"],
+                        "body-base": ["Hanken Grotesk"],
+                        "data-mono": ["JetBrains Mono"],
+                        "caption": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "body-sm": ["Hanken Grotesk"],
+                        "title-sm": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                        "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "body-base": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "data-mono": ["13px", {"lineHeight": "20px", "fontWeight": "500"}],
+                        "caption": ["12px", {"lineHeight": "16px", "fontWeight": "400"}],
+                        "headline-md": ["18px", {"lineHeight": "24px", "fontWeight": "700"}],
+                        "body-sm": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                        "title-sm": ["16px", {"lineHeight": "24px", "fontWeight": "700"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Hanken Grotesk', sans-serif;
+            background-color: #f8f9fb;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #c3c6d7;
+            border-radius: 10px;
+        }
+        .table-row-hover:hover {
+            background-color: #f1f3f6;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface min-h-screen">
+<!-- Side Navigation Shell -->
+<aside class="fixed left-0 top-0 h-full flex flex-col w-64 border-r border-outline-variant bg-surface-container-lowest dark:bg-surface-dim z-50">
+<div class="px-xl py-xxl">
+<h1 class="font-headline-md text-headline-md font-bold text-primary dark:text-primary-fixed">OCR 管理系统</h1>
+<p class="font-label-caps text-label-caps text-on-surface-variant opacity-70">企业级识别平台</p>
+</div>
+<nav class="flex-1 px-md space-y-xs overflow-y-auto custom-scrollbar">
+<a class="flex items-center gap-md px-lg py-md text-on-surface-variant hover:bg-surface-container-high transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary">dashboard</span>
+<span class="font-label-caps text-label-caps">工作台</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md text-on-surface-variant hover:bg-surface-container-high transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary">receipt_long</span>
+<span class="font-label-caps text-label-caps">发票识别</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md text-on-surface-variant hover:bg-surface-container-high transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary">description</span>
+<span class="font-label-caps text-label-caps">材料单识别</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md bg-secondary-container text-on-secondary-container rounded-lg font-bold" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">inventory_2</span>
+<span class="font-label-caps text-label-caps">分供方管理</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md text-on-surface-variant hover:bg-surface-container-high transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary">compare_arrows</span>
+<span class="font-label-caps text-label-caps">材料对比</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md text-on-surface-variant hover:bg-surface-container-high transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary">settings</span>
+<span class="font-label-caps text-label-caps">系统设置</span>
+</a>
+</nav>
+<div class="p-lg border-t border-outline-variant">
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-bold">
+                管
+            </div>
+<div>
+<p class="font-label-caps text-label-caps font-bold">管理员</p>
+<p class="text-[10px] text-on-surface-variant">Administrator</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- Top Navigation Shell -->
+<header class="flex justify-between items-center px-xl ml-64 w-[calc(100%-16rem)] fixed top-0 h-16 border-b border-outline-variant bg-surface dark:bg-surface-dim z-40">
+<div class="flex items-center gap-xl w-1/2">
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="w-full pl-10 pr-4 py-2 bg-surface-container-low border border-outline-variant rounded-lg font-body-sm text-body-sm focus:outline-none focus:border-primary transition-all" placeholder="搜索分供方名称或联系人..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-lg">
+<button class="p-2 text-on-surface-variant hover:bg-surface-container-high rounded-full transition-colors relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<button class="p-2 text-on-surface-variant hover:bg-surface-container-high rounded-full transition-colors">
+<span class="material-symbols-outlined">help_outline</span>
+</button>
+<div class="h-8 w-[1px] bg-outline-variant mx-sm"></div>
+<div class="flex items-center gap-sm cursor-pointer group">
+<span class="font-body-base text-body-base font-medium group-hover:text-primary transition-colors">个人中心</span>
+<span class="material-symbols-outlined">expand_more</span>
+</div>
+</div>
+</header>
+<!-- Main Content Canvas - Long Page Layout -->
+<main class="ml-64 pt-20 p-xl">
+<div class="max-w-container-max mx-auto space-y-xl">
+<!-- Header Section with Actions -->
+<div class="flex justify-between items-end">
+<div>
+<h2 class="font-display-lg text-display-lg text-on-surface">分供方库</h2>
+<p class="font-body-base text-body-base text-on-surface-variant mt-xs">管理并维护企业合作的所有材料供应商与劳务分包商数据。</p>
+</div>
+<div class="flex gap-md">
+<button class="flex items-center gap-sm px-lg py-md bg-surface-container-highest text-on-surface font-bold rounded-lg border border-outline-variant hover:bg-surface-container-high transition-all">
+<span class="material-symbols-outlined">file_download</span>
+                    导出数据
+                </button>
+<button class="flex items-center gap-sm px-lg py-md bg-primary text-on-primary font-bold rounded-lg hover:opacity-90 shadow-sm transition-all active:scale-95">
+<span class="material-symbols-outlined">add</span>
+                    新增分供方
+                </button>
+</div>
+</div>
+<!-- Dashboard Stats Summary (Maintained) -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-lg">
+<div class="bg-surface-container-lowest p-lg rounded-xl border border-outline-variant shadow-sm flex items-center gap-lg">
+<div class="w-12 h-12 bg-primary-container/10 text-primary rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined" style="font-variation-settings: 'opsz' 32;">groups</span>
+</div>
+<div>
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase">总分供方</p>
+<p class="font-display-lg text-display-lg">1,248</p>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-lg rounded-xl border border-outline-variant shadow-sm flex items-center gap-lg">
+<div class="w-12 h-12 bg-tertiary-container/10 text-tertiary rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined" style="font-variation-settings: 'opsz' 32;">verified</span>
+</div>
+<div>
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase">合格分供方</p>
+<p class="font-display-lg text-display-lg">956</p>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-lg rounded-xl border border-outline-variant shadow-sm flex items-center gap-lg">
+<div class="w-12 h-12 bg-secondary-container/10 text-secondary rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined" style="font-variation-settings: 'opsz' 32;">payments</span>
+</div>
+<div>
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase">累计交易额</p>
+<p class="font-display-lg text-display-lg">¥84.2M</p>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-lg rounded-xl border border-outline-variant shadow-sm flex items-center gap-lg">
+<div class="w-12 h-12 bg-error-container/10 text-error rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined" style="font-variation-settings: 'opsz' 32;">error_outline</span>
+</div>
+<div>
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase">待考察单位</p>
+<p class="font-display-lg text-display-lg">12</p>
+</div>
+</div>
+</div>
+<!-- Full List Section - Long Page Display -->
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant shadow-sm overflow-hidden flex flex-col">
+<!-- Table Controls -->
+<div class="p-lg flex flex-wrap items-center justify-between gap-lg border-b border-outline-variant">
+<div class="flex items-center gap-md">
+<div class="flex rounded-lg border border-outline-variant overflow-hidden">
+<button class="px-md py-sm bg-primary-container text-on-primary-container font-label-caps text-label-caps">全部类型</button>
+<button class="px-md py-sm hover:bg-surface-container-high text-on-surface-variant font-label-caps text-label-caps border-l border-outline-variant">材料</button>
+<button class="px-md py-sm hover:bg-surface-container-high text-on-surface-variant font-label-caps text-label-caps border-l border-outline-variant">劳务</button>
+<button class="px-md py-sm hover:bg-surface-container-high text-on-surface-variant font-label-caps text-label-caps border-l border-outline-variant">分包</button>
+</div>
+<select class="px-md py-sm rounded-lg border border-outline-variant bg-surface-container-low font-label-caps text-label-caps focus:outline-none focus:ring-1 focus:ring-primary">
+<option>所有等级</option>
+<option>AAA</option>
+<option>AA</option>
+<option>A</option>
+<option>B</option>
+</select>
+<select class="px-md py-sm rounded-lg border border-outline-variant bg-surface-container-low font-label-caps text-label-caps focus:outline-none focus:ring-1 focus:ring-primary">
+<option>所有状态</option>
+<option>合格</option>
+<option>考察中</option>
+<option>黑名单</option>
+</select>
+</div>
+<div class="flex items-center gap-sm">
+<span class="font-caption text-caption text-on-surface-variant">共 1,248 条结果</span>
+<div class="h-4 w-[1px] bg-outline-variant"></div>
+<button class="p-2 hover:bg-surface-container-high rounded transition-colors">
+<span class="material-symbols-outlined">filter_list</span>
+</button>
+<button class="p-2 hover:bg-surface-container-high rounded transition-colors">
+<span class="material-symbols-outlined">refresh</span>
+</button>
+</div>
+</div>
+<!-- Data Table -->
+<div class="overflow-x-auto custom-scrollbar">
+<table class="w-full border-collapse text-left">
+<thead>
+<tr class="bg-surface-container-low border-b border-outline-variant">
+<th class="px-lg py-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">分供方名称</th>
+<th class="px-lg py-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">类型</th>
+<th class="px-lg py-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">联系人</th>
+<th class="px-lg py-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">联系电话</th>
+<th class="px-lg py-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider text-right">累计交易额</th>
+<th class="px-lg py-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider text-center">信用等级</th>
+<th class="px-lg py-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider text-center">状态</th>
+<th class="px-lg py-md font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider text-center">操作</th>
+</tr>
+</thead>
+<tbody class="font-body-sm text-body-sm">
+<!-- Repeated rows to demonstrate long page -->
+<tr class="border-b border-outline-variant table-row-hover transition-colors">
+<td class="px-lg py-md font-bold text-on-surface">上海龙旗建筑装饰工程有限公司</td>
+<td class="px-lg py-md"><span class="px-2 py-0.5 bg-secondary-container/20 text-secondary font-medium rounded text-[11px]">劳务分包</span></td>
+<td class="px-lg py-md">张世龙</td>
+<td class="px-lg py-md font-data-mono text-data-mono">138****9928</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-right">¥12,450,000.00</td>
+<td class="px-lg py-md text-center"><span class="font-bold text-tertiary">AAA</span></td>
+<td class="px-lg py-md text-center">
+<div class="inline-flex items-center gap-1 px-2 py-0.5 bg-tertiary-container/10 text-tertiary border border-tertiary/20 rounded-full text-[11px]">
+<span class="w-1.5 h-1.5 bg-tertiary rounded-full"></span>合格
+                                </div>
+</td>
+<td class="px-lg py-md text-center"><button class="text-primary hover:underline font-medium">详情</button></td>
+</tr>
+<tr class="border-b border-outline-variant table-row-hover transition-colors">
+<td class="px-lg py-md font-bold text-on-surface">江苏恒建钢结构物资有限公司</td>
+<td class="px-lg py-md"><span class="px-2 py-0.5 bg-primary-container/10 text-primary font-medium rounded text-[11px]">建筑材料</span></td>
+<td class="px-lg py-md">李志强</td>
+<td class="px-lg py-md font-data-mono text-data-mono">155****0182</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-right">¥8,201,300.50</td>
+<td class="px-lg py-md text-center"><span class="font-bold text-tertiary">AA</span></td>
+<td class="px-lg py-md text-center">
+<div class="inline-flex items-center gap-1 px-2 py-0.5 bg-tertiary-container/10 text-tertiary border border-tertiary/20 rounded-full text-[11px]">
+<span class="w-1.5 h-1.5 bg-tertiary rounded-full"></span>合格
+                                </div>
+</td>
+<td class="px-lg py-md text-center"><button class="text-primary hover:underline font-medium">详情</button></td>
+</tr>
+<tr class="border-b border-outline-variant table-row-hover transition-colors">
+<td class="px-lg py-md font-bold text-on-surface">深圳市广益机电设备有限公司</td>
+<td class="px-lg py-md"><span class="px-2 py-0.5 bg-primary-container/10 text-primary font-medium rounded text-[11px]">设备采购</span></td>
+<td class="px-lg py-md">陈明安</td>
+<td class="px-lg py-md font-data-mono text-data-mono">139****4421</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-right">¥3,500,200.00</td>
+<td class="px-lg py-md text-center"><span class="font-bold text-secondary">A</span></td>
+<td class="px-lg py-md text-center">
+<div class="inline-flex items-center gap-1 px-2 py-0.5 bg-secondary-container/20 text-on-secondary-container border border-secondary/20 rounded-full text-[11px]">
+<span class="w-1.5 h-1.5 bg-secondary rounded-full"></span>考察中
+                                </div>
+</td>
+<td class="px-lg py-md text-center"><button class="text-primary hover:underline font-medium">详情</button></td>
+</tr>
+<tr class="border-b border-outline-variant table-row-hover transition-colors">
+<td class="px-lg py-md font-bold text-on-surface">北京众诚劳务派遣服务中心</td>
+<td class="px-lg py-md"><span class="px-2 py-0.5 bg-secondary-container/20 text-secondary font-medium rounded text-[11px]">劳务分包</span></td>
+<td class="px-lg py-md">王淑芬</td>
+<td class="px-lg py-md font-data-mono text-data-mono">130****7733</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-right">¥920,440.00</td>
+<td class="px-lg py-md text-center"><span class="font-bold text-outline">B</span></td>
+<td class="px-lg py-md text-center">
+<div class="inline-flex items-center gap-1 px-2 py-0.5 bg-tertiary-container/10 text-tertiary border border-tertiary/20 rounded-full text-[11px]">
+<span class="w-1.5 h-1.5 bg-tertiary rounded-full"></span>合格
+                                </div>
+</td>
+<td class="px-lg py-md text-center"><button class="text-primary hover:underline font-medium">详情</button></td>
+</tr>
+<tr class="border-b border-outline-variant table-row-hover transition-colors bg-error-container/5">
+<td class="px-lg py-md font-bold text-on-surface">武汉鼎泰天成贸易有限公司</td>
+<td class="px-lg py-md"><span class="px-2 py-0.5 bg-primary-container/10 text-primary font-medium rounded text-[11px]">建筑材料</span></td>
+<td class="px-lg py-md">赵博</td>
+<td class="px-lg py-md font-data-mono text-data-mono">186****1109</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-right">¥56,700,450.00</td>
+<td class="px-lg py-md text-center"><span class="font-bold text-error">D</span></td>
+<td class="px-lg py-md text-center">
+<div class="inline-flex items-center gap-1 px-2 py-0.5 bg-error-container/20 text-error border border-error/20 rounded-full text-[11px]">
+<span class="w-1.5 h-1.5 bg-error rounded-full"></span>已停用
+                                </div>
+</td>
+<td class="px-lg py-md text-center"><button class="text-primary hover:underline font-medium">详情</button></td>
+</tr>
+<!-- Additional data simulating long list -->
+<tr class="border-b border-outline-variant table-row-hover transition-colors">
+<td class="px-lg py-md font-bold text-on-surface">成都建工集团有限公司</td>
+<td class="px-lg py-md"><span class="px-2 py-0.5 bg-secondary-container/20 text-secondary font-medium rounded text-[11px]">工程施工</span></td>
+<td class="px-lg py-md">王建国</td>
+<td class="px-lg py-md font-data-mono text-data-mono">135****8888</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-right">¥21,340,000.00</td>
+<td class="px-lg py-md text-center"><span class="font-bold text-tertiary">AAA</span></td>
+<td class="px-lg py-md text-center">
+<div class="inline-flex items-center gap-1 px-2 py-0.5 bg-tertiary-container/10 text-tertiary border border-tertiary/20 rounded-full text-[11px]">
+<span class="w-1.5 h-1.5 bg-tertiary rounded-full"></span>合格
+                                </div>
+</td>
+<td class="px-lg py-md text-center"><button class="text-primary hover:underline font-medium">详情</button></td>
+</tr>
+<tr class="border-b border-outline-variant table-row-hover transition-colors">
+<td class="px-lg py-md font-bold text-on-surface">杭州绿城装饰工程有限公司</td>
+<td class="px-lg py-md"><span class="px-2 py-0.5 bg-secondary-container/20 text-secondary font-medium rounded text-[11px]">精装分包</span></td>
+<td class="px-lg py-md">李晓明</td>
+<td class="px-lg py-md font-data-mono text-data-mono">137****6655</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-right">¥15,200,000.00</td>
+<td class="px-lg py-md text-center"><span class="font-bold text-tertiary">AAA</span></td>
+<td class="px-lg py-md text-center">
+<div class="inline-flex items-center gap-1 px-2 py-0.5 bg-tertiary-container/10 text-tertiary border border-tertiary/20 rounded-full text-[11px]">
+<span class="w-1.5 h-1.5 bg-tertiary rounded-full"></span>合格
+                                </div>
+</td>
+<td class="px-lg py-md text-center"><button class="text-primary hover:underline font-medium">详情</button></td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination - Simplified for long page feel -->
+<div class="p-lg bg-surface-container-low border-t border-outline-variant flex items-center justify-between">
+<div class="flex items-center gap-md">
+<span class="font-caption text-caption text-on-surface-variant">每页显示</span>
+<select class="px-sm py-1 rounded border border-outline-variant bg-surface font-caption text-caption focus:outline-none">
+<option>10 条</option>
+<option selected="">20 条</option>
+<option>50 条</option>
+<option>100 条</option>
+</select>
+</div>
+<div class="flex items-center gap-xs">
+<button class="w-8 h-8 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors text-on-surface-variant opacity-50 cursor-not-allowed">
+<span class="material-symbols-outlined">chevron_left</span>
+</button>
+<button class="w-8 h-8 flex items-center justify-center rounded bg-primary text-on-primary font-bold text-body-sm shadow-sm">1</button>
+<button class="w-8 h-8 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors font-body-sm">2</button>
+<button class="w-8 h-8 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors font-body-sm">3</button>
+<span class="px-2">...</span>
+<button class="w-8 h-8 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors font-body-sm">62</button>
+<button class="w-8 h-8 flex items-center justify-center rounded hover:bg-surface-container-high transition-colors text-on-surface-variant">
+<span class="material-symbols-outlined">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Additional Information Sections (Bento Style) -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-xl pb-xl">
+<!-- Recent Activities -->
+<div class="lg:col-span-2 bg-surface-container-lowest p-xl rounded-xl border border-outline-variant shadow-sm">
+<div class="flex justify-between items-center mb-lg">
+<h3 class="font-title-sm text-title-sm text-on-surface">最近交易记录</h3>
+<button class="text-primary font-label-caps text-label-caps hover:underline">查看全部报表</button>
+</div>
+<div class="space-y-md">
+<div class="flex items-center justify-between p-md bg-surface border border-outline-variant rounded-lg">
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 bg-surface-container-high rounded flex items-center justify-center">
+<span class="material-symbols-outlined text-outline">description</span>
+</div>
+<div>
+<p class="font-body-base text-body-base font-bold">采购单 #PO-20230811001</p>
+<p class="font-caption text-caption text-on-surface-variant">上海龙旗建筑装饰工程有限公司</p>
+</div>
+</div>
+<div class="text-right">
+<p class="font-data-mono text-data-mono font-bold">¥450,000.00</p>
+<p class="font-caption text-caption text-on-surface-variant">2023-08-11</p>
+</div>
+</div>
+<div class="flex items-center justify-between p-md bg-surface border border-outline-variant rounded-lg">
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 bg-surface-container-high rounded flex items-center justify-center">
+<span class="material-symbols-outlined text-outline">description</span>
+</div>
+<div>
+<p class="font-body-base text-body-base font-bold">结算单 #SET-20230810052</p>
+<p class="font-caption text-caption text-on-surface-variant">江苏恒建钢结构物资有限公司</p>
+</div>
+</div>
+<div class="text-right">
+<p class="font-data-mono text-data-mono font-bold">¥1,200,000.00</p>
+<p class="font-caption text-caption text-on-surface-variant">2023-08-10</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Supplier Distribution Chart -->
+<div class="bg-surface-container-lowest p-xl rounded-xl border border-outline-variant shadow-sm flex flex-col justify-between">
+<div>
+<h3 class="font-title-sm text-title-sm text-on-surface mb-sm">分供方结构占比</h3>
+<p class="font-caption text-caption text-on-surface-variant">按业务类型分布情况</p>
+</div>
+<div class="flex-1 flex items-center justify-center py-lg">
+<div class="relative w-40 h-40">
+<div class="absolute inset-0 border-[12px] border-primary-container rounded-full opacity-20"></div>
+<div class="absolute inset-0 border-[12px] border-primary border-t-transparent border-l-transparent rounded-full rotate-45"></div>
+<div class="absolute inset-0 flex flex-col items-center justify-center">
+<span class="font-display-lg text-display-lg leading-none">42%</span>
+<span class="font-label-caps text-label-caps text-on-surface-variant">材料类</span>
+</div>
+</div>
+</div>
+<div class="space-y-xs">
+<div class="flex justify-between items-center font-caption text-caption">
+<span class="flex items-center gap-1"><span class="w-2 h-2 bg-primary rounded-full"></span> 材料类</span>
+<span class="font-data-mono">42.5%</span>
+</div>
+<div class="flex justify-between items-center font-caption text-caption">
+<span class="flex items-center gap-1"><span class="w-2 h-2 bg-secondary-container rounded-full"></span> 劳务类</span>
+<span class="font-data-mono">31.2%</span>
+</div>
+<div class="flex justify-between items-center font-caption text-caption">
+<span class="flex items-center gap-1"><span class="w-2 h-2 bg-tertiary-container rounded-full"></span> 设备/其他</span>
+<span class="font-data-mono">26.3%</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Quick Action FAB -->
+<div class="fixed bottom-xl right-xl z-30">
+<button class="w-14 h-14 bg-primary text-on-primary rounded-full shadow-lg flex items-center justify-center hover:scale-110 active:scale-95 transition-all group overflow-hidden">
+<span class="material-symbols-outlined text-[28px]">upload_file</span>
+</button>
+</div>
+<script>
+    // Micro-interactions for table rows
+    document.querySelectorAll('.table-row-hover').forEach(row => {
+        row.addEventListener('mouseenter', () => {
+            row.style.transform = 'translateX(2px)';
+            row.style.transition = 'transform 0.15s ease-out';
+        });
+        row.addEventListener('mouseleave', () => {
+            row.style.transform = 'translateX(0)';
+        });
+    });
+</script>
+</body></html>

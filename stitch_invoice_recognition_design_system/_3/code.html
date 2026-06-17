@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>材料对比分析 - OCR 管理系统</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700;800&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #c3c6d7;
+            border-radius: 10px;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "error": "#ba1a1a",
+                        "on-primary-container": "#eeefff",
+                        "on-secondary-fixed": "#00164e",
+                        "on-secondary-container": "#1d3989",
+                        "surface-container-low": "#f3f4f6",
+                        "surface": "#f8f9fb",
+                        "secondary-fixed-dim": "#b6c4ff",
+                        "primary-fixed": "#dbe1ff",
+                        "primary": "#004ac6",
+                        "primary-fixed-dim": "#b4c5ff",
+                        "on-secondary": "#ffffff",
+                        "on-primary-fixed": "#00174b",
+                        "tertiary": "#006329",
+                        "surface-tint": "#0053db",
+                        "on-surface": "#191c1e",
+                        "surface-dim": "#d9dadc",
+                        "on-tertiary-fixed": "#002109",
+                        "outline-variant": "#c3c6d7",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "on-tertiary": "#ffffff",
+                        "secondary-container": "#8fa7fe",
+                        "surface-container-high": "#e7e8ea",
+                        "inverse-on-surface": "#f0f1f3",
+                        "inverse-surface": "#2e3132",
+                        "error-container": "#ffdad6",
+                        "on-primary": "#ffffff",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-fixed-dim": "#62df7d",
+                        "surface-container-highest": "#e1e2e4",
+                        "on-tertiary-fixed-variant": "#005320",
+                        "on-surface-variant": "#434655",
+                        "on-error": "#ffffff",
+                        "surface-variant": "#e1e2e4",
+                        "on-error-container": "#93000a",
+                        "surface-container": "#edeef0",
+                        "tertiary-container": "#007f36",
+                        "on-tertiary-container": "#c7ffca",
+                        "outline": "#737686",
+                        "inverse-primary": "#b4c5ff",
+                        "secondary": "#4059aa",
+                        "on-background": "#191c1e",
+                        "background": "#f8f9fb",
+                        "tertiary-fixed": "#7ffc97",
+                        "secondary-fixed": "#dce1ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "xs": "4px",
+                        "xxl": "32px",
+                        "xl": "24px",
+                        "base": "4px",
+                        "gutter": "16px",
+                        "container-max": "1480px",
+                        "lg": "16px",
+                        "sm": "8px",
+                        "md": "12px"
+                    },
+                    "fontFamily": {
+                        "label-caps": ["Hanken Grotesk"],
+                        "display-lg": ["Hanken Grotesk"],
+                        "body-base": ["Hanken Grotesk"],
+                        "data-mono": ["JetBrains Mono"],
+                        "caption": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "body-sm": ["Hanken Grotesk"],
+                        "title-sm": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                        "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "body-base": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "data-mono": ["13px", {"lineHeight": "20px", "fontWeight": "500"}],
+                        "caption": ["12px", {"lineHeight": "16px", "fontWeight": "400"}],
+                        "headline-md": ["18px", {"lineHeight": "24px", "fontWeight": "700"}],
+                        "body-sm": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                        "title-sm": ["16px", {"lineHeight": "24px", "fontWeight": "700"}]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-surface font-body-base antialiased overflow-hidden">
+<div class="flex h-screen w-full">
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 h-full flex flex-col bg-surface-container-lowest dark:bg-surface-dim h-screen w-64 border-r border-outline-variant z-50">
+<div class="px-xl py-xl">
+<h1 class="font-headline-md text-headline-md font-bold text-primary dark:text-primary-fixed">OCR 管理系统</h1>
+<p class="text-on-surface-variant font-label-caps text-label-caps mt-xs">企业级识别平台</p>
+</div>
+<nav class="flex-1 px-md mt-lg space-y-sm">
+<a class="flex items-center gap-md px-lg py-md text-on-surface-variant hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-label-caps text-label-caps">工作台</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md text-on-surface-variant hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="receipt_long">receipt_long</span>
+<span class="font-label-caps text-label-caps">发票识别</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md text-on-surface-variant hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+<span class="font-label-caps text-label-caps">材料单识别</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md text-on-surface-variant hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
+<span class="font-label-caps text-label-caps">分供方管理</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md bg-secondary-container text-on-secondary-container rounded-lg font-bold" href="#">
+<span class="material-symbols-outlined" data-icon="compare_arrows">compare_arrows</span>
+<span class="font-label-caps text-label-caps">材料对比</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md text-on-surface-variant hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label-caps text-label-caps">系统设置</span>
+</a>
+</nav>
+<div class="p-lg border-t border-outline-variant">
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 rounded-full overflow-hidden bg-surface-container-high">
+<img alt="User Profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCfZNJztUlWqDVvdalxgIhF25Q3RXHXcDb89QGHCVO_DywilD8gaBrqPtBdA_G7RMOIkKTgRIOgqvKf3vEidG51L9G_0E8UUG4Q0nI-2EDAKahYN_B6mHue9z6JJxsTIW8nLxKCWS4aErDGF_K_riOrvq6TDp5CfayD-Zz-092z0qZUekDwl9RJ7-aSQ8GwGm_Sr8tnKTdZYSUXu3aL7IJMD0tQm7T1sG-PSldNpgo7ntJwmVJDFiLy40X9pPZMEKfEVru8FmbR3vXw"/>
+</div>
+<div>
+<p class="font-title-sm text-title-sm text-on-surface">系统管理员</p>
+<p class="font-caption text-caption text-on-surface-variant">Admin</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Canvas -->
+<main class="ml-64 flex-1 flex flex-col h-full bg-background relative">
+<!-- TopNavBar -->
+<header class="flex justify-between items-center px-xl w-full h-16 border-b border-outline-variant bg-surface dark:bg-surface-dim z-40">
+<div class="flex items-center gap-xl flex-1">
+<h2 class="font-title-sm text-title-sm font-bold text-on-surface">发票与材料单管理</h2>
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-md top-1/2 -translate-y-1/2 text-on-surface-variant" data-icon="search">search</span>
+<input class="w-full bg-surface-container pl-xl pr-md py-sm rounded-lg border-none focus:ring-2 focus:ring-primary text-body-base" placeholder="搜索材料、供应商或对比项..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-lg">
+<div class="flex items-center gap-md mr-lg">
+<button class="flex items-center gap-xs px-md py-sm rounded-lg border border-outline hover:bg-surface-container-high transition-colors text-body-base">
+<span class="material-symbols-outlined" data-icon="ios_share">ios_share</span>
+<span>导出数据</span>
+</button>
+<button class="flex items-center gap-xs px-md py-sm rounded-lg border border-outline hover:bg-surface-container-high transition-colors text-body-base">
+<span class="material-symbols-outlined" data-icon="print">print</span>
+<span>打印</span>
+</button>
+</div>
+<div class="flex items-center gap-md">
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary transition-colors" data-icon="notifications">notifications</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary transition-colors" data-icon="help_outline">help_outline</span>
+<div class="h-6 w-[1px] bg-outline-variant mx-sm"></div>
+<span class="font-body-base text-body-base text-on-surface-variant cursor-pointer hover:text-primary transition-colors">个人中心</span>
+</div>
+</div>
+</header>
+<!-- Content Area -->
+<div class="flex-1 overflow-y-auto p-xl custom-scrollbar">
+<div class="max-w-container-max mx-auto space-y-xl">
+<!-- Selection Header -->
+<div class="flex items-end justify-between">
+<div class="space-y-sm">
+<h3 class="font-display-lg text-display-lg text-on-surface">材料对比分析报告</h3>
+<div class="flex gap-md items-center">
+<span class="px-md py-xs bg-primary-container/10 text-primary rounded-full text-caption border border-primary/20">正在对比: 3个材料单</span>
+<span class="text-on-surface-variant text-body-sm">数据更新于: 2023-11-20 14:30</span>
+</div>
+</div>
+<div class="flex items-center gap-md">
+<div class="flex -space-x-md">
+<div class="w-10 h-10 rounded-full border-2 border-white bg-secondary-container flex items-center justify-center text-on-secondary-container font-bold text-caption">S1</div>
+<div class="w-10 h-10 rounded-full border-2 border-white bg-tertiary-container flex items-center justify-center text-on-tertiary-container font-bold text-caption">S2</div>
+<div class="w-10 h-10 rounded-full border-2 border-white bg-error-container flex items-center justify-center text-on-error-container font-bold text-caption">S3</div>
+<button class="w-10 h-10 rounded-full border-2 border-dashed border-outline bg-surface flex items-center justify-center text-outline hover:border-primary hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Bento Grid for Visualizations -->
+<div class="grid grid-cols-12 gap-lg h-[480px]">
+<!-- Price Trend Card -->
+<div class="col-span-8 bg-surface-container-lowest border border-outline-variant rounded-xl p-xl flex flex-col shadow-sm">
+<div class="flex justify-between items-center mb-xl">
+<h4 class="font-title-sm text-title-sm flex items-center gap-sm">
+<span class="material-symbols-outlined text-primary" data-icon="trending_up">trending_up</span>
+                                    关键材料单价变动曲线
+                                </h4>
+<div class="flex gap-sm">
+<span class="flex items-center gap-xs text-caption text-on-surface-variant"><i class="w-3 h-3 rounded-full bg-primary"></i> 供应商A</span>
+<span class="flex items-center gap-xs text-caption text-on-surface-variant"><i class="w-3 h-3 rounded-full bg-tertiary"></i> 供应商B</span>
+</div>
+</div>
+<div class="flex-1 relative">
+<!-- Chart Placeholder with SVG -->
+<svg class="w-full h-full" viewbox="0 0 800 300">
+<!-- Grid Lines -->
+<line stroke="#e1e2e4" stroke-dasharray="4" x1="0" x2="800" y1="0" y2="0"></line>
+<line stroke="#e1e2e4" stroke-dasharray="4" x1="0" x2="800" y1="75" y2="75"></line>
+<line stroke="#e1e2e4" stroke-dasharray="4" x1="0" x2="800" y1="150" y2="150"></line>
+<line stroke="#e1e2e4" stroke-dasharray="4" x1="0" x2="800" y1="225" y2="225"></line>
+<!-- Curves -->
+<path d="M0,200 Q200,150 400,180 T800,50" fill="none" stroke="#004ac6" stroke-width="3"></path>
+<path d="M0,250 Q200,230 400,210 T800,160" fill="none" stroke="#007f36" stroke-width="3"></path>
+<!-- Points -->
+<circle cx="400" cy="180" fill="#004ac6" r="4"></circle>
+<circle cx="800" cy="50" fill="#004ac6" r="4"></circle>
+</svg>
+<div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
+<div class="px-md py-sm bg-inverse-surface text-inverse-on-surface rounded shadow-lg text-caption">
+                                        2023-10: 单价异常上浮 +15.4%
+                                    </div>
+</div>
+</div>
+</div>
+<!-- Radar Chart Card -->
+<div class="col-span-4 bg-surface-container-lowest border border-outline-variant rounded-xl p-xl flex flex-col shadow-sm">
+<div class="mb-xl">
+<h4 class="font-title-sm text-title-sm flex items-center gap-sm">
+<span class="material-symbols-outlined text-primary" data-icon="radar">radar</span>
+                                    多维度服务能力对比
+                                </h4>
+</div>
+<div class="flex-1 flex items-center justify-center">
+<div class="relative w-48 h-48">
+<!-- Radar SVG -->
+<svg class="w-full h-full" viewbox="0 0 200 200">
+<polygon fill="none" points="100,20 180,70 160,160 40,160 20,70" stroke="#c3c6d7"></polygon>
+<polygon fill="none" points="100,60 140,85 130,130 70,130 60,85" stroke="#c3c6d7"></polygon>
+<polygon fill="#004ac620" points="100,40 160,90 140,140 60,130 40,80" stroke="#004ac6" stroke-width="2"></polygon>
+</svg>
+<div class="absolute -top-4 left-1/2 -translate-x-1/2 text-caption">价格</div>
+<div class="absolute top-1/3 -right-6 text-caption">质量</div>
+<div class="absolute -bottom-4 right-1/4 text-caption">交付</div>
+<div class="absolute -bottom-4 left-1/4 text-caption">售后</div>
+<div class="absolute top-1/3 -left-6 text-caption">账期</div>
+</div>
+</div>
+<div class="mt-lg pt-lg border-t border-outline-variant space-y-sm">
+<div class="flex justify-between items-center text-body-sm">
+<span class="text-on-surface-variant">综合评分最高</span>
+<span class="text-primary font-bold">供应商A (92.5)</span>
+</div>
+<div class="w-full bg-surface-container rounded-full h-1.5 overflow-hidden">
+<div class="bg-primary h-full w-[92.5%]"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Comparison Table -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+<div class="p-lg border-b border-outline-variant flex justify-between items-center">
+<h4 class="font-title-sm text-title-sm">详细规格参数对比表格</h4>
+<div class="flex items-center gap-md">
+<label class="flex items-center gap-sm text-body-sm cursor-pointer">
+<input checked="" class="rounded text-primary focus:ring-primary" type="checkbox"/>
+<span>仅显示差异项</span>
+</label>
+<span class="text-caption text-on-surface-variant italic">已高亮显示价格异常项</span>
+</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container text-on-surface font-title-sm text-title-sm">
+<tr>
+<th class="px-xl py-md border-b border-outline-variant">物料名称/规格</th>
+<th class="px-xl py-md border-b border-outline-variant bg-surface-container-high">单据 #20231101 (基准)</th>
+<th class="px-xl py-md border-b border-outline-variant">单据 #20231105</th>
+<th class="px-xl py-md border-b border-outline-variant">单据 #20231112</th>
+<th class="px-xl py-md border-b border-outline-variant">变化率</th>
+</tr>
+</thead>
+<tbody class="text-body-base divide-y divide-outline-variant">
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="px-xl py-md">
+<div class="font-bold text-on-surface">高强度螺栓 M12×45</div>
+<div class="text-caption text-on-surface-variant">Q235 碳钢 镀锌</div>
+</td>
+<td class="px-xl py-md bg-surface-container-low">¥ 12.50</td>
+<td class="px-xl py-md text-error bg-error-container/20">
+<div class="flex items-center gap-sm font-bold">
+                                                ¥ 15.80
+                                                <span class="material-symbols-outlined text-sm" data-icon="arrow_upward">arrow_upward</span>
+</div>
+</td>
+<td class="px-xl py-md">¥ 12.45</td>
+<td class="px-xl py-md font-data-mono text-error">+26.4%</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="px-xl py-md">
+<div class="font-bold text-on-surface">铝合金异型材 AL-09</div>
+<div class="text-caption text-on-surface-variant">6063-T5 阳极氧化</div>
+</td>
+<td class="px-xl py-md bg-surface-container-low">¥ 245.00</td>
+<td class="px-xl py-md">¥ 245.00</td>
+<td class="px-xl py-md text-tertiary">
+<div class="flex items-center gap-sm">
+                                                ¥ 238.00
+                                                <span class="material-symbols-outlined text-sm" data-icon="arrow_downward">arrow_downward</span>
+</div>
+</td>
+<td class="px-xl py-md font-data-mono text-tertiary">-2.8%</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="px-xl py-md">
+<div class="font-bold text-on-surface">钢化夹胶玻璃 12+1.52PVB+12</div>
+<div class="text-caption text-on-surface-variant">双银 Low-E 超白</div>
+</td>
+<td class="px-xl py-md bg-surface-container-low">¥ 480.00</td>
+<td class="px-xl py-md">¥ 485.00</td>
+<td class="px-xl py-md">¥ 482.00</td>
+<td class="px-xl py-md font-data-mono text-on-surface-variant">+0.4%</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="px-xl py-md">
+<div class="font-bold text-on-surface">密封胶条 EPDM-R</div>
+<div class="text-caption text-on-surface-variant">黑色 三元乙丙</div>
+</td>
+<td class="px-xl py-md bg-surface-container-low">¥ 3.20</td>
+<td class="px-xl py-md text-error bg-error-container/20 font-bold">¥ 4.10</td>
+<td class="px-xl py-md">¥ 3.15</td>
+<td class="px-xl py-md font-data-mono text-error">+28.1%</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Comparison Context Images -->
+<div class="grid grid-cols-3 gap-lg">
+<div class="relative h-48 rounded-xl overflow-hidden group">
+<img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="A professional warehouse environment with organized rows of structural metal beams and industrial materials. The scene is lit by overhead cool white lighting, creating a high-tech, orderly atmosphere with deep blue shadows and bright metallic highlights. The image conveys industrial precision and high-stakes business inventory management in a modern facility." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCGRGscvse-eoZNgcK8iddtWpS0niHchYStuE-luzcFnB7NYzWho9HoHaIY0grtT4ocFGjnlk9xNEtRPrxlhJIUpdHRFSDXkkq81qvoPGJCtHuZRgt-Ha-w7v-zYrGkYvhXQ556UdsKNjCpZwqBE1TcV-gthdcxRmeJocUVdA8I1J8PBbhfxE-tbnKHA6dq0una2RjQC-RyU0htLAEQHXZXu0RmjRIpF6YFz062ROFz6dZgRC2lNNrEOVIfrJnfccU69sKy2GG2SGb-"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex flex-col justify-end p-lg">
+<span class="text-white font-bold">物料 A 现场实拍</span>
+<span class="text-white/80 text-caption">拍摄于 2023-11-15</span>
+</div>
+</div>
+<div class="relative h-48 rounded-xl overflow-hidden group">
+<img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="Close up view of a sophisticated industrial material testing laboratory. A precision micrometer is measuring a high-grade steel component under focused, clinical white lighting. The environment is impeccably clean, using a palette of surgical whites, deep grays, and corporate blue accents. This reflects the meticulous accuracy and analytical clarity of the OCR management platform." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAgeQAUmlL5E9uwD8ayyGVKQjZCwB1U4Ey152h-uB3Qsp9SkOeSbN16nxb8m-9eNiLrdlk8BQin2mksgwKxAHcg0cLaXnWLsfIcRA9PLg0v4eRBMDitZyS4en3IAXPxNDUrtzDqPuNFiMrZHMVQFQPG7cjT_1RFYSwZvCDyYOLr1EZ2RdkRlZdKIiXSgY_FsQt9M3A4Wp52UELgzINSI3wyFmLsfEPOdvFDYW66TCh4FLhjTk4TwAaTu9HN9_zVQ9uNex-M8NbgUfd4"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex flex-col justify-end p-lg">
+<span class="text-white font-bold">规格精密校验</span>
+<span class="text-white/80 text-caption">抽检合格率: 99.8%</span>
+</div>
+</div>
+<div class="relative h-48 rounded-xl overflow-hidden group">
+<img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="An expansive, modern logistics hub at dusk with several large delivery trucks docked at loading bays. The sky is a deep twilight blue, and the building is brightly lit with high-efficiency LED lights, casting a strong, professional glow. The composition is structured and rhythmic, emphasizing the reliability and logistics efficiency of the enterprise-level supply chain system." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDWSwEDbe69ZUq0uUryanR-MnJ6ltbyqlvyaYGJu220pVyyOP3z6_4COe6OTCbcYBqgWRetJc2EX5P4PWq7JAMpg3x79Y9C-E_3Z2H7onWlP93yWzzB91ou3rNy3lc9o3c6DU49sGEm-oDOIRQgguKzg_TKTwqoVKRcfPVbABhGeE3pfFlzVuzzoRooyLVG8HJboLk3OZJ5am8atVXaujBON3HyIYDPpg67Ip7lfYh6zcIN_bB1Edio_yg3r6Qciubqlpvf-8pX0-lW"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex flex-col justify-end p-lg">
+<span class="text-white font-bold">物流交付实时监控</span>
+<span class="text-white/80 text-caption">正在发货: 5 车</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<!-- Floating Action Buttons for quick navigation -->
+<button class="fixed bottom-xl right-xl w-14 h-14 bg-primary text-on-primary rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform active:scale-95 group z-50">
+<span class="material-symbols-outlined" data-icon="smart_toy">smart_toy</span>
+<div class="absolute bottom-full right-0 mb-md w-48 bg-inverse-surface text-inverse-on-surface p-md rounded-lg text-body-sm opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-xl">
+            AI 分析建议：供应商C的交付稳定性近期提升，建议考虑增加配比。
+        </div>
+</button>
+<script>
+        // Micro-interactions and Tab Highlighting logic
+        document.querySelectorAll('nav a').forEach(link => {
+            link.addEventListener('click', function(e) {
+                if (this.getAttribute('href') === '#') e.preventDefault();
+            });
+        });
+
+        // Simple animation for the "Price Trend" points
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('animate-in');
+                }
+            });
+        });
+
+        // Search Bar Focus Effect
+        const searchInput = document.querySelector('input[type="text"]');
+        searchInput.addEventListener('focus', () => {
+            searchInput.parentElement.classList.add('ring-2', 'ring-primary');
+        });
+        searchInput.addEventListener('blur', () => {
+            searchInput.parentElement.classList.remove('ring-2', 'ring-primary');
+        });
+
+        // Tooltip simple follow (conceptual)
+        document.addEventListener('mousemove', (e) => {
+            // Placeholder for advanced interactive tooltips on charts
+        });
+    </script>
+</body></html>

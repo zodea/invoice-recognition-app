@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+
+<html class="light" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>材料单识别处理 - OCR 管理系统</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "error": "#ba1a1a",
+                        "on-primary-container": "#eeefff",
+                        "on-secondary-fixed": "#00164e",
+                        "on-secondary-container": "#1d3989",
+                        "surface-container-low": "#f3f4f6",
+                        "surface": "#f8f9fb",
+                        "secondary-fixed-dim": "#b6c4ff",
+                        "primary-fixed": "#dbe1ff",
+                        "primary": "#004ac6",
+                        "primary-fixed-dim": "#b4c5ff",
+                        "on-secondary": "#ffffff",
+                        "on-primary-fixed": "#00174b",
+                        "tertiary": "#006329",
+                        "surface-tint": "#0053db",
+                        "on-surface": "#191c1e",
+                        "surface-dim": "#d9dadc",
+                        "on-tertiary-fixed": "#002109",
+                        "outline-variant": "#c3c6d7",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "primary-container": "#2563eb",
+                        "surface-bright": "#f8f9fb",
+                        "on-secondary-fixed-variant": "#264191",
+                        "on-tertiary": "#ffffff",
+                        "secondary-container": "#8fa7fe",
+                        "surface-container-high": "#e7e8ea",
+                        "inverse-on-surface": "#f0f1f3",
+                        "inverse-surface": "#2e3132",
+                        "error-container": "#ffdad6",
+                        "on-primary": "#ffffff",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-fixed-dim": "#62df7d",
+                        "surface-container-highest": "#e1e2e4",
+                        "on-tertiary-fixed-variant": "#005320",
+                        "on-surface-variant": "#434655",
+                        "on-error": "#ffffff",
+                        "surface-variant": "#e1e2e4",
+                        "on-error-container": "#93000a",
+                        "surface-container": "#edeef0",
+                        "tertiary-container": "#007f36",
+                        "on-tertiary-container": "#c7ffca",
+                        "outline": "#737686",
+                        "inverse-primary": "#b4c5ff",
+                        "secondary": "#4059aa",
+                        "on-background": "#191c1e",
+                        "background": "#f8f9fb",
+                        "tertiary-fixed": "#7ffc97",
+                        "secondary-fixed": "#dce1ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "xs": "4px",
+                        "xxl": "32px",
+                        "xl": "24px",
+                        "base": "4px",
+                        "gutter": "16px",
+                        "container-max": "1480px",
+                        "lg": "16px",
+                        "sm": "8px",
+                        "md": "12px"
+                    },
+                    "fontFamily": {
+                        "label-caps": ["Hanken Grotesk"],
+                        "display-lg": ["Hanken Grotesk"],
+                        "body-base": ["Hanken Grotesk"],
+                        "data-mono": ["JetBrains Mono"],
+                        "caption": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "body-sm": ["Hanken Grotesk"],
+                        "title-sm": ["Hanken Grotesk"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Hanken Grotesk', sans-serif; background-color: #f8f9fb; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #c3c6d7; border-radius: 10px; }
+        .ocr-highlight { position: absolute; border: 2px solid #2563eb; background: rgba(37, 99, 235, 0.1); cursor: pointer; transition: all 0.2s; }
+        .ocr-highlight:hover { background: rgba(37, 99, 235, 0.2); box-shadow: 0 0 8px rgba(37, 99, 235, 0.4); }
+        /* Long page layout support */
+        .sticky-preview { position: sticky; top: 80px; height: calc(100vh - 120px); }
+    </style>
+</head>
+<body class="overflow-x-hidden">
+<!-- SideNavBar Shell -->
+<aside class="fixed left-0 top-0 h-full flex flex-col bg-surface-container-lowest dark:bg-surface-dim w-64 border-r border-outline-variant z-50">
+<div class="p-lg">
+<div class="font-headline-md text-headline-md font-bold text-primary dark:text-primary-fixed">OCR 管理系统</div>
+<div class="font-label-caps text-label-caps text-on-surface-variant opacity-70">企业级识别平台</div>
+</div>
+<nav class="flex-1 px-sm mt-md space-y-xs overflow-y-auto custom-scrollbar">
+<a class="flex items-center gap-md px-lg py-md text-on-surface-variant hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-label-caps text-label-caps">工作台</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md text-on-surface-variant hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined">receipt_long</span>
+<span class="font-label-caps text-label-caps">发票识别</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md bg-secondary-container text-on-secondary-container rounded-lg font-bold" href="#">
+<span class="material-symbols-outlined">description</span>
+<span class="font-label-caps text-label-caps">材料单识别</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md text-on-surface-variant hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined">inventory_2</span>
+<span class="font-label-caps text-label-caps">分供方管理</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md text-on-surface-variant hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined">compare_arrows</span>
+<span class="font-label-caps text-label-caps">材料对比</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md text-on-surface-variant hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-caps text-label-caps">系统设置</span>
+</a>
+</nav>
+<div class="p-lg border-t border-outline-variant">
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container">
+<span class="material-symbols-outlined">person</span>
+</div>
+<div>
+<div class="font-title-sm text-title-sm">管理员</div>
+<div class="text-caption text-on-surface-variant">高级权限</div>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-64 flex flex-col min-h-screen bg-background">
+<!-- TopNavBar Shell -->
+<header class="sticky top-0 z-40 flex justify-between items-center px-xl w-full h-16 border-b border-outline-variant bg-surface shrink-0">
+<div class="flex items-center gap-lg flex-1">
+<div class="font-title-sm text-title-sm font-bold text-on-surface">发票与材料单管理</div>
+<div class="relative w-96">
+<span class="material-symbols-outlined absolute left-md top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="w-full bg-surface-container-low border-none rounded-lg pl-xxl py-xs font-body-base text-body-base focus:ring-2 focus:ring-primary/20" placeholder="搜索单据编号或单位..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-lg">
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary transition-colors">notifications</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary transition-colors">help_outline</span>
+<div class="h-6 w-[1px] bg-outline-variant mx-sm"></div>
+<button class="flex items-center gap-sm font-body-base text-body-base text-on-surface-variant hover:text-primary">
+<img alt="管理员头像" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB2agKfg4EAsQGurZq9ZKMBKTRn6eoN8rRu86e-CpOASQJYxbKsEmpwDBGiMptFcTW0XjCdFEhrja1CjTalX9OGhp-8XTRYAsHD4yH6XmWDEFhLmm5gCkm-ku1yv7vwAjMV5WgCE7yGXWMLEWeXlGa4xIUetvxvhfCePXOmHkJy-pBTk7TT1ihpppqrZZOLxWE7bthx7qbigZePQmP1xLuKFYNObrUn83nfLyNANT8Hshn-0oJ2eZciV6Udm3iPQ_dZcT1XdonlxeiL"/>
+<span>个人中心</span>
+</button>
+</div>
+</header>
+<!-- OCR Workspace - Long Page Content -->
+<div class="flex flex-1 p-lg gap-lg items-start">
+<!-- Left: Document Preview (42%) - Sticky -->
+<section class="w-[42%] sticky-preview">
+<div class="h-full flex flex-col gap-md">
+<div class="flex items-center justify-between px-md py-sm bg-surface-container-lowest border border-outline-variant rounded-lg shrink-0">
+<div class="flex items-center gap-md">
+<span class="font-title-sm text-title-sm">多页预览</span>
+<span class="px-sm py-xs bg-primary-container/10 text-primary rounded font-label-caps text-[10px]">2 页</span>
+</div>
+<div class="flex items-center gap-sm">
+<button class="p-xs hover:bg-surface-container-high rounded transition-colors"><span class="material-symbols-outlined text-[20px]">zoom_in</span></button>
+<button class="p-xs hover:bg-surface-container-high rounded transition-colors"><span class="material-symbols-outlined text-[20px]">zoom_out</span></button>
+<button class="p-xs hover:bg-surface-container-high rounded transition-colors"><span class="material-symbols-outlined text-[20px]">rotate_right</span></button>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto custom-scrollbar space-y-lg rounded-xl border border-outline-variant bg-surface-dim p-lg shadow-inner">
+<!-- Document Page 1 -->
+<div class="relative w-full aspect-[1/1.414] bg-white shadow-lg mx-auto rounded-sm overflow-hidden group">
+<img alt="材料清单文档" class="w-full h-full object-cover transition-opacity" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDy6ynGbk5spC2WlyWkWHP6iO5fZlS9hdAiXrpayhgXbyKwm1ZLiSpPBJ3X_rLZV7LJJAvJv3STxFnCRQxLAxK46ZCg2Q_yxVdZBtCbH7t8QdClnqU4EICftJV3DjXfBDs5BUX9xHjibyb0tBkeiF7dDo8Tx6axlSw1asGDtRTbTFhoeEFRZKwMEEOnNu2mvfi-HVkWQN_8s-6CErwEsfcD0dQVGUKOddSo7675MLX4y1Nm7NEeeEulHp3mDELRZv2fHR6t-8_n9tg9"/>
+<!-- OCR Overlays -->
+<div class="ocr-highlight" style="top: 12%; left: 65%; width: 25%; height: 4%;"></div>
+<div class="ocr-highlight" style="top: 18%; left: 15%; width: 35%; height: 3%;"></div>
+<div class="ocr-highlight" style="top: 18%; left: 60%; width: 30%; height: 3%;"></div>
+</div>
+<!-- Document Page 2 -->
+<div class="relative w-full aspect-[1/1.414] bg-white shadow-lg mx-auto rounded-sm overflow-hidden">
+<img alt="材料清单附件" class="w-full h-full object-cover opacity-90" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA6gHTYjAnK-GZnwD42tGziFW4uEpMoDweuMtgOwBKY2Illkv7YAZCxDbzD8FpOOGAeEH1nQT5jRMg98btvk4b4XsD1rP4iJ1S2YPvfUSgTSFJNGr6Xd6ax10mq0R6mKnM-rngJiqHABQju3GHa_0LYVccjG0dLWor9bGSGKNPFNzNrwBudvpF-LFPiz-d_VSbHosZkF9yPrNFGWHQAMAf6kiPnQWCscC40b_DS7q7CNAdMgypp6xq0afs9K8JvN6v86WK6QARcFVZe"/>
+</div>
+</div>
+</div>
+</section>
+<!-- Right: Data Extraction & Table (58%) - Scrolling -->
+<section class="flex-1 flex flex-col gap-lg pb-xxl">
+<!-- Top: Core Fields Card -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-lg shadow-sm">
+<div class="flex items-center justify-between mb-lg">
+<h2 class="font-headline-md text-headline-md flex items-center gap-md">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">analytics</span>
+                            关键字段提取
+                        </h2>
+<span class="text-caption text-tertiary flex items-center gap-xs">
+<span class="material-symbols-outlined text-[16px]">check_circle</span>
+                            识别置信度 99.2%
+                        </span>
+</div>
+<div class="grid grid-cols-2 gap-x-xl gap-y-lg">
+<div class="space-y-xs">
+<label class="font-label-caps text-label-caps text-on-surface-variant uppercase">单据编号</label>
+<div class="relative">
+<input class="w-full border border-outline px-md py-sm rounded-lg font-data-mono text-data-mono text-primary bg-surface focus:ring-2 focus:ring-primary/20 outline-none" type="text" value="PUR-20231024-008"/>
+<span class="material-symbols-outlined absolute right-md top-1/2 -translate-y-1/2 text-primary/40 text-[18px]">edit</span>
+</div>
+</div>
+<div class="space-y-xs">
+<label class="font-label-caps text-label-caps text-on-surface-variant uppercase">日期</label>
+<div class="relative">
+<input class="w-full border border-outline px-md py-sm rounded-lg font-data-mono text-data-mono text-on-surface bg-surface focus:ring-2 focus:ring-primary/20 outline-none" type="text" value="2023-10-24"/>
+<span class="material-symbols-outlined absolute right-md top-1/2 -translate-y-1/2 text-on-surface-variant/40 text-[18px]">calendar_today</span>
+</div>
+</div>
+<div class="space-y-xs">
+<label class="font-label-caps text-label-caps text-on-surface-variant uppercase">收货单位</label>
+<div class="relative">
+<input class="w-full border border-outline px-md py-sm rounded-lg font-body-base text-body-base text-on-surface bg-surface focus:ring-2 focus:ring-primary/20 outline-none" type="text" value="中建三局第一建设有限公司"/>
+<span class="material-symbols-outlined absolute right-md top-1/2 -translate-y-1/2 text-on-surface-variant/40 text-[18px]">business</span>
+</div>
+</div>
+<div class="space-y-xs">
+<label class="font-label-caps text-label-caps text-on-surface-variant uppercase">发货单位</label>
+<div class="relative">
+<input class="w-full border border-outline px-md py-sm rounded-lg font-body-base text-body-base text-on-surface bg-surface focus:ring-2 focus:ring-primary/20 outline-none" type="text" value="上海钢联电子商务股份有限公司"/>
+<span class="material-symbols-outlined absolute right-md top-1/2 -translate-y-1/2 text-on-surface-variant/40 text-[18px]">local_shipping</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom: Details Table Card (Expanded for long page) -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl flex flex-col shadow-sm">
+<div class="px-lg py-md border-b border-outline-variant flex items-center justify-between bg-surface-container-low">
+<div class="flex items-center gap-md">
+<span class="font-title-sm text-title-sm">材料明细清单</span>
+<span class="text-caption text-on-surface-variant">共 4 条记录</span>
+</div>
+<div class="flex items-center gap-sm">
+<button class="flex items-center gap-xs px-md py-sm border border-outline rounded-lg text-body-sm font-bold hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                                新增行
+                            </button>
+<button class="flex items-center gap-xs px-md py-sm bg-primary text-white rounded-lg text-body-sm font-bold hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-[18px]">download</span>
+                                导出数据
+                            </button>
+</div>
+</div>
+<div class="w-full overflow-x-auto">
+<table class="w-full border-collapse">
+<thead>
+<tr class="text-left border-b border-outline-variant bg-surface-container-high">
+<th class="px-lg py-md font-label-caps text-label-caps text-on-surface-variant w-12">#</th>
+<th class="px-lg py-md font-label-caps text-label-caps text-on-surface-variant">名称</th>
+<th class="px-lg py-md font-label-caps text-label-caps text-on-surface-variant">规格型号</th>
+<th class="px-lg py-md font-label-caps text-label-caps text-on-surface-variant w-20">单位</th>
+<th class="px-lg py-md font-label-caps text-label-caps text-on-surface-variant w-24">数量</th>
+<th class="px-lg py-md font-label-caps text-label-caps text-on-surface-variant w-32">单价</th>
+<th class="px-lg py-md font-label-caps text-label-caps text-on-surface-variant w-32">金额</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant">
+<tr class="hover:bg-surface-container-low transition-colors group">
+<td class="px-lg py-md font-data-mono text-data-mono text-on-surface-variant">01</td>
+<td class="px-lg py-md font-body-base text-body-base text-on-surface">螺纹钢 HRB400E</td>
+<td class="px-lg py-md font-body-base text-body-base text-on-surface">Φ25mm*12m</td>
+<td class="px-lg py-md font-body-base text-body-base text-on-surface">吨</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-on-surface">32.50</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-on-surface">¥ 3,850.00</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-primary font-bold">¥ 125,125.00</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors group">
+<td class="px-lg py-md font-data-mono text-data-mono text-on-surface-variant">02</td>
+<td class="px-lg py-md font-body-base text-body-base text-on-surface">盘螺 HRB400E</td>
+<td class="px-lg py-md font-body-base text-body-base text-on-surface">Φ10mm</td>
+<td class="px-lg py-md font-body-base text-body-base text-on-surface">吨</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-on-surface">15.80</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-on-surface">¥ 4,120.00</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-primary font-bold">¥ 65,096.00</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors group">
+<td class="px-lg py-md font-data-mono text-data-mono text-on-surface-variant">03</td>
+<td class="px-lg py-md font-body-base text-body-base text-on-surface">普通硅酸盐水泥</td>
+<td class="px-lg py-md font-body-base text-body-base text-on-surface">P.O 42.5</td>
+<td class="px-lg py-md font-body-base text-body-base text-on-surface">吨</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-on-surface">200.00</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-on-surface">¥ 485.00</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-primary font-bold">¥ 97,000.00</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors group">
+<td class="px-lg py-md font-data-mono text-data-mono text-on-surface-variant">04</td>
+<td class="px-lg py-md font-body-base text-body-base text-on-surface">预拌混凝土</td>
+<td class="px-lg py-md font-body-base text-body-base text-on-surface">C35 P6</td>
+<td class="px-lg py-md font-body-base text-body-base text-on-surface">m³</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-on-surface">450.00</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-on-surface">¥ 520.00</td>
+<td class="px-lg py-md font-data-mono text-data-mono text-primary font-bold">¥ 234,000.00</td>
+</tr>
+<!-- Added placeholder rows to demonstrate long page scrolling if needed -->
+<tr class="bg-surface-container-low/20">
+<td class="px-lg py-md text-center text-on-surface-variant text-caption italic" colspan="7">没有更多数据</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="px-lg py-md border-t border-outline-variant bg-surface-container-low flex justify-end gap-xxl">
+<div class="flex items-center gap-md">
+<span class="font-label-caps text-label-caps text-on-surface-variant">数量合计</span>
+<span class="font-data-mono text-headline-md text-on-surface">698.30</span>
+</div>
+<div class="flex items-center gap-md">
+<span class="font-label-caps text-label-caps text-on-surface-variant">金额合计 (CNY)</span>
+<span class="font-data-mono text-headline-md text-primary font-extrabold">¥ 521,221.00</span>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Footer Action Bar -->
+<footer class="sticky bottom-0 h-20 bg-surface border-t border-outline-variant flex items-center justify-between px-xl shrink-0 z-40">
+<div class="flex items-center gap-lg">
+<button class="flex items-center gap-sm px-xl py-md border border-outline rounded-lg font-title-sm text-title-sm hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined">undo</span>
+                    放弃修改
+                </button>
+</div>
+<div class="flex items-center gap-lg">
+<button class="flex items-center gap-sm px-xl py-md bg-secondary text-white rounded-lg font-title-sm text-title-sm hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined">save</span>
+                    保存草稿
+                </button>
+<button class="flex items-center gap-sm px-xxl py-md bg-primary text-white rounded-lg font-title-sm text-title-sm hover:shadow-lg transition-all ring-offset-2 ring-primary/20 active:scale-[0.98]">
+<span class="material-symbols-outlined">done_all</span>
+                    确认提交入库
+                </button>
+</div>
+</footer>
+</main>
+<script>
+        // Simple micro-interaction for input focus effects
+        document.querySelectorAll('input').forEach(input => {
+            input.addEventListener('focus', () => {
+                const icon = input.parentElement.querySelector('.material-symbols-outlined');
+                if (icon) {
+                    icon.style.opacity = '1';
+                    icon.style.color = '#004ac6';
+                }
+            });
+            input.addEventListener('blur', () => {
+                const icon = input.parentElement.querySelector('.material-symbols-outlined');
+                if (icon) {
+                    icon.style.opacity = '0.4';
+                    icon.style.color = '';
+                }
+            });
+        });
+
+        // OCR Highlight Interactivity simulation
+        document.querySelectorAll('.ocr-highlight').forEach((highlight, index) => {
+            highlight.addEventListener('click', () => {
+                const fields = document.querySelectorAll('input');
+                // Maps highlights to inputs based on provided index
+                if (fields[index + 1]) { // offset for search input
+                    fields[index + 1].focus();
+                    fields[index + 1].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            });
+        });
+    </script>
+</body></html>
