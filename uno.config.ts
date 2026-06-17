@@ -1,34 +1,46 @@
 import { defineConfig, presetWind3 } from "unocss";
 
-// 设计令牌沿用原 styles.css 的 CSS 变量值，保证重构后视觉一致。
+// Precision Ledger 设计系统令牌（ADR-0005 / issue #22）。核心色当初已对齐，这里补齐
+// 状态色软/深色阶、圆角、阴影，并把 btn/input/chip/panel 等 shortcut 统一成设计系统观感
+// （全应用经这些 shortcut 生效）。字体不在本期改（沿用现中文系统字体）。
 export default defineConfig({
   presets: [presetWind3()],
   theme: {
     colors: {
-      bg: "#f5f6f8",
-      panel: "#ffffff",
+      bg: "#f5f6f8", // Level 0 画布
+      panel: "#ffffff", // Level 1 卡片
       line: { DEFAULT: "#e3e6ea", strong: "#c9ced6" },
-      ink: { DEFAULT: "#1f2329", soft: "#5b6470" },
+      ink: { DEFAULT: "#1f2329", soft: "#5b6470", faint: "#8b93a1" },
       brand: { DEFAULT: "#2563eb", soft: "#e8f0fe", deep: "#1e3a8a" },
-      danger: "#dc2626",
-      ok: "#16a34a",
-      warn: "#d97706",
+      // 功能状态三档：DEFAULT 实色 / soft 浅底 / ink 深字（DESIGN「三层系统」）
+      ok: { DEFAULT: "#16a34a", soft: "#dcfce7", ink: "#166534" },
+      warn: { DEFAULT: "#d97706", soft: "#fffbeb", ink: "#92400e" },
+      danger: { DEFAULT: "#dc2626", soft: "#fef2f2", ink: "#991b1b" },
     },
-    borderRadius: { card: "10px" },
+    borderRadius: { card: "12px", btn: "8px" }, // 卡片 12 / 按钮·输入 8（DESIGN：容器更圆、控件更挺）
     boxShadow: {
       card: "0 1px 3px rgba(16,24,40,0.08), 0 1px 2px rgba(16,24,40,0.06)",
-      pop: "0 12px 40px rgba(0,0,0,0.5)",
+      pop: "0 10px 15px -3px rgba(16,24,40,0.12), 0 4px 6px -4px rgba(16,24,40,0.1)", // DESIGN Level 2 弹层：柔和扩散，替代旧的纯黑重影
     },
   },
   shortcuts: {
     panel: "bg-panel border border-line rounded-card shadow-card",
-    btn: "inline-flex items-center justify-center gap-1.5 border border-line-strong bg-white rounded-md px-3 py-2 font-700 text-sm transition-colors disabled:opacity-50 disabled:cursor-default",
-    "btn-primary": "btn border-brand bg-brand text-white hover:bg-brand-deep",
-    "btn-ghost": "btn border-transparent text-ink-soft hover:bg-line/40",
-    "btn-danger": "btn text-danger",
-    "field-label": "min-w-0 flex flex-col gap-0.75 text-ink-soft text-xs",
-    "field-input": "w-full min-w-0 border border-line-strong rounded-md px-1.75 py-1.25 bg-white text-ink font-inherit",
-    chip: "inline-flex items-center rounded-full px-2.25 py-1 text-xs font-700",
+    // 按钮：默认=描边白底(secondary)；primary=实心蓝；ghost=无底悬停蓝；danger=红字描边
+    btn: "inline-flex items-center justify-center gap-1.5 border border-line-strong bg-white rounded-btn px-3 py-2 font-600 text-sm text-ink transition-colors disabled:opacity-50 disabled:cursor-default hover:border-ink-soft focus-visible:(outline-none ring-2 ring-brand/30)",
+    "btn-primary": "btn border-brand bg-brand text-white hover:(bg-brand-deep border-brand-deep)",
+    "btn-ghost": "btn border-transparent bg-transparent text-ink-soft hover:(bg-brand-soft text-brand border-transparent)",
+    "btn-danger": "btn text-danger hover:(border-danger bg-danger/5)",
+    // 字段：label 在上（label-caps 风格——小号加粗、字距；中文不受 uppercase 影响）+ 输入焦点蓝环
+    "field-label": "min-w-0 flex flex-col gap-1 text-ink-soft text-xs font-600 tracking-wide",
+    "field-input": "w-full min-w-0 border border-line-strong rounded-btn px-2.5 py-1.5 bg-white text-ink font-inherit transition-colors focus:(outline-none border-brand ring-2 ring-brand/20)",
+    // 状态 chip：pill 浅底深字
+    chip: "inline-flex items-center rounded-full px-2.25 py-0.75 text-xs font-600",
+    "chip-ok": "chip bg-ok-soft text-ok-ink",
+    "chip-warn": "chip bg-warn-soft text-warn-ink",
+    "chip-danger": "chip bg-danger-soft text-danger-ink",
+    "chip-brand": "chip bg-brand-soft text-brand",
+    // 区块小标题（数据簇分隔）
+    "section-title": "text-sm font-700 text-ink",
   },
   safelist: [],
 });
