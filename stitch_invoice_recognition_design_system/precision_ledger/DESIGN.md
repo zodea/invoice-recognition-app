@@ -140,6 +140,7 @@ The layout utilizes a **Fixed-Width Fluid Hybrid** approach. While the main cont
 
 - **Grid Model**: A standard 12-column grid is used for the main dashboard. Complex OCR views often use a 40/60 split (40% Image Preview / 60% Data Entry).
 - **Rhythm**: A strict 4px baseline grid ensures vertical consistency. Gaps between related form fields should be 12px (`md`), while gaps between distinct card sections should be 16px (`lg`).
+- **Fixed Chrome & Internal Scroll**: Global headers, workflow headers, and action toolbars must stay visually fixed while the content below them scrolls. Long lists, preview panes, and data tables should own their own `overflow-y-auto` regions with stable heights so scrolling a list does not shift the surrounding shell or reflow the whole page.
 - **Responsive**: On viewports smaller than 1024px, the side-by-side columns must stack vertically to prioritize the data entry form, allowing the image preview to remain as a sticky header or collapsible drawer.
 
 ## Elevation & Depth
