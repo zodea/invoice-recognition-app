@@ -14,7 +14,7 @@ let seq = 0;
 const uid = (p) => `${p}_${Date.now().toString(36)}_${(seq++).toString(36)}`;
 
 function emptyFields() {
-  return { code: "", number: "", date: "", dateText: "", buyer: "", seller: "", amount: "", tax: "", total: "", rate: "", type: "", taxKind: "", docType: "", remark: "" };
+  return { code: "", number: "", date: "", dateText: "", buyer: "", seller: "", amount: "", tax: "", total: "", rate: "", type: "", taxKind: "", docType: "", project: "", remark: "" };
 }
 
 // 回收某张发票占用的对象 URL（预览页图/内嵌页图），避免删除/清空后内存泄漏。
@@ -187,6 +187,8 @@ export const invoiceActions = {
         fields: emptyFields(),
         rawText: "",
         status: "idle",
+        accountStatus: "pending",
+        accountedAt: "",
         error: "",
         note: "",
         systemNote: "",
@@ -321,6 +323,20 @@ export const invoiceActions = {
 
   refreshDuplicates() {
     return markInvoiceDuplicates(invoiceStore.invoices);
+  },
+
+  markAccounted(inv) {
+    if (!inv) return;
+    inv.accountStatus = "posted";
+    inv.accountedAt = new Date().toISOString();
+    invoiceStore.msg = `已入账：${inv.fields.number || inv.name}`;
+  },
+
+  markPending(inv) {
+    if (!inv) return;
+    inv.accountStatus = "pending";
+    inv.accountedAt = "";
+    invoiceStore.msg = `已移回待入账：${inv.fields.number || inv.name}`;
   },
 
   async recognizeOne(inv, { skipDedupe = false } = {}) {

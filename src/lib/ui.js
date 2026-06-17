@@ -3,6 +3,7 @@ import { reactive } from "vue";
 
 export const ui = reactive({
   settingsOpen: false,
+  searchText: "", // 顶栏发票搜索词（仅发票视图启用，InvoiceView 据此过滤列表）
 });
 
 export function openSettings() {
