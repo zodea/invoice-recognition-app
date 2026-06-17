@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+
+<html class="light" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>发票识别 - 企业级 OCR 系统</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700;800&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-secondary-fixed-variant": "#264191",
+                        "on-primary": "#ffffff",
+                        "on-tertiary-fixed": "#002109",
+                        "surface-bright": "#f8f9fb",
+                        "on-secondary-fixed": "#00164e",
+                        "surface": "#f8f9fb",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "outline-variant": "#c3c6d7",
+                        "secondary-container": "#8fa7fe",
+                        "primary-fixed-dim": "#b4c5ff",
+                        "on-tertiary-fixed-variant": "#005320",
+                        "inverse-primary": "#b4c5ff",
+                        "on-surface-variant": "#434655",
+                        "surface-variant": "#e1e2e4",
+                        "secondary-fixed": "#dce1ff",
+                        "surface-tint": "#0053db",
+                        "tertiary-container": "#007f36",
+                        "outline": "#737686",
+                        "on-primary-fixed": "#00174b",
+                        "error-container": "#ffdad6",
+                        "surface-dim": "#d9dadc",
+                        "surface-container-highest": "#e1e2e4",
+                        "on-tertiary-container": "#c7ffca",
+                        "on-secondary-container": "#1d3989",
+                        "background": "#f8f9fb",
+                        "surface-container-high": "#e7e8ea",
+                        "primary-container": "#2563eb",
+                        "primary": "#2563eb",
+                        "surface-container-low": "#f3f4f6",
+                        "secondary": "#4059aa",
+                        "surface-container": "#edeef0",
+                        "on-error-container": "#93000a",
+                        "inverse-surface": "#2e3132",
+                        "tertiary-fixed-dim": "#62df7d",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "on-secondary": "#ffffff",
+                        "on-surface": "#191c1e",
+                        "on-primary-container": "#eeefff",
+                        "tertiary-fixed": "#7ffc97",
+                        "primary-fixed": "#dbe1ff",
+                        "on-error": "#ffffff",
+                        "tertiary": "#006329",
+                        "secondary-fixed-dim": "#b6c4ff",
+                        "on-background": "#191c1e",
+                        "inverse-on-surface": "#f0f1f3",
+                        "error": "#ba1a1a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.5rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "base": "4px",
+                        "md": "12px",
+                        "gutter": "16px",
+                        "xl": "24px",
+                        "xs": "4px",
+                        "lg": "16px",
+                        "sm": "8px",
+                        "xxl": "32px",
+                        "container-max": "1480px"
+                    },
+                    "fontFamily": {
+                        "body-sm": ["Hanken Grotesk"],
+                        "display-lg": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "label-caps": ["Hanken Grotesk"],
+                        "body-base": ["Hanken Grotesk"],
+                        "title-sm": ["Hanken Grotesk"],
+                        "data-mono": ["JetBrains Mono"],
+                        "caption": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "body-sm": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                        "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "headline-md": ["18px", {"lineHeight": "24px", "fontWeight": "700"}],
+                        "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                        "body-base": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "title-sm": ["16px", {"lineHeight": "24px", "fontWeight": "700"}],
+                        "data-mono": ["13px", {"lineHeight": "20px", "fontWeight": "500"}],
+                        "caption": ["12px", {"lineHeight": "16px", "fontWeight": "400"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .upload-dashed {
+            background-image: url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='8' ry='8' stroke='%23C9CED6' stroke-width='2' stroke-dasharray='8%2c 12' stroke-dashoffset='0' stroke-linecap='square'/%3e%3c/svg%3e");
+        }
+        .upload-dashed:hover {
+            background-image: url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='8' ry='8' stroke='%232563EB' stroke-width='2' stroke-dasharray='8%2c 12' stroke-dashoffset='0' stroke-linecap='square'/%3e%3c/svg%3e");
+        }
+    </style>
+</head>
+<body class="bg-surface font-body-base text-on-surface overflow-hidden">
+<!-- SideNavBar -->
+<aside class="h-screen w-64 fixed left-0 top-0 bg-primary dark:bg-on-secondary-fixed-variant shadow-lg flex flex-col py-lg z-50 transition-all duration-200">
+<div class="px-xl mb-xxl">
+<h1 class="font-headline-md text-headline-md text-on-primary">企业 OCR</h1>
+<p class="font-caption text-caption text-primary-fixed-dim">精算账簿管理系统</p>
+</div>
+<nav class="flex-1 px-md space-y-base">
+<a class="text-primary-fixed-dim flex items-center px-4 py-3 hover:bg-on-primary-fixed-variant hover:text-on-primary transition-colors rounded-lg active:scale-95" href="#">
+<span class="material-symbols-outlined mr-md">dashboard</span>
+<span class="font-body-base text-body-base">工作台</span>
+</a>
+<a class="text-primary bg-primary-fixed flex items-center px-4 py-3 rounded-lg active:scale-95" href="#">
+<span class="material-symbols-outlined mr-md">description</span>
+<span class="font-body-base text-body-base">发票识别</span>
+</a>
+<a class="text-primary-fixed-dim flex items-center px-4 py-3 hover:bg-on-primary-fixed-variant hover:text-on-primary transition-colors rounded-lg active:scale-95" href="#">
+<span class="material-symbols-outlined mr-md">receipt_long</span>
+<span class="font-body-base text-body-base">料单识别</span>
+</a>
+<a class="text-primary-fixed-dim flex items-center px-4 py-3 hover:bg-on-primary-fixed-variant hover:text-on-primary transition-colors rounded-lg active:scale-95" href="#">
+<span class="material-symbols-outlined mr-md">factory</span>
+<span class="font-body-base text-body-base">供应商管理</span>
+</a>
+<a class="text-primary-fixed-dim flex items-center px-4 py-3 hover:bg-on-primary-fixed-variant hover:text-on-primary transition-colors rounded-lg active:scale-95" href="#">
+<span class="material-symbols-outlined mr-md">compare_arrows</span>
+<span class="font-body-base text-body-base">数据对比</span>
+</a>
+</nav>
+<div class="px-md mt-auto pt-lg border-t border-primary-container/20">
+<a class="text-primary-fixed-dim flex items-center px-4 py-3 hover:bg-on-primary-fixed-variant hover:text-on-primary transition-colors rounded-lg active:scale-95" href="#">
+<span class="material-symbols-outlined mr-md">settings</span>
+<span class="font-body-base text-body-base">设置</span>
+</a>
+<div class="flex items-center gap-md px-4 py-3 mt-md">
+<img alt="用户头像" class="w-8 h-8 rounded-full bg-primary-container" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBsXEiq6S8ljytD3gaB2dzjmFLiHtLZ396iVAkrNY7JXRRIM9do2pb4erugphuEH-UOkYPfLr8OS95B3B979v5nCOkPrS-yoYdJk24To6yqqdwH0-0SmiHnu8dCQHT4Gthe-6h-drg_4y6NSxr2cKFHCjDsmPBDRaLrcPjJpXmiaRHctvQzSxLS3UOMgi1QC6c41W3XlUYaWieGE9XFHVcLpqC1xqOULAjY4_dLMr_3cLOoHaKD6siTL5C0a_d2j5XZen2qLjTYO9QM"/>
+<div class="overflow-hidden">
+<p class="font-title-sm text-title-sm text-on-primary truncate">管理员用户</p>
+<p class="font-caption text-caption text-primary-fixed-dim truncate">系统管理员</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- TopAppBar -->
+<header class="h-16 sticky top-0 z-40 bg-surface-container-lowest dark:bg-surface-dim border-b border-outline-variant dark:border-outline flex items-center justify-between px-xl w-full ml-64">
+<div class="flex items-center gap-xl">
+<span class="font-headline-md text-headline-md font-bold text-primary">OCR 管理器</span>
+<div class="relative w-80">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant">search</span>
+<input class="w-full pl-10 pr-4 py-2 bg-surface-container-low border-none rounded-lg font-body-sm text-body-sm focus:ring-2 focus:ring-primary/20" placeholder="搜索发票或供应商..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-lg">
+<button class="flex items-center gap-xs p-2 text-on-surface-variant hover:bg-surface-container-low transition-colors rounded-full duration-150 ease-in-out">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="flex items-center gap-xs p-2 text-on-surface-variant hover:bg-surface-container-low transition-colors rounded-full duration-150 ease-in-out">
+<span class="material-symbols-outlined">help_outline</span>
+</button>
+<button class="bg-primary hover:bg-primary-container text-on-primary px-xl py-2 rounded-lg font-title-sm text-title-sm transition-all duration-200 active:scale-95 flex items-center gap-2">
+<span class="material-symbols-outlined text-md">cloud_upload</span>
+                上传文件
+            </button>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="ml-64 p-xxl max-w-container-max mx-auto h-[calc(100vh-64px)] overflow-y-auto">
+<div class="flex flex-col gap-xxl items-center justify-center min-h-full max-w-3xl mx-auto">
+<!-- Upload Zone -->
+<div class="w-full p-xxl rounded-xl upload-dashed bg-surface-container-lowest transition-all duration-300 flex flex-col items-center justify-center text-center cursor-pointer group hover:bg-primary/5" id="drop-zone">
+<div class="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-xl group-hover:scale-110 transition-transform duration-300">
+<span class="material-symbols-outlined text-primary text-[48px]" style="font-variation-settings: 'FILL' 1;">upload_file</span>
+</div>
+<h2 class="font-display-lg text-display-lg text-on-surface mb-sm">将发票拖放到此处</h2>
+<p class="font-body-base text-body-base text-on-surface-variant mb-xl max-w-md">
+                    支持 PDF, JPG 和 PNG 格式。单文件最大 20MB。您可以一次上传多达 50 个文件进行批量识别。
+                </p>
+<button class="bg-primary text-on-primary px-xxl py-lg rounded-lg font-title-sm text-title-sm hover:shadow-lg transition-all active:scale-95 flex items-center gap-md">
+<span class="material-symbols-outlined">add</span>
+                    上传文档
+                </button>
+</div>
+<!-- Empty State Illustration & Details -->
+<div class="w-full flex flex-col items-center gap-lg animate-in fade-in slide-in-from-bottom-4 duration-700">
+<div class="relative w-48 h-48 mb-md">
+<img alt="空状态插图" class="w-full h-full object-contain opacity-80" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDeJBcWhlgxOChVN4OnjH9UZsZHFGOiGFfIvRxGKdB8lRoRHbjlh5yjGKXx-CZWcGi37gowTavErALv5gJ_VgUAvHIZzfVvhQFsOweKlFmDP9O2IpKsCZ9vNgV8OFbLSC4zNt4TvR2o6mkmNMMj9tGll3r3-5vEsA1Hf_voLh8jzm1uWJWxe8BCOAHW-nhYrP9-qv_dt6Ji4iD_UTSYvDkpD7QBoUl_7RERB372ahln1fcC5yp1NbsX9Z-7Wm7HJjn1wgIOWcdLKfRf"/>
+<div class="absolute -z-10 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-primary/5 rounded-full blur-3xl"></div>
+</div>
+<div class="text-center">
+<h3 class="font-headline-md text-headline-md text-on-surface mb-xs">尚未上传任何文档</h3>
+<p class="font-body-base text-body-base text-on-surface-variant">从上传发票或料单开始，启动自动化识别流程。</p>
+</div>
+</div>
+<!-- Contextual Quick Tips / Bento Style Cards -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-lg w-full mt-xl">
+<div class="p-xl bg-surface-container-lowest border border-outline-variant rounded-xl hover:shadow-md transition-shadow">
+<span class="material-symbols-outlined text-primary mb-md">bolt</span>
+<h4 class="font-title-sm text-title-sm text-on-surface mb-xs">极速识别</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">AI 引擎在几秒钟内提取任何格式发票的数据。</p>
+</div>
+<div class="p-xl bg-surface-container-lowest border border-outline-variant rounded-xl hover:shadow-md transition-shadow">
+<span class="material-symbols-outlined text-tertiary-container mb-md">check_circle</span>
+<h4 class="font-title-sm text-title-sm text-on-surface mb-xs">99% 准确率</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">精确提取明细行、税务细节和供应商信息。</p>
+</div>
+<div class="p-xl bg-surface-container-lowest border border-outline-variant rounded-xl hover:shadow-md transition-shadow">
+<span class="material-symbols-outlined text-secondary mb-md">account_tree</span>
+<h4 class="font-title-sm text-title-sm text-on-surface mb-xs">自动匹配</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">自动将发票与采购订单和合同进行核对。</p>
+</div>
+</div>
+</div>
+</main>
+<script>
+        const dropZone = document.getElementById('drop-zone');
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => {
+                dropZone.classList.add('bg-primary/10');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => {
+                dropZone.classList.remove('bg-primary/10');
+            }, false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            alert(`准备处理 ${files.length} 个文件。在实际应用中，识别进度现在将开始。`);
+        });
+
+        dropZone.addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            input.onchange = _ => {
+                let files = Array.from(input.files);
+                alert(`准备处理 ${files.length} 个文件。`);
+            };
+            input.click();
+        });
+    </script>
+</body></html>
