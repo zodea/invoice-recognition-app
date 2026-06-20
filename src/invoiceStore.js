@@ -344,6 +344,7 @@ export const invoiceActions = {
     inv.accountStatus = "posted";
     inv.accountedAt = new Date().toISOString();
     invoiceStore.msg = `已入账：${inv.fields.number || inv.name}`;
+    persistPostedInvoice(inv);
   },
 
   markPending(inv) {
@@ -351,6 +352,7 @@ export const invoiceActions = {
     inv.accountStatus = "pending";
     inv.accountedAt = "";
     invoiceStore.msg = `已移回待入账：${inv.fields.number || inv.name}`;
+    deletePostedInvoice(inv.id);
   },
 
   async recognizeOne(inv, { skipDedupe = false } = {}) {
@@ -598,3 +600,85 @@ export function selectInvoice(id) {
 export function perPageSlots() {
   return perPageCount(invoiceStore.perPage);
 }
+
+// —— 已入账发票本地持久化 ——
+
+function serializeForPersist(inv) {
+  return {
+    id: inv.id,
+    name: inv.name,
+    fields: { ...inv.fields },
+    accountStatus: inv.accountStatus,
+    accountedAt: inv.accountedAt,
+    status: inv.status,
+    rotation: inv.rotation,
+    pageRotations: inv.pageRotations,
+    pageCount: inv.pageCount,
+    note: inv.note,
+    systemNote: inv.systemNote,
+    history: inv.history ? { ...inv.history } : {},
+    kind: inv.kind,
+    isTextPdf: inv.isTextPdf,
+  };
+}
+
+function persistPostedInvoice(inv) {
+  const body = serializeForPersist(inv);
+  fetch("/posted-invoices", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  }).catch(() => {});
+}
+
+function deletePostedInvoice(id) {
+  fetch(`/posted-invoices?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
+}
+
+function hydratePostedInvoice(data) {
+  return reactive({
+    id: data.id,
+    name: data.name || "",
+    blob: null,
+    kind: data.kind || "pdf",
+    pages: [],
+    renderedPages: [],
+    previewStatus: "idle",
+    rotation: data.rotation || 0,
+    pageRotations: data.pageRotations || {},
+    rotationTouched: false,
+    rotationAuto: false,
+    pageCount: data.pageCount || 1,
+    rendering: false,
+    isTextPdf: data.isTextPdf || false,
+    textGarbled: false,
+    fields: { ...emptyFields(), ...data.fields },
+    rawText: "",
+    status: data.status || "done",
+    accountStatus: "posted",
+    accountedAt: data.accountedAt || "",
+    error: "",
+    note: data.note || "",
+    systemNote: data.systemNote || "",
+    duplicateOfId: "",
+    duplicateReason: "",
+    history: data.history || { usedBefore: false, verified: false, printed: false, batches: [] },
+    include: false,
+    includeTouched: false,
+    historyAutoExcluded: false,
+  });
+}
+
+(async function loadPostedInvoices() {
+  try {
+    const res = await fetch("/posted-invoices");
+    if (!res.ok) return;
+    const list = await res.json();
+    if (!Array.isArray(list) || !list.length) return;
+    const existing = new Set(invoiceStore.invoices.map((i) => i.id));
+    for (const data of list) {
+      if (!data.id || existing.has(data.id)) continue;
+      invoiceStore.invoices.push(hydratePostedInvoice(data));
+    }
+  } catch { /* 中间件未就绪或网络异常 */ }
+})();
