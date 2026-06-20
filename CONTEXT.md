@@ -32,3 +32,15 @@
 | **进项台账** | 历史进项发票清单（从税务局导出 Excel 导入），用于跨批次查重、记录已认证/已打印状态。 |
 | **发票入账** | 发票经校对确认后进入已入账集合。入账发票的销售方视为一个分供方（供应商）候选，应纳入分供方资料库以便后续对账。 |
 | **同类合并** | 同一公司的多份扫描文件合成一份 PDF（送货单侧）；发票侧指批量打印时拼版。 |
+| **发票独立编辑路由** | `/invoice/:id` 路由页面（`InvoiceDetailView.vue`）。从待入账/已入账表点击编辑跳转至此，左栏预览图（支持放大/按页旋转/高清渲染 scale:3）+右栏校对表单，底部操作按钮（废弃/重新识别/入账/移回待入账）。 |
+| **已入账发票持久化** | 入账发票的字段数据（不含原始 PDF/图片 blob）落盘到项目根 `已入账发票/<id>.json`（已 gitignore）。dev 期通过 vite middleware `postedInvoiceStore()` 实现 GET/POST/DELETE；打包桌面端待接 Rust。启动时 `loadPostedInvoices()` 自动加载历史已入账数据回列表。 |
+| **按页独立旋转（P9）** | 多页 PDF 每页可独立设置旋转角度。数据模型：`inv.pageRotations = { [pageIndex]: deg }`（稀疏对象），未设置的页继承 `inv.rotation` 全局值。`rotateInvoice(inv, dir, page)` 第三参数指定页码。 |
+
+## UI / 设计体系
+
+| 术语 | 含义 |
+| --- | --- |
+| **Lucide 图标** | 全局使用 UnoCSS Icons preset（`presetIcons`）+ `@iconify-json/lucide` 数据包，图标类名格式 `i-lucide-xxx`。已替换所有 emoji 图标。 |
+| **响应式三档布局** | ≥1024px（桌面三栏：固定左侧边栏+内容）、768~1024px（平板：顶部横排导航+浮层左面板）、<768px（手机：底部 tab bar+单栏内容）。断点使用 UnoCSS `lt-lg:` / `lt-md:` 前缀。 |
+| **阶段 tab 行** | 发票视图顶部的 sticky tab 切换：上传识别 → 批量校对 → 待入账 → 已入账。每个 tab 显示数量徽章。 |
+| **设计令牌** | CSS 变量体系（`--bg`/`--panel`/`--line`/`--brand` 等）+ UnoCSS shortcuts（`btn`/`chip`/`panel`/`field-label`/`field-input`），定义见 `uno.config.ts` 和 `design.md`。 |
