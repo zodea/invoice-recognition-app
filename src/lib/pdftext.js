@@ -81,7 +81,7 @@ export async function rotateImageUrl(url, deg = 0) {
   });
 }
 
-export async function renderPdfPages(file, { scale = 1.5, maxPages = 10, timeoutMs = 12000, quality = 0.82, rotation = 0 } = {}) {
+export async function renderPdfPages(file, { scale = 1.5, maxPages = 10, timeoutMs = 12000, quality = 0.82, rotation = 0, pageRotations } = {}) {
   const buf = new Uint8Array(await file.arrayBuffer());
   const pdf = await pdfjsLib.getDocument({
     data: buf,
@@ -93,7 +93,8 @@ export async function renderPdfPages(file, { scale = 1.5, maxPages = 10, timeout
   for (let i = 1; i <= n; i++) {
     try {
       const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale, rotation }); // rotation 顺时针，叠加在页面固有旋转上
+      const rot = pageRotations ? (pageRotations[i - 1] ?? rotation) : rotation;
+      const viewport = page.getViewport({ scale, rotation: rot });
       const canvas = document.createElement("canvas");
       canvas.width = Math.ceil(viewport.width);
       canvas.height = Math.ceil(viewport.height);

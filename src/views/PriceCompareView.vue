@@ -129,17 +129,28 @@ async function exportExcel() {
 
 <template>
   <div class="flex flex-col gap-3">
-    <div class="panel p-3 flex items-center gap-2.5 flex-wrap">
-      <h2 class="m-0 text-[15px] font-700">材料单价对比</h2>
-      <span class="text-ink-soft text-xs">跨供应商对比同一材料单价；归一化自动归组，拿不准的勾选后手动并组</span>
-      <div class="ml-auto flex items-center gap-2 flex-wrap">
+    <div class="panel p-3 flex flex-col gap-2">
+      <div class="flex items-center gap-2.5 flex-wrap">
+        <span class="text-sm font-700">材料单价对比</span>
+        <span class="text-ink-soft text-xs">对比各分供方材料单价，绿色为最低价</span>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
         <select v-model="siteFilter" class="field-input w-40 py-1.5">
           <option v-for="o in siteOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
         </select>
         <button class="btn px-2.75 py-1.5" :disabled="!compare.rows.length" @click="mergeSelected">并组所选</button>
-        <button class="btn px-2.75 py-1.5" title="下载空白模板，填好后导入" @click="downloadTemplate">下载模板</button>
-        <button class="btn px-2.75 py-1.5" @click="importInput.click()">导入历史 Excel</button>
-        <button class="btn px-2.75 py-1.5" :disabled="!compare.rows.length" @click="exportExcel">导出 Excel</button>
+        <button class="btn px-2.75 py-1.5" title="下载空白模板，填好后导入" @click="downloadTemplate">
+          <span class="i-lucide-download w-3.5 h-3.5 flex-none"></span>
+          下载模板
+        </button>
+        <button class="btn px-2.75 py-1.5" @click="importInput.click()">
+          <span class="i-lucide-upload w-3.5 h-3.5 flex-none"></span>
+          导入历史
+        </button>
+        <button class="btn px-2.75 py-1.5" :disabled="!compare.rows.length" @click="exportExcel">
+          <span class="i-lucide-download w-3.5 h-3.5 flex-none"></span>
+          导出 Excel
+        </button>
         <input ref="importInput" type="file" accept=".xlsx,.xls" hidden @change="onImportPick" />
       </div>
     </div>

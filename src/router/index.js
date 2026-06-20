@@ -5,6 +5,7 @@ import { createRouter, createWebHashHistory } from "vue-router";
 const routes = [
   { path: "/", redirect: "/invoice" },
   { path: "/invoice", name: "invoice", component: () => import("../views/InvoiceView.vue") },
+  { path: "/invoice/:id", name: "invoice-detail", component: () => import("../views/InvoiceDetailView.vue") },
   { path: "/delivery", name: "delivery", component: () => import("../views/DeliveryView.vue") },
   { path: "/supplier", name: "supplier", component: () => import("../views/SupplierView.vue") },
   { path: "/supplier/:id", name: "supplier-detail", component: () => import("../views/SupplierDetailView.vue") },

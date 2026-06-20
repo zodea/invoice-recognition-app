@@ -34,13 +34,15 @@ const zoomLevel = ref(1); // 1=适应栏宽；>1 放大并可平移
 const hiRes = ref({}); // 高清缓存 key=`${invId}:${page}:${rotation}`
 const viewport = ref(null);
 
+function unitRot(u) {
+  return u.inv.pageRotations?.[u.page] ?? u.inv.rotation ?? 0;
+}
 const zoomSrc = computed(() => {
   const u = zoomUnit.value;
   if (!u) return null;
-  return hiRes.value[`${u.invId}:${u.page}:${u.inv.rotation}`] || u.inv.renderedPages?.[u.page] || u.image;
+  return hiRes.value[`${u.invId}:${u.page}:${unitRot(u)}`] || u.inv.renderedPages?.[u.page] || u.image;
 });
 const zoomWidth = computed(() => `${Math.round(zoomLevel.value * 100)}%`);
-// reka Slider 用数组；映射到 zoomLevel(100~400 -> 1~4)
 const zoomPct = computed({
   get: () => [Math.round(zoomLevel.value * 100)],
   set: (v) => { zoomLevel.value = (v?.[0] ?? 100) / 100; },
@@ -48,10 +50,12 @@ const zoomPct = computed({
 
 async function loadHiRes(u) {
   if (!u || !u.inv.isTextPdf || !u.inv.blob) return;
-  const key = `${u.invId}:${u.page}:${u.inv.rotation}`;
+  const rot = unitRot(u);
+  const key = `${u.invId}:${u.page}:${rot}`;
   if (hiRes.value[key]) return;
   try {
-    const hp = await renderPdfPages(u.inv.blob, { scale: 3, rotation: u.inv.rotation });
+    const pr = u.inv.pageRotations || {};
+    const hp = await renderPdfPages(u.inv.blob, { scale: 3, rotation: u.inv.rotation, pageRotations: Object.keys(pr).length ? pr : undefined });
     const hi = hp[u.page] || hp[0];
     if (hi) hiRes.value = { ...hiRes.value, [key]: hi };
   } catch (e) {
@@ -67,12 +71,12 @@ async function enterZoom(unit) {
 async function rotateZoom(dir) {
   const u = zoomUnit.value;
   if (!u) return;
-  await invoiceActions.rotateInvoice(u.inv, dir);
+  await invoiceActions.rotateInvoice(u.inv, dir, u.page);
   await loadHiRes(u);
 }
 function rotateSlot(unit, dir) {
   selectInvoice(unit.invId);
-  invoiceActions.rotateInvoice(unit.inv, dir);
+  invoiceActions.rotateInvoice(unit.inv, dir, unit.page);
 }
 function exitZoom() {
   zoomUnit.value = null;
@@ -131,19 +135,37 @@ const menuItemCls = "flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cu
 <template>
   <section class="flex flex-col min-h-0">
     <div class="pane-head sticky -top-3 z-5 flex items-center justify-between gap-2.5 -mx-3 -mt-3 mb-2.5 px-3 py-3 bg-[#f8fafc]/96 border-b border-line backdrop-blur">
-      <div class="min-w-0">
-        <h2 class="m-0 text-base font-700">打印排版</h2>
-        <p class="mt-0.25 text-ink-soft text-xs">{{ zoomUnit ? "放大查看 · 拖动平移 · Esc退出 +/-缩放 ←→旋转" : `${units.length} 个打印位 · 右键/双击放大 · 滚轮Ctrl缩放` }}</p>
+      <div class="min-w-0 flex items-center gap-2">
+        <span class="i-lucide-printer w-4 h-4 text-ink-soft flex-none"></span>
+        <h2 class="m-0 text-sm font-700">打印排版</h2>
+        <span class="text-ink-soft text-xs">{{ zoomUnit ? "" : "右键放大" }}</span>
       </div>
-      <span class="chip bg-brand-soft text-brand">{{ invoiceStore.perPage }} 张/页</span>
+      <select
+        :value="invoiceStore.perPage"
+        @change="invoiceStore.perPage = Number($event.target.value)"
+        class="field-input w-auto px-2 py-1 text-xs font-700 text-brand bg-brand-soft border-brand/25 rounded-btn"
+      >
+        <option :value="1">1张/页</option>
+        <option :value="2">2张/页</option>
+        <option :value="4">4张/页</option>
+      </select>
     </div>
 
     <!-- 放大模式：固定头部工具栏(缩放滑块/左旋/右旋/退出) + 可拖动大图 -->
     <div v-if="zoomUnit" class="flex-1 flex flex-col min-h-0">
       <div class="sticky top-9 z-4 flex items-center flex-wrap gap-2 mb-2 py-1.5 bg-[#f8fafc]">
-        <button class="btn px-2.5 py-1.5" title="退出放大" @click="exitZoom">← 退出</button>
-        <button class="btn px-2.5 py-1.5" title="左旋 90°" @click="rotateZoom(-1)">⟲ 左旋</button>
-        <button class="btn px-2.5 py-1.5" title="右旋 90°" @click="rotateZoom(1)">⟳ 右旋</button>
+        <button class="btn px-2.5 py-1.5" title="退出放大" @click="exitZoom">
+          <span class="i-lucide-arrow-left w-4 h-4"></span>
+          退出
+        </button>
+        <button class="btn px-2.5 py-1.5" title="左旋 90°" @click="rotateZoom(-1)">
+          <span class="i-lucide-rotate-ccw w-4 h-4"></span>
+          左旋
+        </button>
+        <button class="btn px-2.5 py-1.5" title="右旋 90°" @click="rotateZoom(1)">
+          <span class="i-lucide-rotate-cw w-4 h-4"></span>
+          右旋
+        </button>
         <div class="flex items-center gap-2 ml-1">
           <span class="text-xs text-ink-soft">缩放</span>
           <SliderRoot
@@ -226,9 +248,9 @@ const menuItemCls = "flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cu
             </ContextMenuTrigger>
             <ContextMenuPortal>
               <ContextMenuContent class="z-50 min-w-32 bg-white border border-line-strong rounded-lg shadow-pop p-1 flex flex-col gap-0.5">
-                <ContextMenuItem :class="menuItemCls" @select="enterZoom(unit)">🔍 放大</ContextMenuItem>
-                <ContextMenuItem :class="menuItemCls" @select="rotateSlot(unit, -1)">⟲ 左旋 90°</ContextMenuItem>
-                <ContextMenuItem :class="menuItemCls" @select="rotateSlot(unit, 1)">⟳ 右旋 90°</ContextMenuItem>
+                <ContextMenuItem :class="menuItemCls" @select="enterZoom(unit)"><span class="i-lucide-zoom-in w-4 h-4"></span> 放大</ContextMenuItem>
+                <ContextMenuItem :class="menuItemCls" @select="rotateSlot(unit, -1)"><span class="i-lucide-rotate-ccw w-4 h-4"></span> 左旋 90°</ContextMenuItem>
+                <ContextMenuItem :class="menuItemCls" @select="rotateSlot(unit, 1)"><span class="i-lucide-rotate-cw w-4 h-4"></span> 右旋 90°</ContextMenuItem>
               </ContextMenuContent>
             </ContextMenuPortal>
           </ContextMenuRoot>

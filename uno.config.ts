@@ -1,4 +1,4 @@
-import { defineConfig, presetWind3 } from "unocss";
+import { defineConfig, presetIcons, presetWind3 } from "unocss";
 
 // Precision Ledger 设计系统令牌（ADR-0005 / issue #22）。核心色已对齐，这里补齐状态色阶、
 // 圆角、阴影，并把 btn/input/chip/panel 等 shortcut 统一成设计系统观感（全应用经 shortcut 生效）。
@@ -6,7 +6,7 @@ import { defineConfig, presetWind3 } from "unocss";
 // transition 用全属性组（含 transform/opacity），旧的 transition-colors 不过渡缩放/透明，手感发生改变。
 // 字体不在本期改（沿用现中文系统字体）。
 export default defineConfig({
-  presets: [presetWind3()],
+  presets: [presetWind3(), presetIcons({ scale: 1.2, extraProperties: { display: "inline-block", "vertical-align": "middle" } })],
   theme: {
     colors: {
       bg: "#f5f6f8", // Level 0 画布

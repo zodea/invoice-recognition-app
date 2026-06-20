@@ -115,11 +115,17 @@ const money = (v) => (Number(v) || 0).toFixed(2);
 <template>
   <div class="flex flex-col gap-3">
     <div class="panel p-3 flex items-center gap-2.5 flex-wrap">
-      <button class="btn px-2.5 py-1.5" @click="router.push('/supplier')">← 返回列表</button>
-      <h2 class="m-0 text-base font-700">{{ supplier?.name || "分供方详情" }}</h2>
+      <button class="btn px-2.5 py-1.5" @click="router.push('/supplier')">
+        <span class="i-lucide-arrow-left w-4 h-4 flex-none"></span>
+        返回
+      </button>
+      <h2 class="m-0 text-base font-800">{{ supplier?.name || "分供方详情" }}</h2>
       <button v-if="supplier" class="btn px-2 py-1 text-xs text-brand border-brand" @click="jumpSearch">爱企查</button>
       <span class="text-ink-soft text-xs">税号：{{ supplier?.taxNo || "—" }}　开户行：{{ supplier?.bank || "—" }}　账号：{{ supplier?.bankAccount || "—" }}</span>
-      <button v-if="supplier" class="btn-primary px-2.5 py-1.5 ml-auto" title="导出 对账汇总+材料明细+采购+支付 多表 Excel" @click="exportLedger">导出对账 Excel</button>
+      <button v-if="supplier" class="btn-primary px-2.5 py-1.5 ml-auto" title="导出 对账汇总+材料明细+采购+支付 多表 Excel" @click="exportLedger">
+        <span class="i-lucide-download w-4 h-4 flex-none"></span>
+        导出对账 Excel
+      </button>
     </div>
 
     <div v-if="!supplier" class="panel p-6 text-center text-ink-soft">未找到该分供方，可能已被删除。<button class="btn px-2.5 py-1 ml-2" @click="router.push('/supplier')">返回列表</button></div>

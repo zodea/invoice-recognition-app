@@ -1,5 +1,6 @@
 <script setup>
 import { computed, nextTick, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import {
   invoiceStore,
   invoiceActions,
@@ -17,6 +18,7 @@ import { ui } from "../lib/ui";
 import { collectFromInvoices } from "../lib/supplier-db";
 import { useSupplierStore } from "../stores/supplier";
 
+const router = useRouter();
 const viewMode = ref("status");
 const supplierStore = useSupplierStore();
 
@@ -36,7 +38,7 @@ function matchesStatus(item) {
   if (statusFilter.value === "todo") return item.inv.status !== "done";
   return true;
 }
-const sorted = computed(() => sortedInvoices().filter((x) => matchesSearch(x.inv) && matchesStatus(x)));
+const sorted = computed(() => sortedInvoices().filter((x) => matchesSearch(x.inv) && matchesStatusExtended(x)));
 const allSorted = computed(() => sortedInvoices({ applyFilters: false }).filter((x) => matchesSearch(x.inv)));
 const reviewItems = computed(() => recognizedItems.value);
 const recognizedItems = computed(() => allSorted.value.filter((item) => item.inv.status === "done"));
@@ -265,6 +267,32 @@ const stageBtn = (active) =>
   active
     ? "border border-brand bg-brand text-white rounded-lg px-3 py-2 text-sm font-800 shadow-card"
     : "border border-line bg-white text-ink rounded-lg px-3 py-2 text-sm font-700 hover:border-brand hover:text-brand";
+
+const moreMenuOpen = ref(false);
+const reviewListOpen = ref(false);
+
+const statusFiltersExtended = computed(() => {
+  const list = sortedInvoices({ applyFilters: false });
+  const failCount = list.filter((x) => x.inv.status === "error").length;
+  const historyCount = list.filter((x) => x.inv.history?.usedBefore).length;
+  return [
+    { key: "all", label: "全部", count: list.length },
+    { key: "review", label: "待人工校对", count: list.filter((x) => x.needsReview).length },
+    { key: "done", label: "识别完成", count: list.filter((x) => x.inv.status === "done" && !x.needsReview).length },
+    { key: "todo", label: "待识别", count: list.filter((x) => x.inv.status !== "done").length },
+    ...(failCount ? [{ key: "error", label: "识别失败", count: failCount }] : []),
+    ...(historyCount ? [{ key: "history", label: "历史已用", count: historyCount }] : []),
+  ];
+});
+
+function matchesStatusExtended(item) {
+  if (statusFilter.value === "review") return item.needsReview;
+  if (statusFilter.value === "done") return item.inv.status === "done" && !item.needsReview;
+  if (statusFilter.value === "todo") return item.inv.status !== "done";
+  if (statusFilter.value === "error") return item.inv.status === "error";
+  if (statusFilter.value === "history") return !!item.inv.history?.usedBefore;
+  return true;
+}
 </script>
 
 <template>
@@ -279,19 +307,11 @@ const stageBtn = (active) =>
     </div>
   </section>
 
-  <div v-else class="flex flex-col gap-5">
-    <section class="panel p-4 flex justify-between items-start gap-4 flex-wrap">
-      <div class="min-w-0">
-        <nav class="flex items-center gap-1.5 text-xs text-ink-soft mb-2">
-          <span>发票识别</span>
-          <span>/</span>
-          <span class="text-brand font-800">{{ viewTitle }}</span>
-        </nav>
-        <h1 class="m-0 text-[30px] leading-tight font-800">{{ viewTitle }}</h1>
-        <p class="mt-2 mb-0 text-ink-soft">{{ viewHint }}</p>
-      </div>
-      <div class="flex flex-col items-end gap-3 max-md:items-start">
-        <div class="flex gap-2 flex-wrap justify-end max-md:justify-start">
+  <div v-else class="flex flex-col gap-4">
+    <!-- sticky 阶段 tab 行 -->
+    <div class="sticky top-16 z-10 bg-bg -mx-4 px-4 pt-1 pb-2 lt-md:-mx-3 lt-md:px-3">
+      <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto">
           <button
             v-for="tab in stageTabs"
             :key="tab.key"
@@ -300,24 +320,33 @@ const stageBtn = (active) =>
             @click="setMode(tab.key)"
           >
             {{ tab.label }}
-            <span class="ml-1 opacity-75">{{ tab.count }}</span>
+            <span v-if="tab.count" class="ml-1 inline-flex items-center justify-center min-w-5 h-5 rounded-full text-[11px] font-700" :class="viewMode === tab.key ? 'bg-white/25 text-white' : 'bg-surface-3 text-ink-soft'">{{ tab.count }}</span>
           </button>
         </div>
-        <div class="flex gap-2 flex-wrap justify-end max-md:justify-start">
-          <button v-if="viewMode === 'status'" class="btn px-4 py-2" type="button" @click="setMode('pending')">待入账</button>
-          <button v-if="viewMode === 'status'" class="btn px-4 py-2" type="button" @click="setMode('posted')">已入账</button>
-          <button class="btn px-4 py-2" type="button" @click="invoiceActions.clearAll">清空列表</button>
-          <button class="btn-primary px-5 py-2" type="button" :disabled="invoiceStore.busy || !unrecognizedCount" @click="recognizeBatch">
+        <div class="flex items-center gap-2 flex-none">
+          <button class="btn-primary px-4 py-2" type="button" :disabled="invoiceStore.busy || !unrecognizedCount" @click="recognizeBatch">
+            <span class="i-lucide-scan-text w-4 h-4 flex-none"></span>
             {{ invoiceStore.busy ? "识别中" : "批量识别" }}
           </button>
+          <div class="relative">
+            <button class="btn px-2 py-2" type="button" title="更多操作" @click="moreMenuOpen = !moreMenuOpen">
+              <span class="i-lucide-ellipsis w-4 h-4"></span>
+            </button>
+            <div v-if="moreMenuOpen" class="absolute right-0 top-full mt-1 min-w-36 bg-white border border-line-strong rounded-lg shadow-pop p-1 z-20" @click="moreMenuOpen = false">
+              <button class="w-full flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md text-left hover:bg-brand-soft hover:text-brand" type="button" @click="invoiceActions.clearAll">
+                <span class="i-lucide-trash-2 w-4 h-4 text-danger"></span>
+                清空列表
+              </button>
+            </div>
+          </div>
         </div>
       </div>
-    </section>
+    </div>
 
     <section v-if="viewMode === 'status'" class="flex flex-col gap-4">
       <section class="grid grid-cols-2 xl:grid-cols-4 gap-4">
         <div class="panel p-4">
-          <div class="text-xs text-ink-soft font-700">全部文档</div>
+          <div class="text-xs text-ink-soft font-700">全部</div>
           <div class="mt-1 text-2xl font-800">{{ invoiceStore.invoices.length }}</div>
         </div>
         <div class="panel p-4">
@@ -326,11 +355,11 @@ const stageBtn = (active) =>
         </div>
         <button type="button" class="panel p-4 text-left transition active:scale-[.98] hover:(border-brand shadow-pop)" @click="setMode('pending')">
           <div class="text-xs text-ink-soft font-700">待入账</div>
-          <div class="mt-1 text-2xl font-800">{{ pendingItems.length }}</div>
+          <div class="mt-1 text-2xl font-800 text-ok">{{ pendingItems.length }}</div>
         </button>
         <button type="button" class="panel p-4 text-left transition active:scale-[.98] hover:(border-brand shadow-pop)" @click="setMode('posted')">
           <div class="text-xs text-ink-soft font-700">已入账</div>
-          <div class="mt-1 text-2xl font-800">{{ postedItems.length }}</div>
+          <div class="mt-1 text-2xl font-800 text-ok">{{ postedItems.length }}</div>
         </button>
       </section>
 
@@ -338,17 +367,22 @@ const stageBtn = (active) =>
 
       <section class="panel overflow-hidden">
         <div class="p-4 border-b border-line bg-surface-2 flex flex-col items-start gap-3">
-          <div>
-            <div class="flex items-center gap-2 flex-wrap">
-              <h2 class="m-0 text-lg font-800">所有已上传文档</h2>
-              <span v-if="hasSearch" class="chip-brand">搜索匹配 {{ sorted.length }} 条</span>
-            </div>
-            <p class="mt-1 text-xs text-ink-soft">{{ sorted.length }} 个文档，{{ unrecognizedCount }} 个待识别，{{ runningCount }} 个读取/识别中</p>
+          <div class="flex items-center gap-3 flex-wrap w-full">
+            <label class="relative flex-none">
+              <span class="absolute left-2.5 top-1/2 -translate-y-1/2 i-lucide-search w-3.5 h-3.5 text-ink-faint"></span>
+              <input
+                v-model="ui.searchText"
+                class="field-input pl-8 pr-3 py-1.5 w-52 rounded-full bg-white"
+                type="search"
+                placeholder="搜索文件名、公司…"
+              />
+            </label>
+            <span v-if="hasSearch" class="chip-brand">匹配 {{ sorted.length }} 条</span>
           </div>
           <div class="flex flex-col gap-2 items-start min-w-0 w-full">
             <div class="flex items-center gap-2 flex-wrap justify-start">
               <span class="text-xs text-ink-soft font-700 flex-none w-16 text-left">处理状态</span>
-              <button v-for="s in statusFilters" :key="s.key" type="button" :class="filterBtn(statusFilter === s.key)" @click="statusFilter = s.key">{{ s.label }}<span class="ml-1 opacity-70">{{ s.count }}</span></button>
+              <button v-for="s in statusFiltersExtended" :key="s.key" type="button" :class="filterBtn(statusFilter === s.key)" @click="statusFilter = s.key">{{ s.label }}<span class="ml-1 opacity-70">{{ s.count }}</span></button>
             </div>
             <div class="flex items-center gap-2 flex-wrap justify-start">
               <span class="text-xs text-ink-soft font-700 flex-none w-16 text-left">购买方</span>
@@ -365,39 +399,42 @@ const stageBtn = (active) =>
           <table class="w-full min-w-[920px] text-left border-collapse">
             <thead class="bg-surface-2 text-ink-soft text-xs font-800 tracking-wide">
               <tr class="border-b border-line">
-                <th class="px-5 py-3">文件名</th>
-                <th class="px-5 py-3">类型</th>
-                <th class="px-5 py-3">序号</th>
-                <th class="px-5 py-3">上传信息</th>
-                <th class="px-5 py-3">处理状态</th>
-                <th class="px-5 py-3 text-right">操作</th>
+                <th class="px-4 py-3">#</th>
+                <th class="px-4 py-3">文件名</th>
+                <th class="px-4 py-3">类型</th>
+                <th class="px-4 py-3">序号</th>
+                <th class="px-4 py-3">大小/页数</th>
+                <th class="px-4 py-3">状态</th>
+                <th class="px-4 py-3 text-right">操作</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-line">
               <tr
-                v-for="item in sorted"
+                v-for="(item, index) in sorted"
                 :key="item.inv.id"
                 :data-inv="item.inv.id"
                 class="hover:bg-surface-2 transition cursor-pointer"
                 :class="invoiceStore.selectedId === item.inv.id ? 'bg-brand-soft/55' : ''"
-                @click="selectInvoice(item.inv.id)"
+                @click="editSingle(item.inv)"
               >
-                <td class="px-5 py-3">
-                  <div class="flex items-center gap-3">
-                    <span class="grid place-items-center w-8 h-8 rounded-lg bg-brand-soft text-brand font-800">票</span>
-                    <div class="min-w-0">
-                      <div class="font-700 truncate max-w-74" :title="item.inv.name">{{ item.inv.name }}</div>
-                      <div class="text-xs text-ink-soft truncate max-w-74" :title="invoiceExportFileName(item.inv)">{{ invoiceExportFileName(item.inv) }}</div>
-                    </div>
+                <td class="px-4 py-3 text-ink-soft">{{ index + 1 }}</td>
+                <td class="px-4 py-3">
+                  <div class="min-w-0">
+                    <div class="font-700 truncate max-w-74" :title="item.inv.name">{{ item.inv.name }}</div>
+                    <div class="text-xs text-ink-soft truncate max-w-74" :title="invoiceExportFileName(item.inv)">{{ invoiceExportFileName(item.inv) }}</div>
                   </div>
                 </td>
-                <td class="px-5 py-3 text-ink-soft">{{ docType(item.inv) }}</td>
-                <td class="px-5 py-3 font-mono text-ink-soft">{{ padSeq(item.seq) }}</td>
-                <td class="px-5 py-3 text-ink-soft">{{ fileMeta(item.inv) }}</td>
-                <td class="px-5 py-3"><span :class="statusClass(item)">{{ statusText(item) }}</span></td>
-                <td class="px-5 py-3 text-right">
-                  <button class="btn px-2.5 py-1.5 text-xs" type="button" :disabled="item.inv.rendering || invoiceStore.busy" @click.stop="recognize(item.inv)">识别</button>
-                  <button class="btn-danger px-2.5 py-1.5 text-xs ml-1.5" type="button" @click.stop="remove(item.inv)">删除</button>
+                <td class="px-4 py-3 text-ink-soft">{{ docType(item.inv) }}</td>
+                <td class="px-4 py-3 font-mono text-ink-soft">{{ padSeq(item.seq) }}</td>
+                <td class="px-4 py-3 text-ink-soft">{{ fileMeta(item.inv) }}</td>
+                <td class="px-4 py-3"><span :class="statusClass(item)">{{ statusText(item) }}</span></td>
+                <td class="px-4 py-3 text-right whitespace-nowrap">
+                  <button class="inline-flex items-center justify-center w-7 h-7 rounded-btn border border-line bg-white text-ink-soft hover:(border-brand text-brand) transition" type="button" title="查看校对" @click.stop="editSingle(item.inv)">
+                    <span class="i-lucide-file-search w-4 h-4"></span>
+                  </button>
+                  <button class="inline-flex items-center justify-center w-7 h-7 rounded-btn border border-line bg-white text-danger hover:(border-danger bg-danger/5) transition ml-1.5" type="button" title="删除" @click.stop="remove(item.inv)">
+                    <span class="i-lucide-trash-2 w-4 h-4"></span>
+                  </button>
                 </td>
               </tr>
             </tbody>
@@ -413,12 +450,14 @@ const stageBtn = (active) =>
       </section>
     </section>
 
-    <section v-else-if="viewMode === 'review'" class="grid grid-cols-[300px_minmax(360px,1fr)_minmax(380px,0.95fr)] gap-4 h-[calc(100vh-190px)] min-h-0 overflow-hidden lt-xl:grid-cols-1 lt-xl:h-auto lt-xl:overflow-visible">
-      <!-- 左：发票列表（轻量项，可承载大量；点选进入右侧校对） -->
-      <aside class="panel overflow-hidden flex flex-col min-h-0 lt-xl:max-h-80">
+    <section v-else-if="viewMode === 'review'" class="grid grid-cols-[300px_minmax(360px,1fr)_minmax(380px,0.95fr)] gap-4 h-[calc(100vh-190px)] min-h-0 overflow-hidden lt-lg:grid-cols-[minmax(360px,1fr)_minmax(380px,0.95fr)] lt-md:grid-cols-1 lt-md:h-auto lt-md:overflow-visible">
+      <!-- 左：发票列表（桌面三栏；中屏收为浮层按钮唤出；手机堆叠） -->
+      <aside class="panel overflow-hidden flex flex-col min-h-0 lt-lg:fixed lt-lg:inset-y-0 lt-lg:left-0 lt-lg:z-40 lt-lg:w-72 lt-lg:shadow-pop lt-lg:transition-transform" :class="reviewListOpen ? 'lt-lg:translate-x-0' : 'lt-lg:-translate-x-full'" @click.self="reviewListOpen = false">
         <div class="px-3 py-2.5 border-b border-line bg-surface-2 flex items-center justify-between gap-2">
-          <span class="text-xs text-ink-soft font-700">本批次 {{ recognizedItems.length }} 张</span>
-          <span class="text-xs text-ink-soft">待入账 {{ pendingItems.length }} · 已入账 {{ postedItems.length }}</span>
+          <span class="text-xs text-ink-soft font-700">本批次 {{ recognizedItems.length }} 张 · <b class="text-brand">待入账 {{ pendingItems.length }}</b></span>
+          <button class="hidden lt-lg:inline-flex items-center justify-center w-6 h-6 rounded-btn border border-line bg-white text-ink-soft hover:text-brand" type="button" @click="reviewListOpen = false">
+            <span class="i-lucide-x w-3.5 h-3.5"></span>
+          </button>
         </div>
         <div v-if="!reviewItems.length" class="p-8 text-center text-ink-soft text-sm">暂无可校对的发票。</div>
         <div v-else class="overflow-y-auto flex flex-col">
@@ -429,7 +468,7 @@ const stageBtn = (active) =>
             :data-inv="item.inv.id"
             class="flex items-center gap-2.5 px-3 py-2.5 border-b border-line text-left transition hover:bg-surface-2"
             :class="invoiceStore.selectedId === item.inv.id ? 'bg-brand-soft/60' : ''"
-            @click="selectInvoice(item.inv.id)"
+            @click="selectInvoice(item.inv.id); reviewListOpen = false"
           >
             <span class="w-7 h-9 rounded border border-line bg-surface-3 overflow-hidden grid place-items-center flex-none">
               <img v-if="thumbnail(item.inv)" :src="thumbnail(item.inv)" class="w-full h-full object-cover" alt="" />
@@ -444,8 +483,15 @@ const stageBtn = (active) =>
         </div>
       </aside>
 
-      <!-- 中：原打印排版预览（默认 2 张/页；双击/右键放大，放大后可拖动平移） -->
-      <aside class="panel overflow-hidden flex flex-col min-h-0 bg-surface-sink">
+      <!-- 中屏浮层遮罩 -->
+      <div v-if="reviewListOpen" class="hidden lt-lg:block fixed inset-0 z-39 bg-black/30" @click="reviewListOpen = false"></div>
+
+      <!-- 中：打印排版预览 -->
+      <aside class="panel overflow-hidden flex flex-col min-h-0 bg-surface-sink relative">
+        <button class="hidden lt-lg:flex absolute top-2 left-2 z-5 items-center gap-1 btn px-2 py-1 text-xs" type="button" @click="reviewListOpen = !reviewListOpen">
+          <span class="i-lucide-list w-3.5 h-3.5"></span>
+          列表
+        </button>
         <div class="flex-1 min-h-0 overflow-y-auto p-3">
           <InvoicePreview />
         </div>
@@ -486,75 +532,75 @@ const stageBtn = (active) =>
     </section>
 
 
-    <section v-else-if="viewMode === 'pending'" class="panel overflow-hidden">
-      <div class="p-4 border-b border-line bg-surface-2 flex justify-between items-center gap-3 flex-wrap">
-        <div>
-          <h2 class="m-0 text-lg font-800">待入账条目汇总</h2>
-          <p class="mt-1 mb-0 text-xs text-ink-soft">{{ pendingItems.length }} 张待入账，合计 {{ pendingTotal }}</p>
-        </div>
-        <button class="btn-primary px-4 py-2" type="button" :disabled="!pendingItems.length" @click="postAllPending">批量入账</button>
+    <section v-else-if="viewMode === 'pending'" class="flex flex-col gap-4">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <div class="text-ink-soft">合计 <span class="text-ink text-lg font-800 font-mono">{{ pendingTotal }}</span></div>
+        <button class="btn-primary px-4 py-2" type="button" :disabled="!pendingItems.length" @click="postAllPending">
+          <span class="i-lucide-file-check w-4 h-4 flex-none"></span>
+          批量入账
+        </button>
       </div>
 
-      <div v-if="!pendingItems.length" class="p-8 text-center text-ink-soft">暂无待入账条目。</div>
-      <div v-else class="overflow-x-auto">
-        <table class="w-full min-w-[1180px] text-left border-collapse">
-          <thead class="bg-surface-2 text-ink-soft text-xs font-800 tracking-wide">
-            <tr class="border-b border-line">
-              <th class="px-4 py-3">缩略图</th>
-              <th class="px-4 py-3">单据编号</th>
-              <th class="px-4 py-3">开票日期</th>
-              <th class="px-4 py-3">公司</th>
-              <th class="px-4 py-3">供应商</th>
-              <th class="px-4 py-3">类型</th>
-              <th class="px-4 py-3 text-right">金额</th>
-              <th class="px-4 py-3">对应项目</th>
-              <th class="px-4 py-3 text-right">操作</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-line">
-            <tr v-for="item in pendingItems" :key="item.inv.id" :data-inv="item.inv.id" class="hover:bg-surface-2">
-              <td class="px-4 py-3">
-                <div class="w-12 h-15 rounded-lg border border-line bg-surface-3 overflow-hidden grid place-items-center">
-                  <img v-if="thumbnail(item.inv)" :src="thumbnail(item.inv)" class="w-full h-full object-cover" alt="" />
-                  <span v-else class="text-brand font-800">票</span>
-                </div>
-              </td>
-              <td class="px-4 py-3 font-mono font-700">{{ docNo(item) }}</td>
-              <td class="px-4 py-3 font-mono text-ink-soft">{{ item.inv.fields.date || "待补" }}</td>
-              <td class="px-4 py-3 max-w-48 truncate" :title="item.inv.fields.buyer">{{ item.inv.fields.buyer || "待补" }}</td>
-              <td class="px-4 py-3 max-w-56 truncate" :title="item.inv.fields.seller">{{ item.inv.fields.seller || "待补" }}</td>
-              <td class="px-4 py-3">{{ docType(item.inv) }}</td>
-              <td class="px-4 py-3 text-right font-mono font-800 text-brand">{{ money(amountValue(item.inv)) }}</td>
-              <td class="px-4 py-3"><span class="chip bg-surface-3 text-ink-soft max-w-52 truncate" :title="projectText(item.inv)">{{ projectText(item.inv) }}</span></td>
-              <td class="px-4 py-3 text-right whitespace-nowrap">
-                <button class="btn-danger px-2.5 py-1.5 text-xs" type="button" @click="remove(item.inv)">删除</button>
-                <button class="btn px-2.5 py-1.5 text-xs ml-1.5" type="button" @click="editSingle(item.inv)">编辑</button>
-                <button class="btn-primary px-2.5 py-1.5 text-xs ml-1.5" type="button" @click="postInvoice(item.inv)">入账</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="panel overflow-hidden">
+        <div v-if="!pendingItems.length" class="p-8 text-center text-ink-soft">暂无待入账条目。</div>
+        <div v-else class="overflow-x-auto">
+          <table class="w-full min-w-[1180px] text-left border-collapse">
+            <thead class="bg-surface-2 text-ink-soft text-xs font-800 tracking-wide">
+              <tr class="border-b border-line">
+                <th class="px-4 py-3">缩略</th>
+                <th class="px-4 py-3">单据编号</th>
+                <th class="px-4 py-3">开票日期</th>
+                <th class="px-4 py-3">购买方</th>
+                <th class="px-4 py-3">供应商</th>
+                <th class="px-4 py-3">类型</th>
+                <th class="px-4 py-3 text-right">金额</th>
+                <th class="px-4 py-3">对应项目</th>
+                <th class="px-4 py-3 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-line">
+              <tr v-for="item in pendingItems" :key="item.inv.id" :data-inv="item.inv.id" class="hover:bg-surface-2">
+                <td class="px-4 py-3">
+                  <div class="w-10 h-13 rounded border border-line bg-surface-3 overflow-hidden grid place-items-center">
+                    <img v-if="thumbnail(item.inv)" :src="thumbnail(item.inv)" class="w-full h-full object-cover" alt="" />
+                    <span v-else class="text-brand font-800 text-xs">票</span>
+                  </div>
+                </td>
+                <td class="px-4 py-3 font-mono font-700">{{ docNo(item) }}</td>
+                <td class="px-4 py-3 font-mono text-ink-soft">{{ item.inv.fields.date || "待补" }}</td>
+                <td class="px-4 py-3 max-w-48 truncate" :title="item.inv.fields.buyer">{{ item.inv.fields.buyer || "待补" }}</td>
+                <td class="px-4 py-3 max-w-56 truncate" :title="item.inv.fields.seller">{{ item.inv.fields.seller || "待补" }}</td>
+                <td class="px-4 py-3">{{ docType(item.inv) }}</td>
+                <td class="px-4 py-3 text-right font-mono font-800">{{ money(amountValue(item.inv)) }}</td>
+                <td class="px-4 py-3 max-w-48 truncate text-ink-soft" :title="projectText(item.inv)">{{ projectText(item.inv) }}</td>
+                <td class="px-4 py-3 text-right whitespace-nowrap">
+                  <button class="inline-flex items-center justify-center w-7 h-7 rounded-btn border border-line bg-white text-ink-soft hover:(border-brand text-brand) transition" type="button" title="编辑" @click="router.push(`/invoice/${item.inv.id}`)">
+                    <span class="i-lucide-square-pen w-4 h-4"></span>
+                  </button>
+                  <button class="inline-flex items-center justify-center w-7 h-7 rounded-btn border border-line bg-white text-ink-soft hover:(border-brand text-brand) transition ml-1.5" type="button" title="入账" @click="postInvoice(item.inv)">
+                    <span class="i-lucide-file-check w-4 h-4"></span>
+                  </button>
+                  <button class="inline-flex items-center justify-center w-7 h-7 rounded-btn border border-line bg-white text-danger hover:(border-danger bg-danger/5) transition ml-1.5" type="button" title="删除" @click="remove(item.inv)">
+                    <span class="i-lucide-trash-2 w-4 h-4"></span>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
 
     <section v-else-if="viewMode === 'posted'" class="panel overflow-hidden">
-      <div class="p-4 border-b border-line bg-surface-2 flex justify-between items-center gap-3 flex-wrap">
-        <div>
-          <h2 class="m-0 text-lg font-800">已入账</h2>
-          <p class="mt-1 mb-0 text-xs text-ink-soft">{{ postedItems.length }} 张已入账，合计 {{ postedTotal }}</p>
-        </div>
-        <button class="btn px-4 py-2" type="button" @click="setMode('pending')">查看待入账</button>
-      </div>
-
       <div v-if="!postedItems.length" class="p-8 text-center text-ink-soft">暂无已入账条目。</div>
       <div v-else class="overflow-x-auto">
         <table class="w-full min-w-[1260px] text-left border-collapse">
           <thead class="bg-surface-2 text-ink-soft text-xs font-800 tracking-wide">
             <tr class="border-b border-line">
-              <th class="px-4 py-3">缩略图</th>
+              <th class="px-4 py-3">缩略</th>
               <th class="px-4 py-3">单据编号</th>
               <th class="px-4 py-3">开票日期</th>
-              <th class="px-4 py-3">公司</th>
+              <th class="px-4 py-3">购买方</th>
               <th class="px-4 py-3">供应商</th>
               <th class="px-4 py-3">类型</th>
               <th class="px-4 py-3 text-right">金额</th>
@@ -566,9 +612,9 @@ const stageBtn = (active) =>
           <tbody class="divide-y divide-line">
             <tr v-for="item in postedItems" :key="item.inv.id" :data-inv="item.inv.id" class="hover:bg-surface-2">
               <td class="px-4 py-3">
-                <div class="w-12 h-15 rounded-lg border border-line bg-surface-3 overflow-hidden grid place-items-center">
+                <div class="w-10 h-13 rounded border border-line bg-surface-3 overflow-hidden grid place-items-center">
                   <img v-if="thumbnail(item.inv)" :src="thumbnail(item.inv)" class="w-full h-full object-cover" alt="" />
-                  <span v-else class="text-brand font-800">票</span>
+                  <span v-else class="text-brand font-800 text-xs">票</span>
                 </div>
               </td>
               <td class="px-4 py-3 font-mono font-700">{{ docNo(item) }}</td>
@@ -576,13 +622,19 @@ const stageBtn = (active) =>
               <td class="px-4 py-3 max-w-48 truncate" :title="item.inv.fields.buyer">{{ item.inv.fields.buyer || "待补" }}</td>
               <td class="px-4 py-3 max-w-56 truncate" :title="item.inv.fields.seller">{{ item.inv.fields.seller || "待补" }}</td>
               <td class="px-4 py-3">{{ docType(item.inv) }}</td>
-              <td class="px-4 py-3 text-right font-mono font-800 text-brand">{{ money(amountValue(item.inv)) }}</td>
-              <td class="px-4 py-3"><span class="chip bg-surface-3 text-ink-soft max-w-52 truncate" :title="projectText(item.inv)">{{ projectText(item.inv) }}</span></td>
-              <td class="px-4 py-3 text-ink-soft font-mono">{{ postedTime(item.inv) }}</td>
+              <td class="px-4 py-3 text-right font-mono font-800">{{ money(amountValue(item.inv)) }}</td>
+              <td class="px-4 py-3 max-w-48 truncate text-ink-soft" :title="projectText(item.inv)">{{ projectText(item.inv) }}</td>
+              <td class="px-4 py-3 text-ink-soft font-mono text-sm">{{ postedTime(item.inv) }}</td>
               <td class="px-4 py-3 text-right whitespace-nowrap">
-                <button class="btn px-2.5 py-1.5 text-xs" type="button" @click="editSingle(item.inv)">编辑</button>
-                <button class="btn px-2.5 py-1.5 text-xs ml-1.5" type="button" @click="moveBackToPending(item.inv)">移回待入账</button>
-                <button class="btn-danger px-2.5 py-1.5 text-xs ml-1.5" type="button" @click="remove(item.inv)">删除</button>
+                <button class="inline-flex items-center justify-center w-7 h-7 rounded-btn border border-line bg-white text-ink-soft hover:(border-brand text-brand) transition" type="button" title="编辑" @click="router.push(`/invoice/${item.inv.id}`)">
+                  <span class="i-lucide-square-pen w-4 h-4"></span>
+                </button>
+                <button class="inline-flex items-center justify-center w-7 h-7 rounded-btn border border-line bg-white text-ink-soft hover:(border-brand text-brand) transition ml-1.5" type="button" title="移回待入账" @click="moveBackToPending(item.inv)">
+                  <span class="i-lucide-file-output w-4 h-4"></span>
+                </button>
+                <button class="inline-flex items-center justify-center w-7 h-7 rounded-btn border border-line bg-white text-danger hover:(border-danger bg-danger/5) transition ml-1.5" type="button" title="删除" @click="remove(item.inv)">
+                  <span class="i-lucide-trash-2 w-4 h-4"></span>
+                </button>
               </td>
             </tr>
           </tbody>

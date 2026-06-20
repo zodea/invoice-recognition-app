@@ -54,8 +54,13 @@ async function testConnection() {
       <DialogOverlay class="fixed inset-0 z-50 bg-black/40" />
       <DialogContent class="fixed z-51 top-[10vh] left-1/2 -translate-x-1/2 w-[min(640px,94vw)] bg-bg rounded-card shadow-pop p-4 outline-none">
         <div class="flex items-center mb-3">
-          <DialogTitle class="m-0 text-base font-700">⚙ 设置 — 云识别（PaddleOCR-VL）</DialogTitle>
-          <DialogClose class="ml-auto btn px-2.5 py-1">关闭 ✕</DialogClose>
+          <DialogTitle class="m-0 text-base font-700 flex items-center gap-2">
+            <span class="i-lucide-settings w-5 h-5 text-ink-soft"></span>
+            设置 — 云识别（PaddleOCR-VL）
+          </DialogTitle>
+          <DialogClose class="ml-auto inline-flex items-center justify-center w-8 h-8 rounded-btn border border-line bg-white text-ink-soft hover:(border-brand text-brand) transition">
+            <span class="i-lucide-x w-4 h-4"></span>
+          </DialogClose>
         </div>
 
         <div class="panel p-3 flex flex-col gap-2.5">

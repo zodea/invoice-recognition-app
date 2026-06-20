@@ -45,11 +45,17 @@ function revokeRenderedPages(inv) {
   }
 }
 // 按给定旋转角生成预览页图：电子票走 pdf.js 渲染；图片/扫描件用 canvas 旋转内嵌整页图。
+// P9：支持按页独立旋转——pageRotations[k] 覆盖 rotation 默认值。
+function pageRot(inv, pageIndex) {
+  return inv.pageRotations?.[pageIndex] ?? inv.rotation ?? 0;
+}
 async function produceRenderedPages(inv, rotation) {
+  const pr = inv.pageRotations || {};
+  const hasPerPage = Object.keys(pr).length > 0;
   if (inv.kind === "image" || !inv.isTextPdf) {
-    return await Promise.all(inv.pages.map((p) => rotateImageUrl(p.dataUrl, rotation)));
+    return await Promise.all(inv.pages.map((p, i) => rotateImageUrl(p.dataUrl, hasPerPage ? (pr[i] ?? rotation) : rotation)));
   }
-  return await renderPdfPages(inv.blob, { scale: adaptivePreviewScale(), rotation });
+  return await renderPdfPages(inv.blob, { scale: adaptivePreviewScale(), rotation, pageRotations: hasPerPage ? pr : undefined });
 }
 // 取首页宽高（图片/扫描件用已知页尺寸；电子票用首张渲染图尺寸）。
 async function firstPageSize(inv) {
@@ -177,9 +183,10 @@ export const invoiceActions = {
         pages: [],
         renderedPages: [], // 左侧打印预览用的真实页图（异步填充）
         previewStatus: "idle",
-        rotation: 0, // 顺时针旋转角度 0/90/180/270，预览与打印一致
-        rotationTouched: false, // 用户是否手动调过方向（手动后不再自动旋转）
-        rotationAuto: false, // 是否被自动旋转过（仅提示用）
+        rotation: 0, // 默认旋转角度 0/90/180/270
+        pageRotations: {}, // P9：按页独立旋转 { pageIndex: deg }
+        rotationTouched: false,
+        rotationAuto: false,
         pageCount: 1,
         rendering: true,
         isTextPdf: false,
@@ -307,9 +314,16 @@ export const invoiceActions = {
     return n;
   },
 
-  // 手动调整方向：dir=1 右旋(顺时针)/dir=-1 左旋(逆时针)，每次 90°，立即重渲预览（打印同样按 rotation）
-  async rotateInvoice(inv, dir = 1) {
-    inv.rotation = (((inv.rotation || 0) + dir * 90) % 360 + 360) % 360;
+  // P9：旋转粒度按页。page==null 旋转整张（改默认值）；page>=0 只旋转该页。
+  async rotateInvoice(inv, dir = 1, page = null) {
+    const norm = (d) => (((d % 360) + 360) % 360);
+    if (page != null && inv.pageCount > 1) {
+      if (!inv.pageRotations) inv.pageRotations = {};
+      const cur = inv.pageRotations[page] ?? inv.rotation ?? 0;
+      inv.pageRotations = { ...inv.pageRotations, [page]: norm(cur + dir * 90) };
+    } else {
+      inv.rotation = norm((inv.rotation || 0) + dir * 90);
+    }
     inv.rotationTouched = true;
     try {
       revokeRenderedPages(inv);

@@ -118,12 +118,17 @@ async function onImportPick(e) {
 <template>
   <div class="flex flex-col gap-3">
     <div class="panel p-3 flex items-center gap-2.5 flex-wrap">
-      <h2 class="m-0 text-[15px] font-700">分供方资料库</h2>
-      <span class="text-ink-soft text-xs">共 {{ supplierStore.list.length }} 家；供送货单文件夹简称映射、单价对比与对账使用</span>
+      <span class="text-sm font-700">分供方资料库 · 共 {{ supplierStore.list.length }} 家</span>
       <div class="ml-auto flex items-center gap-2 flex-wrap">
-        <input v-model="query" class="field-input w-56 py-1.5" placeholder="搜索 名称/别名/税号/联系人" />
-        <button class="btn-primary px-2.75 py-1.5" @click="startAdd">＋ 新增分供方</button>
-        <button class="btn px-2.75 py-1.5" @click="collectNow">从已识别发票收集</button>
+        <label class="relative flex-none">
+          <span class="absolute left-2.5 top-1/2 -translate-y-1/2 i-lucide-search w-3.5 h-3.5 text-ink-faint"></span>
+          <input v-model="query" class="field-input pl-8 pr-3 w-52 py-1.5" placeholder="搜索公司名、税号…" />
+        </label>
+        <button class="btn-primary px-2.75 py-1.5" @click="startAdd">
+          <span class="i-lucide-plus w-4 h-4 flex-none"></span>
+          新增
+        </button>
+        <button class="btn px-2.75 py-1.5" @click="collectNow">从发票收集</button>
         <button class="btn px-2.75 py-1.5" @click="importInput.click()">导入 Excel</button>
         <button class="btn px-2.75 py-1.5" :disabled="!supplierStore.list.length" @click="exportExcel">导出 Excel</button>
         <input ref="importInput" type="file" accept=".xlsx,.xls" hidden @change="onImportPick" />
@@ -160,12 +165,18 @@ async function onImportPick(e) {
           <template #default="{ row }">{{ [row.contact, row.phone].filter(Boolean).join(" / ") }}</template>
         </vxe-column>
         <vxe-column field="note" title="备注" min-width="120" />
-        <vxe-column title="操作" width="190" fixed="right">
+        <vxe-column title="操作" width="130" fixed="right">
           <template #default="{ row }">
-            <div class="flex gap-1.5 flex-wrap">
-              <button class="btn px-2 py-1 text-xs" @click="openDetail(row)">详情</button>
-              <button class="btn px-2 py-1 text-xs" @click="startEdit(row)">编辑</button>
-              <button class="btn-danger px-2 py-1 text-xs" @click="remove(row)">删除</button>
+            <div class="flex gap-1.5 items-center">
+              <button class="inline-flex items-center justify-center w-7 h-7 rounded-btn border border-line bg-white text-ink-soft hover:(border-brand text-brand) transition" title="详情" @click="openDetail(row)">
+                <span class="i-lucide-file-text w-4 h-4"></span>
+              </button>
+              <button class="inline-flex items-center justify-center w-7 h-7 rounded-btn border border-line bg-white text-ink-soft hover:(border-brand text-brand) transition" title="编辑" @click="startEdit(row)">
+                <span class="i-lucide-square-pen w-4 h-4"></span>
+              </button>
+              <button class="inline-flex items-center justify-center w-7 h-7 rounded-btn border border-line bg-white text-danger hover:(border-danger bg-danger/5) transition" title="删除" @click="remove(row)">
+                <span class="i-lucide-trash-2 w-4 h-4"></span>
+              </button>
             </div>
           </template>
         </vxe-column>
