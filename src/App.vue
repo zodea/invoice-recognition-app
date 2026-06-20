@@ -13,6 +13,8 @@ const navItems = [
   { path: "/invoice", label: "发票", hint: "识别校对入账", mark: "票", match: "/invoice", title: "发票管理", subtitle: "识别·校对·入账", icon: "i-lucide-receipt-text" },
   { path: "/delivery", label: "送货单", hint: "扫描整理归档", mark: "单", title: "送货单", subtitle: "扫描·整理·归档", icon: "i-lucide-truck" },
   { path: "/supplier", label: "分供方", hint: "资料管理对账", mark: "方", match: "/supplier", title: "分供方资料库", subtitle: "资料管理·对账", icon: "i-lucide-building-2" },
+  { path: "/project", label: "施工项目", hint: "项目工期进度", mark: "项", match: "/project", title: "施工项目", subtitle: "项目管理", icon: "i-lucide-building" },
+  { path: "/worker", label: "工人信息", hint: "人员证书管理", mark: "工", match: "/worker", title: "工人信息库", subtitle: "人员管理", icon: "i-lucide-users" },
   { path: "/price", label: "单价对比", hint: "材料价格分析", mark: "价", title: "单价对比", subtitle: "材料价格分析", icon: "i-lucide-scale" },
 ];
 

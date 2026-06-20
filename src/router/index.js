@@ -10,6 +10,10 @@ const routes = [
   { path: "/supplier", name: "supplier", component: () => import("../views/SupplierView.vue") },
   { path: "/supplier/:id", name: "supplier-detail", component: () => import("../views/SupplierDetailView.vue") },
   { path: "/site/:id", name: "site-detail", component: () => import("../views/SiteDetailView.vue") },
+  { path: "/project", name: "project", component: () => import("../views/ProjectView.vue") },
+  { path: "/project/:id", name: "project-detail", component: () => import("../views/ProjectDetailView.vue") },
+  { path: "/worker", name: "worker", component: () => import("../views/WorkerView.vue") },
+  { path: "/worker/:id", name: "worker-detail", component: () => import("../views/WorkerDetailView.vue") },
   { path: "/price", name: "price", component: () => import("../views/PriceCompareView.vue") },
   { path: "/:pathMatch(.*)*", redirect: "/invoice" },
 ];
