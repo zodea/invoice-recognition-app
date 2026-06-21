@@ -9,6 +9,7 @@ import { markInvoiceDuplicates } from "./lib/invoice-dedupe";
 import { invoiceFolderParts } from "./lib/invoice-export-package";
 import { loadLedger, saveLedger, recordInvoices, markVerified, parseVerifiedNumbers, historyStatus, importInputInvoiceWorkbookBytes, markPrintedInvoices, shouldDefaultExcludeByHistory } from "./lib/invoice-ledger";
 import { perPageCount } from "./lib/print-layout.js";
+import { loadPostedInvoicesData, savePostedInvoiceData, deletePostedInvoiceData } from "./lib/posted-invoice-io";
 
 let seq = 0;
 const uid = (p) => `${p}_${Date.now().toString(36)}_${(seq++).toString(36)}`;
@@ -623,16 +624,12 @@ function serializeForPersist(inv) {
 }
 
 function persistPostedInvoice(inv) {
-  const body = serializeForPersist(inv);
-  fetch("/posted-invoices", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  }).catch(() => {});
+  // 桌面端 → Rust SQLite；dev → vite 中间件（由 posted-invoice-io 内部按环境分流）。
+  savePostedInvoiceData(serializeForPersist(inv)).catch(() => {});
 }
 
 function deletePostedInvoice(id) {
-  fetch(`/posted-invoices?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
+  deletePostedInvoiceData(id).catch(() => {});
 }
 
 function hydratePostedInvoice(data) {
@@ -671,14 +668,12 @@ function hydratePostedInvoice(data) {
 
 (async function loadPostedInvoices() {
   try {
-    const res = await fetch("/posted-invoices");
-    if (!res.ok) return;
-    const list = await res.json();
+    const list = await loadPostedInvoicesData();
     if (!Array.isArray(list) || !list.length) return;
     const existing = new Set(invoiceStore.invoices.map((i) => i.id));
     for (const data of list) {
       if (!data.id || existing.has(data.id)) continue;
       invoiceStore.invoices.push(hydratePostedInvoice(data));
     }
-  } catch { /* 中间件未就绪或网络异常 */ }
+  } catch { /* 后端未就绪或异常 */ }
 })();

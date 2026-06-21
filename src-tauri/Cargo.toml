@@ -20,3 +20,5 @@ rfd = "0.15"
 base64 = "0.22"
 # 云识别（PaddleOCR 官方 API 无 CORS 头，需在 Rust 侧发请求）
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "multipart", "json"] }
+# 本地 SQLite 持久化（后端首步）。bundled：随源码编译 SQLite，无需系统依赖。
+rusqlite = { version = "0.32", features = ["bundled"] }

@@ -3,6 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
+mod db; // 本地 SQLite 持久化（后端首步：识别明细库 + 已入账发票）
+
 fn clean_path_part(value: &str, fallback: &str) -> String {
     let cleaned = value
         .chars()
@@ -253,39 +255,37 @@ fn sup_attach_open(app: tauri::AppHandle, rel_path: String) -> Result<(), String
     open_local(&fp)
 }
 
+// —— 识别明细库 / 已入账发票：本地 SQLite（后端首步）。
+// 落到 appData/songhuodan.db；首次打开自动从旧 JSON 文件迁移（db::open 内处理）。
 #[tauri::command]
 fn recognized_save(app: tauri::AppHandle, site: String, json: String) -> Result<(), String> {
     let site = clean_path_part(&site, "未命名工地");
-    let dir = app_data_sub(&app, "识别明细库")?;
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    fs::write(dir.join(format!("{site}.json")), json).map_err(|e| e.to_string())?;
-    Ok(())
+    let conn = db::open(&app)?;
+    db::recognized_upsert(&conn, &site, &json)
 }
 
 #[tauri::command]
 fn recognized_load_all(app: tauri::AppHandle) -> Result<String, String> {
-    let dir = app_data_sub(&app, "识别明细库")?;
-    let mut out = serde_json::Map::new();
-    if dir.exists() {
-        for entry in fs::read_dir(&dir).map_err(|e| e.to_string())? {
-            let path = entry.map_err(|e| e.to_string())?.path();
-            if path.extension().and_then(|s| s.to_str()) != Some("json") {
-                continue;
-            }
-            if let Ok(txt) = fs::read_to_string(&path) {
-                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
-                    let site = v
-                        .get("site")
-                        .and_then(|s| s.as_str())
-                        .map(String::from)
-                        .unwrap_or_else(|| path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string());
-                    let records = v.get("records").cloned().unwrap_or_else(|| serde_json::Value::Array(vec![]));
-                    out.insert(site, records);
-                }
-            }
-        }
-    }
-    serde_json::to_string(&serde_json::Value::Object(out)).map_err(|e| e.to_string())
+    let conn = db::open(&app)?;
+    db::recognized_load_all(&conn)
+}
+
+#[tauri::command]
+fn posted_invoice_save(app: tauri::AppHandle, json: String) -> Result<(), String> {
+    let conn = db::open(&app)?;
+    db::posted_upsert(&conn, &json)
+}
+
+#[tauri::command]
+fn posted_invoice_delete(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let conn = db::open(&app)?;
+    db::posted_delete(&conn, &id)
+}
+
+#[tauri::command]
+fn posted_invoice_load_all(app: tauri::AppHandle) -> Result<String, String> {
+    let conn = db::open(&app)?;
+    db::posted_load_all(&conn)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -301,7 +301,10 @@ pub fn run() {
             sup_attach_save,
             sup_attach_open,
             recognized_save,
-            recognized_load_all
+            recognized_load_all,
+            posted_invoice_save,
+            posted_invoice_delete,
+            posted_invoice_load_all
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
