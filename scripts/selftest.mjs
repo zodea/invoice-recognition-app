@@ -58,7 +58,7 @@ ok("散行明细：数量单位粘连", looseItems.some((it) => it.name === "镀
 console.log("== vl-parse (PaddleOCR-VL HTML 表格) ==");
 // VL 实际输出：表格是 HTML <table>（整段一行），抬头带 # / <div> / $^{®}$ 记号。
 const mdDb =
-  "# 广州市大板东建材有限公司\n\nNO.XS202605210034\n\n销售日期：2026-05-23\n\n" +
+  "# 广州市测试甲建材有限公司\n\nNO.XS202605210034\n\n销售日期：2026-05-23\n\n" +
   "<table border=1><tr><td>编号</td><td>产品</td><td>单位</td><td>总数量</td><td>单价</td><td>金额</td></tr>" +
   "<tr><td>1</td><td>8*6美固钉</td><td>包</td><td>46</td><td>7.65</td><td>351.90</td></tr>" +
   "<tr><td>2</td><td>2厘夹板</td><td>张</td><td>50</td><td>23.2</td><td>1,160.00</td></tr>" +
@@ -66,7 +66,7 @@ const mdDb =
   '<tr><td colspan="6">合计金额：贰仟捌佰叁拾叁元玖角整2,833.90</td></tr></table>';
 const rDb = parseVlToDocs([mdDb]);
 ok("VL HTML 表格出明细2行", rDb.docs[0].items.length === 2);
-ok("VL 公司去 # 记号", rDb.company === "广州市大板东建材有限公司");
+ok("VL 公司去 # 记号", rDb.company === "广州市测试甲建材有限公司");
 ok("VL 保留尺寸 8*6", rDb.docs[0].items[0].name === "8*6美固钉");
 ok("VL 单价/金额数字化", rDb.docs[0].items[0].unitPrice === 7.65 && rDb.docs[0].items[0].total === 351.9);
 ok("VL 千分位金额", rDb.docs[0].items[1].total === 1160);
@@ -75,11 +75,11 @@ ok("VL 合计行不入明细", !rDb.docs[0].items.some((it) => /合计/.test(it.
 
 // 公司名：避开"客户名称/送货地址"，取居中 <div> 抬头
 const mdZd =
-  '<div style="text-align: center;">佛山市智道建筑材料有限公司</div>\n\n客户名称：广州睿璟装饰工程有限公司\n\n单号：20260511001\n\n送货日期：2026年5月11日\n\n' +
+  '<div style="text-align: center;">佛山市测试乙建筑材料有限公司</div>\n\n客户名称：广州睿璟装饰工程有限公司\n\n单号：20260511001\n\n送货日期：2026年5月11日\n\n' +
   "<table border=1><tr><td>编号</td><td>产品名称</td><td>规格</td><td>单位</td><td>数量</td><td>单价</td><td>金额/元</td></tr>" +
   "<tr><td>1</td><td>地面垫层砂浆M20</td><td>50KG/包</td><td>吨</td><td>35</td><td></td><td></td></tr></table>";
 const rZd = parseVlToDocs([mdZd]);
-ok("VL 公司避开客户名称", rZd.company === "佛山市智道建筑材料有限公司");
+ok("VL 公司避开客户名称", rZd.company === "佛山市测试乙建筑材料有限公司");
 ok("VL 中文日期", rZd.docs[0].date === "2026-05-11");
 ok("VL 明细(规格列不混入名)", rZd.docs[0].items[0].name === "地面垫层砂浆M20" && rZd.docs[0].items[0].quantity === 35);
 
@@ -105,14 +105,14 @@ const rPc = parseVlToDocs([mdPc]);
 ok("VL 无品名表头默认首列", rPc.docs[0].items.some((it) => it.name === "液压钳"));
 ok("VL 纯数字品名丢弃", !rPc.docs[0].items.some((it) => it.name === "5"));
 ok("VL 首列名+单位+数量", rPc.docs[0].items.some((it) => it.name === "16铝铣耳" && it.unit === "个" && it.quantity === 50));
-ok("pickSupplier 直接调用", pickSupplier(["# 销货清单", "客户名称：某某公司", "广州市大板东建材有限公司"]) === "广州市大板东建材有限公司");
+ok("pickSupplier 直接调用", pickSupplier(["# 销货清单", "客户名称：某某公司", "广州市测试甲建材有限公司"]) === "广州市测试甲建材有限公司");
 
 console.log("== 单号抽取（issue #8）==");
 // 富丰类预印单：红色流水号(0005876)常与税号/统一社会信用代码粘连成长串，取尾部流水号
 ok("单号-税号粘连取尾部流水号", findOrderNo(["电话：020-85204317 191206840950005876"]) === "0005876");
 ok("单号-税号粘连(4.28)", findOrderNo(["191206840950005874"]) === "0005874");
 // 广东磊轶正规 NO 标签：原样保留，不受影响
-ok("单号-正规NO标签不变", findOrderNo(["客户名称：广东瑞航 日期：2026-05-14 NO：XK-FS001-T-20260514-008"]) === "XK-FS001-T-20260514-008");
+ok("单号-正规NO标签不变", findOrderNo(["客户名称：广东示例 日期：2026-05-14 NO：XK-FS001-T-20260514-008"]) === "XK-FS001-T-20260514-008");
 // 纯税号、抽不出前导零流水号 → 留空（宁空勿错，由 待复核 兜底）
 ok("单号-纯税号无流水号则留空", findOrderNo(["统一社会信用代码 123456789012345678"]) === "");
 ok("单号-短号标签正常保留", findOrderNo(["No:836585"]) === "836585");
@@ -169,7 +169,7 @@ console.log("== 多形态回归（issue #10）==");
 // 竖向手写（富丰）见 #9 用例；一页两张不同单（富丰 5.4）见 #8 rFuSh；此处补 横向/印刷销售单（广东磊轶 5.14）。
 // 印刷单表头多出 出货仓库/备注 列、单价多位小数、正规 NO 单号；方向横躺已由 VL useDocOrientationClassify 转正。
 const md10ml =
-  "# 广东磊轶五金有限公司 销售单\n\n客户名称：广东瑞航建设工程有限公司 日期：2026-05-14 NO：XK-FS001-T-20260514-008\n\n" +
+  "# 广东磊轶五金有限公司 销售单\n\n客户名称：广东示例建设工程有限公司 日期：2026-05-14 NO：XK-FS001-T-20260514-008\n\n" +
   "<table border=1><tr><td>行号</td><td>品名规格</td><td>单位</td><td>数量</td><td>单价</td><td>金额</td><td>出货仓库</td><td>备注</td></tr>" +
   "<tr><td>1</td><td>201不锈钢膨胀栓10*120</td><td>个</td><td>400</td><td>0.88000</td><td>352.00</td><td>大仓库</td><td></td></tr>" +
   "<tr><td>2</td><td>201不锈钢膨胀栓8*80</td><td>个</td><td>8190</td><td>0.38000</td><td>3112.20</td><td>大仓库</td><td></td></tr>" +
@@ -333,39 +333,39 @@ ok("多种税率混票 -> 留空", rateMixed.rate === "");
 ok("无税率 -> 留空", parseInvoice("价税合计（小写）¥300.00 免税").rate === "");
 // 字符级空格版式（每个字单独定位）：号码/税率 去空格后正确（issue #2）
 const glyph = parseInvoice([
-  "电子发票（普通发票） 发票号码： 2 6 3 3 2 0 0 0 0 0 2 9 7 7 3 4 4 3 1 6",
+  "电子发票（普通发票） 发票号码： 2 6 3 3 2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1",
   "开票日期： 2 0 2 6 年0 4 月1 3 日",
-  "购 名称： 广东瑞航建设工程有限公司 销 名称： 杭州丰畅科技有限公司",
+  "购 名称： 广东测试建设工程有限公司 销 名称： 杭州测试科技有限公司",
   "项目名称 规格型号 单位 数量 单价 金额 税率/征收率 税额",
   "*洗涤剂*洗碗机专用粉 套 1 6 0 . 4 4 6 0 . 4 4 1 3 % 7 . 8 6",
   "合 计 ¥ 5 9 . 4 0 ¥ 7 . 7 2",
   "价税合计（大写） 陆拾柒圆壹角贰分 （小写） ¥ 6 7 . 1 2",
 ].join("\n"));
-ok("空格版 发票号码", glyph.number === "26332000002977344316");
+ok("空格版 发票号码", glyph.number === "26332000000000000001");
 ok("空格版 税率 13%（非 3%）", glyph.rate === "13%");
 
 console.log("== 分供方库（issue #6）==");
 const { normalizeCompanyName, coreCompanyName, matchSupplier, collectFromInvoices, sellerTaxNoFromRawText, importSuppliersWorkbookBytes, exportSuppliersWorkbookBytes } = await import("../src/lib/supplier-db.js");
 ok("归一化：去空格", normalizeCompanyName("兆鑫建 材") === "兆鑫建材");
-ok("归一化：去尾部(1)", normalizeCompanyName("佛山市智道建筑材料有限公司(1)") === "佛山市智道建筑材料有限公司");
-ok("核心名：去后缀", coreCompanyName("广州市大板东建材有限公司").includes("大板东"));
+ok("归一化：去尾部(1)", normalizeCompanyName("佛山市测试乙建筑材料有限公司(1)") === "佛山市测试乙建筑材料有限公司");
+ok("核心名：去后缀", coreCompanyName("广州市测试甲建材有限公司").includes("测试甲"));
 const supList = [
-  { id: "a", name: "广州市大板东建材有限公司", aliases: [] },
-  { id: "b", name: "佛山市智道建筑材料有限公司", aliases: ["智道"] },
+  { id: "a", name: "广州市测试甲建材有限公司", aliases: [] },
+  { id: "b", name: "佛山市测试乙建筑材料有限公司", aliases: ["测试乙"] },
 ];
-ok("模糊匹配：简称→全称", matchSupplier(supList, "大板东")?.supplier.id === "a");
-ok("别名匹配", matchSupplier(supList, "智道")?.supplier.id === "b");
-ok("带(1)文件夹名匹配", matchSupplier(supList, "佛山市智道建筑材料有限公司(1)")?.supplier.id === "b");
+ok("模糊匹配：简称→全称", matchSupplier(supList, "测试甲")?.supplier.id === "a");
+ok("别名匹配", matchSupplier(supList, "测试乙")?.supplier.id === "b");
+ok("带(1)文件夹名匹配", matchSupplier(supList, "佛山市测试乙建筑材料有限公司(1)")?.supplier.id === "b");
 ok("不存在的不乱配", matchSupplier(supList, "完全无关公司") === null);
-const rawT = "购 信 统一社会信用代码/纳税人识别号： 91440101MA9XPYYU4M 信 统一社会信用代码/纳税人识别号： 91440703MABLK2EL12";
-ok("销售方税号取第2个", sellerTaxNoFromRawText(rawT) === "91440703MABLK2EL12");
+const rawT = "购 信 统一社会信用代码/纳税人识别号： 91111111AAAAAAAAAA 信 统一社会信用代码/纳税人识别号： 91111111BBBBBBBBBB";
+ok("销售方税号取第2个", sellerTaxNoFromRawText(rawT) === "91111111BBBBBBBBBB");
 const colList = [];
-collectFromInvoices(colList, [{ status: "done", fields: { seller: "江门市海豚电器有限公司" }, rawText: rawT }]);
-ok("发票收集新增", colList.length === 1 && colList[0].taxNo === "91440703MABLK2EL12");
+collectFromInvoices(colList, [{ status: "done", fields: { seller: "江门市测试戊电器有限公司" }, rawText: rawT }]);
+ok("发票收集新增", colList.length === 1 && colList[0].taxNo === "91111111BBBBBBBBBB");
 const supXlsx = exportSuppliersWorkbookBytes(colList);
 const reList = [];
 const imp = importSuppliersWorkbookBytes(reList, supXlsx);
-ok("Excel 导出→导入回读", imp.added === 1 && reList[0].name === "江门市海豚电器有限公司" && reList[0].taxNo === "91440703MABLK2EL12");
+ok("Excel 导出→导入回读", imp.added === 1 && reList[0].name === "江门市测试戊电器有限公司" && reList[0].taxNo === "91111111BBBBBBBBBB");
 
 console.log("== VL 云识别解析（vl-parse）==");
 const vp = await import("../src/lib/vl-parse.js");
@@ -383,7 +383,7 @@ const vlResultJsonl = ov.parseVlResultText(
 ok("VL 结果 JSONL 合并", vlResultJsonl.layoutParsingResults.length === 2 && vlResultJsonl.layoutParsingResults[1].markdown.text === "第二页");
 const vlMd = [
   [
-    "广州市大板东建材有限公司销货清单",
+    "广州市测试甲建材有限公司销货清单",
     "单号：XS202605230011  2026年5月23日",
     "| 序号 | 品名及规格 | 单位 | 数量 | 单价 | 金额 |",
     "| --- | --- | --- | --- | --- | --- |",
@@ -400,59 +400,59 @@ const vlMd = [
 ];
 const vlRes = vp.parseVlToDocs(vlMd);
 ok("一页两表→拆成2张单", vlRes.docs.length === 2);
-ok("单1 公司", vlRes.docs[0].company.includes("大板东"));
+ok("单1 公司", vlRes.docs[0].company.includes("测试甲"));
 ok("单1 日期", vlRes.docs[0].date === "2026-05-23");
 ok("单1 明细2行(合计行剔除)", vlRes.docs[0].items.length === 2 && vlRes.docs[0].items[0].name === "9厘夹板");
 ok("单1 数量/单价/总价数字化", vlRes.docs[0].items[0].quantity === 10 && vlRes.docs[0].items[0].unitPrice === 52 && vlRes.docs[0].items[0].total === 520);
 ok("单2 公司", vlRes.docs[1].company.includes("富丰"));
 ok("单2 单号", vlRes.docs[1].orderNo === "0005880");
-ok("无表格→兜底单张", vp.parseVlToDocs(["只有 一行文字 广州市大板东建材有限公司 2026年5月1日"]).docs.length === 1);
+ok("无表格→兜底单张", vp.parseVlToDocs(["只有 一行文字 广州市测试甲建材有限公司 2026年5月1日"]).docs.length === 1);
 ok("无表头表格→按列序猜", vp.tableToItems([["1", "白水泥", "包", "5", "30", "150"]]).length === 1);
-const vlLoose = vp.parseVlToDocs([["广州市大板东建材有限公司送货单", "2026年5月1日", "白水泥 包 5 30 150", "跑腿费 13元"].join("\n")]);
+const vlLoose = vp.parseVlToDocs([["广州市测试甲建材有限公司送货单", "2026年5月1日", "白水泥 包 5 30 150", "跑腿费 13元"].join("\n")]);
 ok("VL 无表格→散行材料", vlLoose.docs[0].items.length === 2 && vlLoose.docs[0].itemsSource === "line");
 
 console.log("== 整理树（issue #5）==");
 const dt = await import("../src/lib/delivery-tree.js");
-ok("文件名日期 2026.5.23", dt.dateFromFilename("2026.5.23大板东.pdf") === "2026-05-23");
-ok("文件名日期 横杠", dt.dateFromFilename("2026-04-29佛山智道.png") === "2026-04-29");
+ok("文件名日期 2026.5.23", dt.dateFromFilename("2026.5.23测试甲.pdf") === "2026-05-23");
+ok("文件名日期 横杠", dt.dateFromFilename("2026-04-29佛山测试乙.png") === "2026-04-29");
 ok("无年份不猜", dt.dateFromFilename("5.10大沥浩臻.pdf") === "");
-ok("工地名建议", dt.suggestSiteName("合和新城送货单共享文件夹") === "合和新城");
+ok("工地名建议", dt.suggestSiteName("示例工地送货单共享文件夹") === "示例工地");
 ok("特殊夹：序号前缀", dt.isSpecialFolderName("4-未签合同-送货单") === true);
 ok("特殊夹：纯数字", dt.isSpecialFolderName("1") === true);
-ok("供应商夹不是特殊", dt.isSpecialFolderName("大板东") === false);
+ok("供应商夹不是特殊", dt.isSpecialFolderName("测试甲") === false);
 
 const treeSuppliers = [
-  { id: "s1", name: "广州市大板东建材有限公司", aliases: ["大板东"] },
-  { id: "s2", name: "佛山市智道建筑材料有限公司", aliases: ["智道"] },
-  { id: "s3", name: "广东鹏程电气设备有限公司", aliases: ["广东鹏程"] },
+  { id: "s1", name: "广州市测试甲建材有限公司", aliases: ["测试甲"] },
+  { id: "s2", name: "佛山市测试乙建筑材料有限公司", aliases: ["测试乙"] },
+  { id: "s3", name: "广东测试丙电气设备有限公司", aliases: ["广东测试丙"] },
 ];
 const mkEntry = (relPath) => ({ file: { name: relPath.split("/").pop() }, relPath });
 const tree = dt.buildTree(
   [
-    mkEntry("合和新城送货单共享文件夹/大板东/2026.5.23大板东.pdf"),
-    mkEntry("合和新城送货单共享文件夹/佛山市智道建筑材料有限公司/2026.5.10智道.pdf"),
-    mkEntry("合和新城送货单共享文件夹/佛山市智道建筑材料有限公司(1)/2026.5.12智道.pdf"),
-    mkEntry("合和新城送货单共享文件夹/4-未签合同-送货单/2026.5.23广东鹏程.pdf"),
-    mkEntry("合和新城送货单共享文件夹/合和新城7期室内装修材料台帐.xlsx"),
-    mkEntry("合和新城送货单共享文件夹/散单.pdf"),
+    mkEntry("示例工地送货单共享文件夹/测试甲/2026.5.23测试甲.pdf"),
+    mkEntry("示例工地送货单共享文件夹/佛山市测试乙建筑材料有限公司/2026.5.10测试乙.pdf"),
+    mkEntry("示例工地送货单共享文件夹/佛山市测试乙建筑材料有限公司(1)/2026.5.12测试乙.pdf"),
+    mkEntry("示例工地送货单共享文件夹/4-未签合同-送货单/2026.5.23广东测试丙.pdf"),
+    mkEntry("示例工地送货单共享文件夹/示例工地7期室内装修材料台帐.xlsx"),
+    mkEntry("示例工地送货单共享文件夹/散单.pdf"),
   ],
   treeSuppliers
 );
 ok("单根=一个工地", tree.sites.length === 1);
-ok("工地名已清洗", tree.sites[0].name === "合和新城");
+ok("工地名已清洗", tree.sites[0].name === "示例工地");
 ok("台帐被忽略", tree.ignored === 1);
 const groups = tree.sites[0].groups;
-ok("同名(1)文件夹自动合并", groups.filter((g) => g.rawName.includes("智道")).length === 1);
-const zd = groups.find((g) => g.rawName.includes("智道"));
-ok("简称映射到全称", zd.company === "佛山市智道建筑材料有限公司");
+ok("同名(1)文件夹自动合并", groups.filter((g) => g.rawName.includes("测试乙")).length === 1);
+const zd = groups.find((g) => g.rawName.includes("测试乙"));
+ok("简称映射到全称", zd.company === "佛山市测试乙建筑材料有限公司");
 const sp = groups.find((g) => g.rawName === "4-未签合同-送货单");
 ok("特殊组识别", sp && sp.kind === "special" && sp.company === "未签合同-送货单");
-ok("特殊组文件名疑似建议", sp.files[0].suggestLabel.includes("鹏程") === false || sp.files[0].suggestGroupKey === "");
+ok("特殊组文件名疑似建议", sp.files[0].suggestLabel.includes("测试丙") === false || sp.files[0].suggestGroupKey === "");
 ok("散文件进待分组", groups.some((g) => g.rawName === dt.PENDING_GROUP && g.files.some((f) => f.name === "散单.pdf")));
 
 // 根文件夹名=供应商简称 → 挂（未命名工地）
-const tree2 = dt.buildTree([mkEntry("大板东/2026.5.5.pdf")], treeSuppliers);
-ok("供应商根→未命名工地", tree2.sites[0].name === dt.UNNAMED_SITE && tree2.sites[0].groups[0].company === "广州市大板东建材有限公司");
+const tree2 = dt.buildTree([mkEntry("测试甲/2026.5.5.pdf")], treeSuppliers);
+ok("供应商根→未命名工地", tree2.sites[0].name === dt.UNNAMED_SITE && tree2.sites[0].groups[0].company === "广州市测试甲建材有限公司");
 
 // 升级/降级/移动/拍平
 const pg = dt.promoteGroupToSite(tree, zd.key);
@@ -462,16 +462,16 @@ const spFile = sp.files[0];
 ok("移动文件", dt.moveFile(tree, spFile.key, zd.key) === true && zd.files.some((f) => f.key === spFile.key));
 const flat = dt.flattenForApply(tree);
 ok("拍平条数", flat.length === 5);
-const flatZd = flat.filter((e) => e.company === "佛山市智道建筑材料有限公司");
+const flatZd = flat.filter((e) => e.company === "佛山市测试乙建筑材料有限公司");
 ok("拍平公司预填", flatZd.length === 3);
 ok("拍平日期预填", flat.some((e) => e.dateGuess === "2026-05-23"));
 ok("特殊组标记", flat.every((e) => (e.groupName === dt.PENDING_GROUP ? e.special : true)));
 
 console.log("== invoice filename fallback ==");
-const byName = parseInvoiceFilename("260120_980.00_比音勒芬服饰股份有限公司广州海珠第一分公司.pdf");
+const byName = parseInvoiceFilename("260120_980.00_测试品牌服饰股份有限公司广州第一分公司.pdf");
 ok("文件名兜底 日期=2026-01-20", byName.date === "2026-01-20");
 ok("文件名兜底 金额=980.00", byName.total === "980.00");
-ok("文件名兜底 销售方=比音勒芬", byName.seller.includes("比音勒芬"));
+ok("文件名兜底 销售方=测试品牌", byName.seller.includes("测试品牌"));
 const fieldsByName = { number: "", date: "", dateText: "", seller: "", total: "", type: "" };
 const filledByName = applyInvoiceFilenameFallback(fieldsByName, "dzfp_26512000000397340296_西充县古楼农机加油站_20260212150613.pdf");
 ok("dzfp 文件名兜底号码", fieldsByName.number === "26512000000397340296");
@@ -519,35 +519,35 @@ ok("日期和发票号码一致但内容不同 -> 不去重", !isDuplicateInvoic
 console.log("== 单据类型分类 classifyDocType ==");
 ok("普通增值税发票 -> 增值税发票", classifyDocType("电子发票（普通发票） 发票号码：123 价税合计（小写）¥300.00") === "增值税发票");
 ok("网约车行程单 -> 行程单(即便含'电子发票'字样)", classifyDocType("腾讯出行服务—打车——行程单 合计67.75元 实际报销金额请以电子发票金额为准") === "行程单");
-ok("货拉拉货运凭证 -> 货物运输凭证", classifyDocType("货物运输电子收款凭证 电子收款凭证号:015743037 托运人名称: 广东瑞航建设工程有限公司 费用合计(大写) (小写): ¥ 53.37") === "货物运输凭证");
+ok("货拉拉货运凭证 -> 货物运输凭证", classifyDocType("货物运输电子收款凭证 电子收款凭证号:015743037 托运人名称: 广东示例建设工程有限公司 费用合计(大写) (小写): ¥ 53.37") === "货物运输凭证");
 ok("空白/乱码 -> 未识别", classifyDocType("   \n  ") === "未识别");
 
 console.log("== 发票字段修复（回归，按版式）==");
 // 中石化版式：购/销 名在上行，「名称:」标签独占下一行，再下一行是「买 售」。
 // 历史 bug：冒号后的 \s* 跨行把「买 售」抓成 buyer=「买售」。
 const sinopec = parseInvoice([
-  "购 广州力沣建筑劳务有限公司 销 中国石化销售股份有限公司广东广州石油分公司",
+  "购 广州力沣建筑劳务有限公司 销 中国测试石油销售有限公司广州分公司",
   "名称: 名称:",
   "买 售",
   "开票日期：2026年03月29日",
   "价税合计（小写）¥390.26",
 ].join("\n"));
 ok("中石化版式 买方=力沣(不再是'买售')", sinopec.buyer === "广州力沣建筑劳务有限公司");
-ok("中石化版式 卖方=中石化", sinopec.seller.startsWith("中国石化销售股份有限公司"));
+ok("中石化版式 卖方=中石化", sinopec.seller.startsWith("中国测试石油销售有限公司"));
 
 // 「买 名称:A 售 名称:B」单行：历史 bug：买方把对方的「售」标签也括进来 -> 「…公司售」。
-const oneLine = parseInvoice("购 销\n买 名称: 广东瑞航建设工程有限公司 售 名称: 广州市冠晖物业管理有限公司\n开票日期：2026年05月23日");
-ok("单行买卖方 买方无尾随'售'", oneLine.buyer === "广东瑞航建设工程有限公司");
-ok("单行买卖方 卖方=冠晖", oneLine.seller === "广州市冠晖物业管理有限公司");
+const oneLine = parseInvoice("购 销\n买 名称: 广东示例建设工程有限公司 售 名称: 广州市测试丁物业管理有限公司\n开票日期：2026年05月23日");
+ok("单行买卖方 买方无尾随'售'", oneLine.buyer === "广东示例建设工程有限公司");
+ok("单行买卖方 卖方=测试丁", oneLine.seller === "广州市测试丁物业管理有限公司");
 
 // 重复字混淆：佛佛山山… -> 折叠成正常名。
-const doubled = parseInvoice("购 名称: 广广东东瑞瑞航航建建设设工工程程有有限限公公司司 销 名称: 佛佛山山美美的的智智慧慧家家居居有有限限公公司司\n开票日期：2026年04月11日");
-ok("重复字混淆 买方折叠", doubled.buyer === "广东瑞航建设工程有限公司");
+const doubled = parseInvoice("购 名称: 广广东东示示例例建建设设工工程程有有限限公公司司 销 名称: 佛佛山山美美的的智智慧慧家家居居有有限限公公司司\n开票日期：2026年04月11日");
+ok("重复字混淆 买方折叠", doubled.buyer === "广东示例建设工程有限公司");
 ok("重复字混淆 卖方折叠", doubled.seller === "佛山美的智慧家居有限公司");
 
 // 部首字形：⻨/⻝ -> 麦/食。
-const radical = parseInvoice("购 名称: 广东瑞航建设工程有限公司 销 名称: 广东三元⻨当劳⻝品有限公司\n开票日期：2026年04月22日");
-ok("部首字形 卖方=麦当劳食品", radical.seller === "广东三元麦当劳食品有限公司");
+const radical = parseInvoice("购 名称: 广东示例建设工程有限公司 销 名称: 广东测试⻨当劳⻝品有限公司\n开票日期：2026年04月22日");
+ok("部首字形 卖方=麦当劳食品", radical.seller === "广东测试麦当劳食品有限公司");
 
 // 字符间距专票：金额抽成「2 0 . 5 2」也要能识别。
 const spaced = parseInvoice("开票日期: 2 0 2 6 年0 4 月1 1 日\n价税合计(大写) 贰拾圆伍角贰分 (小写) ¥ 2 0 . 5 2");
@@ -568,12 +568,12 @@ ok("行程单 合计金额=67.75", Number(trip.total) === 67.75);
 const freight = parseInvoice([
   "货物运输电子收款凭证",
   "申请日期: 2026-03-24 17:43",
-  "托运人名称: 广东瑞航建设工程有限公司 托运人证照号码: 91440101MA9XPYYU4M",
+  "托运人名称: 广东示例建设工程有限公司 托运人证照号码: 91111111AAAAAAAAAA",
   "费用合计(大写) 伍拾叁元叁角柒分 (小写): ¥ 53.37",
 ].join("\n"));
 ok("货运凭证 docType=货物运输凭证", freight.docType === "货物运输凭证");
 ok("货运凭证 type=货物运输凭证", freight.type === "货物运输凭证");
-ok("货运凭证 买方=托运人(无证照号码)", freight.buyer === "广东瑞航建设工程有限公司");
+ok("货运凭证 买方=托运人(无证照号码)", freight.buyer === "广东示例建设工程有限公司");
 ok("货运凭证 金额=53.37", Number(freight.total) === 53.37);
 ok("货运凭证 日期=2026-03-24", freight.date === "2026-03-24");
 // 脱敏星号（何* / 45222919****817）不得被当成 *税收分类*；货运大类归到“运输服务/交通运输”
@@ -591,16 +591,16 @@ ok("isProbablyInvoiceText 普通文本=false", !isProbablyInvoiceText("这是一
 ok("专票普票 taxKind 普通", parseInvoice("电子发票(普通发票) 开票日期：2026年04月22日").taxKind === "普通发票");
 ok("专票普票 taxKind 专用", parseInvoice("增值税专用发票 开票日期：2026年04月11日").taxKind === "专用发票");
 // 货拉拉“行程单”版式：买方写在“公司:”，金额写成“总计X元”
-const hll2 = parseInvoice("货拉拉行程单\n公司:广东瑞航建设工程有限公司 共 1 条用车记录,总计53.37元\n申请日期:2026-03-24 17:43:28");
-ok("货拉拉行程单 买方=公司抬头", hll2.buyer === "广东瑞航建设工程有限公司");
+const hll2 = parseInvoice("货拉拉行程单\n公司:广东示例建设工程有限公司 共 1 条用车记录,总计53.37元\n申请日期:2026-03-24 17:43:28");
+ok("货拉拉行程单 买方=公司抬头", hll2.buyer === "广东示例建设工程有限公司");
 ok("货拉拉行程单 总计=53.37", Number(hll2.total) === 53.37);
 ok("货拉拉行程单 日期=2026-03-24", hll2.date === "2026-03-24");
 // 逐字拆开的混淆票：去空格后仍应判为可走文字解析
 ok("拆字混淆票 isProbablyInvoiceText 容空格", isProbablyInvoiceText("电 子 发 票 ( 普 通 发 票 )"));
 // 拆字+重复混淆：买卖方应能抽出（名称容空格 + 去重叠）
-const splitDup = parseInvoice("电 子 发 票\n购 销\n买 名 称 : 广 广 东 东 瑞 瑞 航 航 建 建 设 设 工 工 程 程 有 有 限 限 公 公 司 司 售 名 称 : 佛 佛 山 山 美 美 的 的 智 智 慧 慧 家 家 居 居 有 有 限 限 公 公 司 司");
+const splitDup = parseInvoice("电 子 发 票\n购 销\n买 名 称 : 广 广 东 东 示 示 例 例 建 建 设 设 工 工 程 程 有 有 限 限 公 公 司 司 售 名 称 : 佛 佛 山 山 美 美 的 的 智 智 慧 慧 家 家 居 居 有 有 限 限 公 公 司 司");
 ok("拆字+重复票 卖方=佛山美的", splitDup.seller === "佛山美的智慧家居有限公司");
-ok("拆字+重复票 买方=广东瑞航", splitDup.buyer === "广东瑞航建设工程有限公司");
+ok("拆字+重复票 买方=广东示例", splitDup.buyer === "广东示例建设工程有限公司");
 // 劳务服务名称 / 税收大类（*类*）
 const itemInv = parseInvoice("项目名称 规格型号 单位 数量\n*餐饮服务*餐饮服务 1 177.64 177.64 6% 10.66\n价税合计（小写）¥188.30");
 ok("项目大类=餐饮服务", itemInv.category === "餐饮服务");
@@ -616,8 +616,8 @@ ok("分类-普通", classifyReimburseKind({ fields: { taxKind: "普通发票", d
 ok("分类-行程单归其他", classifyReimburseKind({ fields: { docType: "行程单" } }) === "其他");
 ok("分类-医疗门诊", classifyReimburseKind({ fields: { seller: "中山大学附属第一医院", docType: "增值税发票" } }) === "医疗门诊");
 const rinv = [
-  { fields: { buyer: "广东瑞航建设工程有限公司", seller: "A加油站", category: "汽油", service: "汽油", taxKind: "普通发票", docType: "增值税发票", total: 100, date: "2026-05-01" } },
-  { fields: { buyer: "广东瑞航建设工程有限公司", seller: "B餐厅", category: "餐饮服务", service: "餐饮服务", taxKind: "普通发票", docType: "增值税发票", total: 50, date: "2026-05-02" } },
+  { fields: { buyer: "测试瑞航建设有限公司", seller: "A加油站", category: "汽油", service: "汽油", taxKind: "普通发票", docType: "增值税发票", total: 100, date: "2026-05-01" } },
+  { fields: { buyer: "测试瑞航建设有限公司", seller: "B餐厅", category: "餐饮服务", service: "餐饮服务", taxKind: "普通发票", docType: "增值税发票", total: 50, date: "2026-05-02" } },
   { fields: { buyer: "广州市百信装饰工程有限公司", seller: "C公司", category: "日用品", service: "日用品", taxKind: "专用发票", docType: "增值税发票", total: 200, amount: 177, tax: 23, rate: "13%", date: "2026-05-03" } },
 ];
 const rbytes = buildReimburseWorkbookBytes(rinv);
@@ -638,26 +638,26 @@ console.log("== invoice ledger ==");
 const taxRows = [
   ["广州力沣建筑劳务有限公司进项发票清单"],
   ["序号", "发票号码", "发票种类", "开票日期", "销方名称", "进项类型", "货物、应税劳务及服务", "不含税金额", "税率", "税额", "有效税额", "加计扣除税额", "价税合计", "红字蓝字", "发票状态"],
-  [1, "26447000000704299292", "数电票（普通发票）", "2026-03-29", "中国石化销售股份有限公司广东广州石油分公司", "货物", "*汽油*95号车用汽油(ⅥB)", 483.59, "13%", 62.87, "", "--", 546.46, "蓝字", "正常"],
-  [2, "26447000000708374013", "数电票（普通发票）", "2026-03-29", "中国石化销售股份有限公司广东广州石油分公司", "货物", "*汽油*95号车用汽油(ⅥB)", 345.36, "13%", 44.9, "", "--", 390.26, "蓝字", "正常"],
+  [1, "26447000000704299292", "数电票（普通发票）", "2026-03-29", "中国测试石油销售有限公司广州分公司", "货物", "*汽油*95号车用汽油(ⅥB)", 483.59, "13%", 62.87, "", "--", 546.46, "蓝字", "正常"],
+  [2, "26447000000708374013", "数电票（普通发票）", "2026-03-29", "中国测试石油销售有限公司广州分公司", "货物", "*汽油*95号车用汽油(ⅥB)", 345.36, "13%", 44.9, "", "--", 390.26, "蓝字", "正常"],
 ];
 const parsedInput = parseInputInvoiceRows(taxRows, { sourceName: "税务局导出.xlsx", importedAt: "2026-06-06" });
 ok("进项表导入解析2张", parsedInput.length === 2);
 ok("进项表买方取标题公司", parsedInput[0].buyer === "广州力沣建筑劳务有限公司");
-ok("进项表默认认证且已打印", parsedInput[0].verified && parsedInput[0].printed);
+ok("无勾选信息不推断已认证或打印", !parsedInput[0].verified && !parsedInput[0].printed);
 const importedLedger = importInputInvoiceRows({}, taxRows, { sourceName: "税务局导出.xlsx", importedAt: "2026-06-06" }).ledger;
 const ledgerState = historyStatus(importedLedger, { fields: { number: "26447000000704299292" } });
-ok("历史状态 usedBefore=true", ledgerState.usedBefore && ledgerState.verified && ledgerState.printed);
-ok("历史已打印默认不勾选", shouldDefaultExcludeByHistory(importedLedger, { fields: { number: "26447000000704299292" } }));
-ok("台账统计", ledgerStats(importedLedger).total === 2 && ledgerStats(importedLedger).printed === 2);
+ok("导入清单不代表使用", !ledgerState.usedBefore && !ledgerState.verified && !ledgerState.printed);
+ok("未使用的清单记录不自动排除", !shouldDefaultExcludeByHistory(importedLedger, { fields: { number: parsedInput[0].number } }));
+ok("台账统计", ledgerStats(importedLedger).total === 2 && ledgerStats(importedLedger).printed === 0);
 const fullRows = [
   ["序号", "发票代码", "发票号码", "数电发票号码", "销方名称", "购买方名称", "开票日期", "金额", "税额", "价税合计", "发票票种", "发票状态", "是否正数发票", "货物或应税劳务名称"],
-  ["1", "", "", "25322000000640451773", "南京市铂越电子商务有限公司", "广东瑞航建设工程有限公司", "2025-12-31 21:55:28", 86.68, 0.87, 87.55, "数电发票（普通发票）", "正常", "是", "*金属制品*下水器"],
-  ["2", "045002200111", "17020885", "--", "广西百祥石油有限公司", "广东瑞航建设工程有限公司", "2025-01-23", 474.05, 61.63, 535.68, "增值税电子普通发票", "正常", "是", ""],
+  ["1", "", "", "25322000000640451773", "南京市铂越电子商务有限公司", "广东示例建设工程有限公司", "2025-12-31 21:55:28", 86.68, 0.87, 87.55, "数电发票（普通发票）", "正常", "是", "*金属制品*下水器"],
+  ["2", "045002200111", "17020885", "--", "广西百祥石油有限公司", "广东示例建设工程有限公司", "2025-01-23", 474.05, 61.63, 535.68, "增值税电子普通发票", "正常", "是", ""],
 ];
 const fullParsed = parseInputInvoiceRows(fullRows, { sourceName: "全量发票查询导出结果.xlsx", importedAt: "2026-06-06" });
 ok("全量查询格式 数电发票号码识别", fullParsed.length === 2 && fullParsed[0].number === "25322000000640451773");
-ok("全量查询格式 发票票种/购买方识别", fullParsed[0].type.includes("普通发票") && fullParsed[0].buyer === "广东瑞航建设工程有限公司");
+ok("全量查询格式 发票票种/购买方识别", fullParsed[0].type.includes("普通发票") && fullParsed[0].buyer === "广东示例建设工程有限公司");
 ok("全量查询格式 数电占位时回退旧号码", fullParsed[1].number === "17020885");
 const fullWb = XLSX.utils.book_new();
 XLSX.utils.book_append_sheet(fullWb, XLSX.utils.aoa_to_sheet([fullRows[0], fullRows[1], fullRows[1]]), "信息汇总表");
@@ -666,7 +666,7 @@ const fullBytes = XLSX.write(fullWb, { type: "array", bookType: "xlsx" });
 ok("全量查询工作簿优先发票基础信息", importInputInvoiceWorkbookBytes({}, fullBytes, { sourceName: "全量" }).imported === 2);
 const printedLedger = markPrintedInvoices({}, [{ name: "p.pdf", include: true, fields: { number: "25312000000000000001", date: "2026-05-01", seller: "A公司", buyer: "B公司", total: 100 } }], { name: "测试打印", date: "2026-06-06" }).ledger;
 ok("打印后写入台账", historyStatus(printedLedger, { fields: { number: "25312000000000000001" } }).printed);
-const hbytes = buildHistoryReportBytes(importedLedger);
+const hbytes = buildHistoryReportBytes(printedLedger);
 fs.writeFileSync("scripts/_history.xlsx", Buffer.from(hbytes));
 const hwb = XLSX.read(fs.readFileSync("scripts/_history.xlsx"));
 const hrows = XLSX.utils.sheet_to_json(hwb.Sheets["历史发票台账"], { header: 1 });
@@ -727,3 +727,13 @@ ok("排版纸张是A4宽", Math.round(lwb.getPage(0).getWidth()) === 595);
 ok("4源页@2每页=2张A4", lwb.getPageCount() === 2);
 
 console.log(`\n全部通过：${pass} 项 ✓`);
+
+const selectionRows = [["发票号码", "开票日期*", "是否勾选*"], ["25442000000000009999", "2025-12-30", "否"]];
+const prior = { "25442000000000009999": { key: "25442000000000009999", reimbursement: "已报销", project: "项目甲", payment: "公账支付", tags: "材料" } };
+const merged = importInputInvoiceRows(prior, selectionRows).ledger["25442000000000009999"];
+ok("官方导入保留人工报销资料", merged.officialSelection === "否" && !merged.verified && merged.reimbursement === "已报销" && merged.project === "项目甲" && merged.payment === "公账支付" && merged.tags === "材料");
+
+const knownSelection = { ...prior, "25442000000000009999": { ...prior["25442000000000009999"], officialSelection: "已勾选", verified: true } };
+const noSelectionRows = [["发票号码", "开票日期"], ["25442000000000009999", "2025-12-30"]];
+const afterFullList = importInputInvoiceRows(knownSelection, noSelectionRows).ledger["25442000000000009999"];
+ok("无勾选列的全量清单保留已有勾选状态", afterFullList.officialSelection === "已勾选" && afterFullList.verified && afterFullList.project === "项目甲");

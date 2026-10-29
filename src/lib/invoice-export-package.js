@@ -39,12 +39,14 @@ function invoiceExtension(inv) {
   return ".pdf";
 }
 
-export function invoiceExportFileName(inv) {
+export function invoiceExportFileName(inv, template = "{销售方}：{日期}={金额}元") {
   const fields = inv?.fields || {};
   const seller = sanitizeFilePart(fields.seller, "未识别销售方");
   const date = sanitizeFilePart(fields.date || fields.dateText, "无日期");
   const total = moneyText(fields.total);
-  return `${seller}：${date}=${total}元${invoiceExtension(inv)}`;
+  const values = { 销售方: seller, 日期: date, 金额: total, 购买方: sanitizeFilePart(fields.buyer, "未识别购买方"), 发票号码: sanitizeFilePart(fields.number, "无号码") };
+  const stem = String(template || "{销售方}：{日期}={金额}元").replace(/\{(销售方|日期|金额|购买方|发票号码)\}/g, (_, key) => values[key]);
+  return `${sanitizeFilePart(stem, "发票")}${invoiceExtension(inv)}`;
 }
 
 function dateRange(invoices) {
@@ -146,7 +148,7 @@ async function resolveDir(rootHandle, parts) {
   return dir;
 }
 
-export async function writeInvoiceExportPackage(invoices, rootHandle, { excelBytes, dims, groupByBuyer = false } = {}) {
+export async function writeInvoiceExportPackage(invoices, rootHandle, { excelBytes, dims, groupByBuyer = false, filenameTemplate } = {}) {
   if (!rootHandle || typeof rootHandle.getFileHandle !== "function") {
     throw new Error("当前环境不支持目录写入。");
   }
@@ -163,7 +165,7 @@ export async function writeInvoiceExportPackage(invoices, rootHandle, { excelByt
   for (const inv of invoices) {
     if (!inv?.blob) continue;
     const dir = await resolveDir(parentDir, invoiceFolderParts(inv, useDims)); // 待优化#3：按维度嵌套
-    const name = await uniqueFileName(dir, invoiceExportFileName(inv));
+    const name = await uniqueFileName(dir, invoiceExportFileName(inv, filenameTemplate));
     const fileHandle = await dir.getFileHandle(name, { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write(inv.blob);
@@ -234,7 +236,7 @@ export async function pickTauriExportDir() {
   return invokeTauri("pick_export_dir");
 }
 
-export async function writeInvoiceExportPackageTauri(invoices, root, { excelBytes, dims, groupByBuyer = false } = {}) {
+export async function writeInvoiceExportPackageTauri(invoices, root, { excelBytes, dims, groupByBuyer = false, filenameTemplate } = {}) {
   if (!root) throw new Error("未选择保存目录。");
 
   const useDims = normalizeDims({ dims, groupByBuyer });
@@ -249,7 +251,7 @@ export async function writeInvoiceExportPackageTauri(invoices, root, { excelByte
     if (!inv?.blob) continue;
     const parts = [parent, ...invoiceFolderParts(inv, useDims)]; // 待优化#3：父/维度1/维度2…
     const bytes = await inv.blob.arrayBuffer();
-    await writeTauriFile(root, parts, invoiceExportFileName(inv), bytes);
+    await writeTauriFile(root, parts, invoiceExportFileName(inv, filenameTemplate), bytes);
     result.fileCount++;
   }
 

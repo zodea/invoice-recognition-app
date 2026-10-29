@@ -1,150 +1,109 @@
 <script setup>
-import { computed, ref, watch } from "vue";
-import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
-import { invoiceStore } from "../invoiceStore";
+import { computed, onMounted, ref, watch } from "vue";
+import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
+import { invoiceActions, invoiceStore } from "../invoiceStore";
+import { deductionStatus, redInvoiceStatus } from "../lib/invoice-ledger";
+import { planLedgerMatches } from "../lib/ledger-matching";
+import { listLedgerAttachmentKeys } from "../lib/ledger-attachments";
+import InvoiceLedgerDetail from "./InvoiceLedgerDetail.vue";
 
-const props = defineProps({ open: Boolean });
-const emit = defineEmits(["update:open"]);
-
-const yearFilter = ref("全部");
-const companyQuery = ref("");
-const sortKey = ref("date"); // date/seller/total/amount/number
-const sortDir = ref("desc"); // asc/desc
+const query = ref("");
+const startDate = ref("");
+const endDate = ref("");
+const selection = ref("all");
+const reimbursement = ref("all");
+const redFilter = ref("all");
+const attachmentFilter = ref("all");
+const sortKey = ref("date");
+const sortDir = ref("desc");
 const page = ref(1);
 const pageSize = ref(20);
-
-const allEntries = computed(() => Object.values(invoiceStore.ledger || {}));
-const years = computed(() => {
-  const ys = new Set();
-  for (const e of allEntries.value) {
-    const y = (e.date || "").slice(0, 4);
-    if (/^\d{4}$/.test(y)) ys.add(y);
-  }
-  return ["全部", ...[...ys].sort().reverse()];
-});
-
+const selectedKey = ref("");
+const attachmentKeys = ref(new Set());
+const attachmentVersion = ref(0);
+const notice = ref("");
+const syncing = ref(false);
+const entries = computed(() => Object.values(invoiceStore.ledger || {}));
+const selected = computed(() => invoiceStore.ledger[selectedKey.value] || null);
+const matchPlan = computed(() => planLedgerMatches(invoiceStore.ledger, invoiceStore.invoices));
+const eligibleCount = computed(() => matchPlan.value.matches.filter(({ key }) => !attachmentKeys.value.has(key)).length);
 const filtered = computed(() => {
-  const q = companyQuery.value.trim();
-  let list = allEntries.value.filter((e) => {
-    if (yearFilter.value !== "全部" && (e.date || "").slice(0, 4) !== yearFilter.value) return false;
-    if (q && !(e.seller || "").includes(q) && !(e.number || "").includes(q)) return false;
+  const q = query.value.trim().toLowerCase();
+  const list = entries.value.filter(e => {
+    const date = String(e.date || "").slice(0, 10);
+    if (startDate.value && (!date || date < startDate.value)) return false;
+    if (endDate.value && (!date || date > endDate.value)) return false;
+    if (q && !`${e.number || ""} ${e.seller || ""} ${e.buyer || ""} ${e.type || ""} ${e.reimburser || ""} ${e.project || ""} ${e.purpose || ""} ${e.tags || ""}`.toLowerCase().includes(q)) return false;
+    const official = deductionStatus(e);
+    if (selection.value === "selected" && official !== "已抵税") return false;
+    if (selection.value === "unselected" && official !== "未勾选") return false;
+    if (selection.value === "unknown" && official !== "未知") return false;
+    if (reimbursement.value !== "all" && (e.reimbursement || "未核对") !== reimbursement.value) return false;
+    if (redFilter.value === "red" && !redInvoiceStatus(e)) return false;
+    if (redFilter.value === "normal" && redInvoiceStatus(e)) return false;
+    if (attachmentFilter.value === "yes" && !attachmentKeys.value.has(e.key)) return false;
+    if (attachmentFilter.value === "no" && attachmentKeys.value.has(e.key)) return false;
     return true;
   });
-  const dir = sortDir.value === "asc" ? 1 : -1;
-  const k = sortKey.value;
+  const direction = sortDir.value === "asc" ? 1 : -1;
   return list.slice().sort((a, b) => {
-    if (k === "total" || k === "amount") return ((Number(a[k]) || 0) - (Number(b[k]) || 0)) * dir;
-    return String(a[k] || "").localeCompare(String(b[k] || "")) * dir;
+    const key = sortKey.value;
+    if (["amount", "tax", "total"].includes(key)) return ((Number(a[key]) || 0) - (Number(b[key]) || 0)) * direction;
+    return String(a[key] || "").localeCompare(String(b[key] || ""), "zh-CN") * direction;
   });
 });
-
-const totalSum = computed(() => filtered.value.reduce((s, e) => s + (Number(e.total) || 0), 0));
-const amountSum = computed(() => filtered.value.reduce((s, e) => s + (Number(e.amount) || 0), 0));
+const totals = computed(() => filtered.value.reduce((a, e) => {
+  for (const k of ["amount", "tax", "total", "validTax"]) if (e[k] !== "" && e[k] != null) { a[k] += Number(e[k]) || 0; a[`${k}Count`]++; }
+  return a;
+}, { amount: 0, tax: 0, total: 0, validTax: 0, amountCount: 0, taxCount: 0, totalCount: 0, validTaxCount: 0 }));
 const pageCount = computed(() => Math.max(1, Math.ceil(filtered.value.length / pageSize.value)));
-const paged = computed(() => {
-  const start = (page.value - 1) * pageSize.value;
-  return filtered.value.slice(start, start + pageSize.value);
-});
-
-function setSort(k) {
-  if (sortKey.value === k) sortDir.value = sortDir.value === "asc" ? "desc" : "asc";
-  else {
-    sortKey.value = k;
-    sortDir.value = k === "total" || k === "amount" || k === "date" ? "desc" : "asc";
-  }
+const paged = computed(() => filtered.value.slice((Math.min(page.value, pageCount.value) - 1) * pageSize.value, Math.min(page.value, pageCount.value) * pageSize.value));
+const money = n => n === "" || n == null ? "—" : Number(n).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function setSort(key) { if (sortKey.value === key) sortDir.value = sortDir.value === "asc" ? "desc" : "asc"; else { sortKey.value = key; sortDir.value = "desc"; } }
+function sortIcon(key) { return sortKey.value === key ? (sortDir.value === "asc" ? "↑" : "↓") : "↕"; }
+function resetFilters() { query.value = ""; startDate.value = ""; endDate.value = ""; selection.value = "all"; reimbursement.value = "all"; redFilter.value = "all"; attachmentFilter.value = "all"; }
+async function refreshAttachments() {
+  try { attachmentKeys.value = new Set(await listLedgerAttachmentKeys()); attachmentVersion.value++; }
+  catch (err) { notice.value = `无法读取原件：${err.message || err}`; }
 }
-function sortIcon(k) {
-  if (sortKey.value !== k) return "↕";
-  return sortDir.value === "asc" ? "↑" : "↓";
+async function syncCurrent() {
+  syncing.value = true;
+  try {
+    const { saved, needsReview, failed } = await invoiceActions.syncMatchedAttachments();
+    await refreshAttachments();
+    notice.value = `同步完成：关联 ${saved} 张${needsReview ? `，${needsReview} 张信息不一致或号码不唯一，需手动核对` : ""}${failed ? `，${failed} 张保存失败` : ""}。`;
+  } finally { syncing.value = false; }
 }
-watch([yearFilter, companyQuery, pageSize, sortKey, sortDir], () => { page.value = 1; });
-watch(() => props.open, (v) => { if (v) page.value = 1; });
-
-const th = "px-2.5 py-2 text-left font-700 text-ink-soft whitespace-nowrap cursor-pointer select-none hover:text-brand";
-const td = "px-2.5 py-1.5 whitespace-nowrap border-t border-line";
-const money = (n) => (Number(n) || 0).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+watch([query, startDate, endDate, selection, reimbursement, redFilter, attachmentFilter, pageSize, sortKey, sortDir], () => { page.value = 1; });
+watch(() => invoiceStore.attachmentVersion, refreshAttachments);
+onMounted(refreshAttachments);
 </script>
 
 <template>
-  <DialogRoot :open="open" @update:open="emit('update:open', $event)">
-    <DialogPortal>
-      <DialogOverlay class="fixed inset-0 z-50 bg-black/40" />
-      <DialogContent
-        class="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-[min(1100px,94vw)] max-h-[90vh] flex flex-col bg-panel rounded-card shadow-pop border border-line overflow-hidden outline-none"
-      >
-        <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-line">
-          <DialogTitle class="m-0 text-base font-700">进项发票台账 · 共 {{ allEntries.length }} 条</DialogTitle>
-          <DialogClose class="btn px-2.5 py-1.5">✕ 关闭</DialogClose>
+  <section class="ledger-workspace" aria-label="历史进项台账列表">
+        <header class="ledger-header"><div><h2 class="ledger-title">发票列表</h2><p>查看票面、官方勾选与报销核对情况 · 共 {{ entries.length }} 张</p></div><div class="header-actions"><button class="btn" :disabled="syncing || !eligibleCount" @click="syncCurrent">{{ syncing ? '正在同步…' : `同步当前发票原件 (${eligibleCount})` }}</button></div></header>
+        <div class="ledger-filters">
+          <label class="search">搜索<input v-model="query" class="field-input" placeholder="发票号码、公司、项目或标签" /></label>
+          <label>开票日期从<input v-model="startDate" class="field-input" type="date" /></label><label>至<input v-model="endDate" class="field-input" type="date" :min="startDate || undefined" /></label>
+          <label>抵税状态<select v-model="selection" class="field-input"><option value="all">全部</option><option value="selected">已抵税</option><option value="unselected">未勾选</option><option value="unknown">未知</option></select></label>
+          <label>报销核对<select v-model="reimbursement" class="field-input"><option value="all">全部</option><option>未核对</option><option>已报销</option><option>未报销</option></select></label>
+          <label>红字状态<select v-model="redFilter" class="field-input"><option value="all">全部</option><option value="red">红字 / 冲红</option><option value="normal">无红字标记</option></select></label>
+          <label>原件<select v-model="attachmentFilter" class="field-input"><option value="all">全部</option><option value="yes">已关联</option><option value="no">未关联</option></select></label><button class="btn reset" @click="resetFilters">重置</button>
         </div>
-
-        <!-- 筛选 -->
-        <div class="flex items-center gap-3 flex-wrap px-4 py-2.5 border-b border-line bg-[#f8fafc]">
-          <label class="flex items-center gap-1.5 text-xs text-ink-soft">年份
-            <select v-model="yearFilter" class="field-input w-24 py-1">
-              <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
-            </select>
-          </label>
-          <label class="flex items-center gap-1.5 text-xs text-ink-soft">公司/号码
-            <input v-model="companyQuery" placeholder="搜索销售方或发票号码" class="field-input w-56 py-1" />
-          </label>
-          <label class="flex items-center gap-1.5 text-xs text-ink-soft ml-auto">每页
-            <select v-model.number="pageSize" class="field-input w-20 py-1">
-              <option :value="20">20</option>
-              <option :value="50">50</option>
-              <option :value="100">100</option>
-              <option :value="500">500</option>
-            </select>
-          </label>
-        </div>
-
-        <!-- 表格 -->
-        <div class="flex-1 overflow-auto min-h-0">
-          <table class="w-full text-xs border-collapse">
-            <thead class="sticky top-0 bg-white z-1 shadow-[0_1px_0_var(--line)]">
-              <tr>
-                <th :class="th" @click="setSort('number')">发票号码 {{ sortIcon('number') }}</th>
-                <th :class="th" @click="setSort('date')">开票日期 {{ sortIcon('date') }}</th>
-                <th :class="th" @click="setSort('seller')">销售方(公司) {{ sortIcon('seller') }}</th>
-                <th :class="th + ' text-right'" @click="setSort('amount')">金额 {{ sortIcon('amount') }}</th>
-                <th :class="th + ' text-right'" @click="setSort('total')">价税合计 {{ sortIcon('total') }}</th>
-                <th :class="th">状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(e, i) in paged" :key="e.number || i" class="hover:bg-brand-soft/40">
-                <td :class="td + ' font-mono'">{{ e.number || "—" }}</td>
-                <td :class="td">{{ e.date || "—" }}</td>
-                <td :class="td + ' whitespace-normal max-w-80'">{{ e.seller || "—" }}</td>
-                <td :class="td + ' text-right tabular-nums'">{{ money(e.amount) }}</td>
-                <td :class="td + ' text-right tabular-nums font-700'">{{ money(e.total) }}</td>
-                <td :class="td">
-                  <span v-if="e.printed" class="chip bg-[#f0fdf4] text-[#166534] border border-[#bbf7d0] px-1.5 py-0.5">已打印</span>
-                  <span v-else-if="e.verified" class="chip bg-brand-soft text-brand px-1.5 py-0.5">已认证</span>
-                  <span v-else class="text-ink-soft">—</span>
-                </td>
-              </tr>
-              <tr v-if="!filtered.length">
-                <td :class="td + ' text-center text-ink-soft py-8'" colspan="6">
-                  {{ allEntries.length ? "没有符合筛选条件的记录。" : "还没有导入进项台账数据。" }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- 汇总 + 分页 -->
-        <div class="flex items-center gap-3 flex-wrap px-4 py-2.5 border-t border-line bg-[#f8fafc] text-xs">
-          <div class="text-ink-soft">
-            筛选后 <b class="text-ink">{{ filtered.length }}</b> 笔 · 金额合计 <b class="text-ink tabular-nums">{{ money(amountSum) }}</b> · 价税合计
-            <b class="text-brand tabular-nums">{{ money(totalSum) }}</b>
-          </div>
-          <div class="flex items-center gap-1.5 ml-auto">
-            <button class="btn px-2.5 py-1" :disabled="page <= 1" @click="page--">上一页</button>
-            <span class="text-ink-soft tabular-nums">第 {{ page }} / {{ pageCount }} 页</span>
-            <button class="btn px-2.5 py-1" :disabled="page >= pageCount" @click="page++">下一页</button>
-          </div>
-        </div>
-      </DialogContent>
-    </DialogPortal>
-  </DialogRoot>
+        <div v-if="startDate && endDate && startDate > endDate" class="ledger-notice">开始日期不能晚于结束日期。</div><div v-if="notice" class="ledger-notice" role="status">{{ notice }}</div><div v-else-if="invoiceStore.attachmentSync && invoiceStore.invoices.length" class="ledger-notice" role="status">自动匹配 {{ invoiceStore.attachmentSync.matched }} 张，新增关联 {{ invoiceStore.attachmentSync.saved }} 张<span v-if="invoiceStore.attachmentSync.needsReview">，{{ invoiceStore.attachmentSync.needsReview }} 张需人工核对</span><span v-if="invoiceStore.attachmentSync.failed">，{{ invoiceStore.attachmentSync.failed }} 张保存失败</span>。</div>
+        <div class="ledger-summary"><span>筛选结果 <b>{{ filtered.length }}</b> 张</span><span>金额 <b>{{ totals.amountCount ? money(totals.amount) : '—' }}</b></span><span>税额 <b>{{ totals.taxCount ? money(totals.tax) : '—' }}</b></span><span>价税合计 <b>{{ totals.totalCount ? money(totals.total) : '—' }}</b><small v-if="totals.totalCount < filtered.length">（{{ filtered.length - totals.totalCount }} 张缺失）</small></span><span>有效抵扣税额 <b>{{ totals.validTaxCount ? money(totals.validTax) : '—' }}</b><small v-if="totals.validTaxCount < filtered.length">（{{ filtered.length - totals.validTaxCount }} 张缺失）</small></span></div>
+        <div class="scroll-hint">左右滚动可查看完整列，点击左侧“详情”核对发票。</div>
+        <div class="ledger-body"><div class="ledger-table-wrap" tabindex="0" aria-label="发票列表，可左右滚动"><table class="ledger-table"><thead><tr><th class="sticky-action">操作</th><th><button @click="setSort('date')">开票日期 {{ sortIcon('date') }}</button></th><th><button @click="setSort('number')">发票号码 {{ sortIcon('number') }}</button></th><th><button @click="setSort('seller')">销售方 {{ sortIcon('seller') }}</button></th><th>票种 / 标签</th><th class="numeric"><button @click="setSort('amount')">金额 {{ sortIcon('amount') }}</button></th><th class="numeric"><button @click="setSort('tax')">税额 {{ sortIcon('tax') }}</button></th><th class="numeric">有效抵扣税额</th><th class="numeric"><button @click="setSort('total')">价税合计 {{ sortIcon('total') }}</button></th><th>抵税状态 / 勾选时间</th><th>报销 / 发票状态</th><th>原件</th></tr></thead><tbody>
+          <tr v-for="e in paged" :key="e.key" :class="{ active: selectedKey === e.key }"><td class="sticky-action"><button class="detail-link" @click="selectedKey = e.key">详情</button></td><td>{{ e.date || '—' }}</td><td class="number">{{ e.number || '—' }}</td><td>{{ e.seller || '—' }}</td><td>{{ e.type || '—' }}<span v-if="e.typeLabel" class="secondary"> · {{ e.typeLabel }}</span></td><td class="numeric">{{ money(e.amount) }}</td><td class="numeric">{{ money(e.tax) }}</td><td class="numeric">{{ money(e.validTax) }}</td><td class="numeric strong">{{ money(e.total) }}</td><td>{{ deductionStatus(e) }}<span v-if="e.selectionTime" class="secondary"> · {{ e.selectionTime }}</span></td><td><span class="state">{{ e.reimbursement || '未核对' }}</span><span v-if="redInvoiceStatus(e)" class="red-state">{{ redInvoiceStatus(e) }}</span><span v-if="e.invoiceStatus" class="secondary"> · {{ e.invoiceStatus }}</span></td><td>{{ attachmentKeys.has(e.key) ? '已关联' : '—' }}</td></tr>
+          <tr v-if="!filtered.length"><td colspan="12" class="empty">{{ entries.length ? '没有符合条件的发票，请调整筛选条件。' : '还没有历史进项发票。' }}</td></tr>
+        </tbody></table></div></div>
+        <footer class="ledger-footer"><span>合计仅统计已有金额；空值以“—”显示。</span><label>每页 <select v-model.number="pageSize" class="field-input"><option :value="20">20</option><option :value="50">50</option><option :value="100">100</option></select></label><button class="btn" :disabled="page <= 1" @click="page--">上一页</button><span>{{ Math.min(page, pageCount) }} / {{ pageCount }}</span><button class="btn" :disabled="page >= pageCount" @click="page++">下一页</button></footer>
+        <DialogRoot :open="!!selected" @update:open="value => { if (!value) selectedKey = '' }"><DialogPortal><DialogOverlay class="drawer-overlay" /><DialogContent class="drawer-content"><DialogTitle class="sr-only">发票详情</DialogTitle><InvoiceLedgerDetail v-if="selected" :entry="selected" :version="attachmentVersion" @close="selectedKey = ''" @attachment-change="refreshAttachments" /></DialogContent></DialogPortal></DialogRoot>
+  </section>
 </template>
+
+<style scoped>
+.ledger-dialog{width:min(1500px,96vw);height:min(860px,92vh);display:flex;flex-direction:column;border-radius:12px;overflow:hidden}.ledger-header{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:17px 20px;border-bottom:1px solid #e3e9f0;background:white}.ledger-title{font-size:18px;font-weight:700;margin:0;color:#172033}.ledger-header p{font-size:12px;color:#64748b;margin:5px 0 0}.header-actions{display:flex;gap:8px}.ledger-filters{display:flex;align-items:end;flex-wrap:wrap;gap:9px;padding:12px 20px;background:#f8fafc}.ledger-filters label{display:grid;gap:4px;color:#64748b;font-size:11px}.ledger-filters input,.ledger-filters select{height:32px;max-width:150px}.ledger-filters .search input{width:220px;max-width:none}.ledger-filters .reset{height:32px}.ledger-summary{display:flex;align-items:center;flex-wrap:wrap;gap:20px;padding:11px 20px;border-block:1px solid #e3e9f0;background:#fff;color:#64748b;font-size:12px}.ledger-summary b{color:#172033;font-size:13px;font-variant-numeric:tabular-nums}.ledger-summary small{margin-left:4px;color:#9a6700}.ledger-notice{padding:7px 20px;background:#fffbeb;color:#92400e;font-size:12px}.ledger-body{display:flex;flex:1;min-height:0}.ledger-table-wrap{flex:1;min-width:0;overflow:auto;background:#fff}.ledger-table{border-collapse:collapse;width:100%;font-size:12px}.ledger-table th{position:sticky;top:0;z-index:1;background:#f8fafc;color:#64748b;font-weight:600;text-align:left;white-space:nowrap;border-bottom:1px solid #dfe5ed}.ledger-table th,.ledger-table td{padding:10px 11px}.ledger-table th button{border:0;background:none;color:inherit;font:inherit;cursor:pointer;white-space:nowrap}.ledger-table td{border-bottom:1px solid #edf1f5;vertical-align:top;white-space:nowrap}.ledger-table tr:hover,.ledger-table tr.active{background:#f1f7ff}.ledger-table .company,.ledger-table .type{min-width:150px;max-width:220px;white-space:normal}.ledger-table small{display:block;margin-top:4px;color:#94a3b8}.ledger-table .number{font-variant-numeric:tabular-nums}.ledger-table .numeric{text-align:right;font-variant-numeric:tabular-nums}.ledger-table .strong{font-weight:700}.state,.red-state{display:inline-block;padding:3px 6px;border-radius:4px;background:#f1f5f9;color:#475569}.red-state{margin-left:4px;background:#fef2f2;color:#b91c1c}.detail-link{color:#2563eb;background:none;border:0;cursor:pointer;white-space:nowrap}.empty{text-align:center;color:#64748b;padding:45px!important}.ledger-footer{display:flex;align-items:center;gap:9px;padding:10px 20px;border-top:1px solid #e3e9f0;background:#f8fafc;color:#64748b;font-size:12px}.ledger-footer>span:first-child{margin-right:auto}.ledger-footer select{width:65px}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.ledger-workspace{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;background:#fff;border:1px solid #dfe5ed;border-radius:10px;overflow:hidden}.ledger-body{flex:1;min-height:0;min-width:0}.ledger-table-wrap{width:100%;overflow:auto}.ledger-table{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0}.ledger-table td{height:46px;vertical-align:middle;white-space:nowrap}.ledger-table .secondary{color:#64748b}.ledger-table .sticky-action{position:sticky;left:0;z-index:2;background:#fff;border-right:1px solid #edf1f5}.ledger-table thead .sticky-action{z-index:3;background:#f8fafc}.ledger-table tr:hover .sticky-action,.ledger-table tr.active .sticky-action{background:#f1f7ff}.scroll-hint{padding:8px 20px;color:#64748b;font-size:11px;background:#fff}.drawer-overlay{position:fixed;inset:0;background:rgba(15,23,42,.42);z-index:50}.drawer-content{position:fixed;top:0;right:0;bottom:0;z-index:51;width:min(560px,94vw);background:#fff;box-shadow:-16px 0 42px rgba(15,23,42,.18);outline:none;overflow:hidden}.ledger-footer{flex-wrap:wrap}
+.drawer-content{top:3vh;bottom:3vh;left:2vw;right:2vw;width:auto;max-width:1680px;margin:auto;border-radius:10px;box-shadow:0 20px 55px rgba(15,23,42,.25)}
+</style>

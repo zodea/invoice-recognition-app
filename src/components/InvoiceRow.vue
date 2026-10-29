@@ -32,7 +32,9 @@ const tagBase = "chip flex-none px-1.75 py-0.5 border";
           <span class="min-w-0 truncate font-700" :title="item.inv.name">{{ item.inv.name }}</span>
           <span v-if="item.inv.duplicateReason" :class="tagBase" class="text-[#991b1b] bg-[#fef2f2] border-[#fecaca]">重复</span>
           <span v-if="item.inv.history?.printed" :class="tagBase" class="text-[#166534] bg-[#f0fdf4] border-[#bbf7d0]">历史已打印</span>
-          <span v-else-if="item.inv.history?.verified" :class="tagBase" class="text-[#166534] bg-[#f0fdf4] border-[#bbf7d0]">历史已认证</span>
+          <span v-else-if="item.inv.history?.verified" :class="tagBase" class="text-[#166534] bg-[#f0fdf4] border-[#bbf7d0]">历史已抵税</span>
+          <span v-else-if="item.inv.history?.entry" :class="tagBase" class="text-brand bg-brand-soft border-line">匹配台账</span>
+          <span v-else-if="item.inv.history?.needsReview" :class="tagBase" class="text-[#b45309] bg-[#fff7ed] border-[#fed7aa]">台账待核对</span>
           <span v-else-if="item.needsReview" :class="tagBase" class="text-[#b45309] bg-[#fff7ed] border-[#fed7aa]">待复核</span>
         </div>
         <div class="mt-0.75 ml-8.25 text-brand text-[11px] truncate" :title="invoiceExportFileName(item.inv)">
@@ -70,16 +72,16 @@ const tagBase = "chip flex-none px-1.75 py-0.5 border";
       <span v-if="item.inv.systemNote" class="text-[#b45309]">{{ item.inv.systemNote }}</span>
       <span v-if="item.inv.duplicateReason" class="text-[#b45309]">{{ item.inv.duplicateReason }}</span>
       <span v-if="item.inv.history?.usedBefore" class="text-[#b45309]">
-        历史台账已记录，{{ item.inv.history.printed ? "已打印" : "已认证" }}
+        历史台账已记录，{{ item.inv.history.printed ? "已打印" : item.inv.history.verified ? "已抵税" : "有使用记录" }}
       </span>
-      <span v-if="item.inv.historyAutoExcluded" class="text-[#b45309]">已按历史打印记录默认取消勾选，可手动勾选</span>
+      <span v-if="item.inv.historyAutoExcluded" class="text-[#b45309]">已按历史记录默认取消勾选，可手动勾选</span>
     </div>
 
     <div v-if="showText && item.inv.rawText" class="bg-[#f8fafc] border border-line rounded-md p-2 mb-2">
       <pre class="m-0 max-h-37.5 overflow-auto whitespace-pre-wrap text-xs">{{ item.inv.rawText }}</pre>
     </div>
 
-    <div class="grid grid-cols-4 gap-2 max-md:grid-cols-2" @change="invoiceActions.refreshDuplicates">
+    <div class="grid grid-cols-4 gap-2 max-md:grid-cols-2" @change="invoiceActions.refreshInvoiceMatches">
       <label class="field-label">发票号码<input class="field-input" v-model="item.inv.fields.number" /></label>
       <label class="field-label">开票日期<input class="field-input" v-model="item.inv.fields.date" placeholder="2026-03-09" @input="syncDate(item.inv)" /></label>
       <label class="field-label col-span-2">销售方<input class="field-input" v-model="item.inv.fields.seller" /></label>

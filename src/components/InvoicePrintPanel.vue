@@ -23,6 +23,9 @@ import {
 } from "../lib/invoice-export-package";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 
+const filenameTemplate = ref(localStorage.getItem("invoiceFilenameTemplate") || "{销售方}：{日期}={金额}元");
+const exportSort = ref(localStorage.getItem("invoiceExportSort") || "original");
+const exportDirection = ref(localStorage.getItem("invoiceExportDirection") || "asc");
 const busy = ref(false);
 const msg = ref("");
 const pendingPrintedIds = ref([]);
@@ -152,17 +155,27 @@ async function exportPackage() {
   busy.value = true;
   msg.value = "请选择保存目录…";
   try {
-    const excelBytes = buildInvoiceWorkbookBytes(included.value);
+    localStorage.setItem("invoiceFilenameTemplate", filenameTemplate.value);
+    localStorage.setItem("invoiceExportSort", exportSort.value);
+    localStorage.setItem("invoiceExportDirection", exportDirection.value);
+    const list = [...included.value];
+    if (exportSort.value !== "original") list.sort((a, b) => {
+      const key = exportSort.value;
+      const av = a.fields?.[key] || "", bv = b.fields?.[key] || "";
+      const cmp = key === "total" ? (Number(av) || 0) - (Number(bv) || 0) : String(av).localeCompare(String(bv), "zh-CN");
+      return cmp * (exportDirection.value === "asc" ? 1 : -1);
+    });
+    const excelBytes = buildInvoiceWorkbookBytes(list);
     let result;
     if (canUseTauriExport()) {
       const dir = await pickTauriExportDir();
       if (!dir) { toastInfo("已取消导出。"); return; }
       msg.value = "正在整理原文件和统计表…";
-      result = await writeInvoiceExportPackageTauri(included.value, dir, { excelBytes, dims: invoiceStore.groupDims });
+      result = await writeInvoiceExportPackageTauri(list, dir, { excelBytes, dims: invoiceStore.groupDims, filenameTemplate: filenameTemplate.value });
     } else {
       const dir = await window.showDirectoryPicker({ mode: "readwrite" });
       msg.value = "正在整理原文件和统计表…";
-      result = await writeInvoiceExportPackage(included.value, dir, { excelBytes, dims: invoiceStore.groupDims });
+      result = await writeInvoiceExportPackage(list, dir, { excelBytes, dims: invoiceStore.groupDims, filenameTemplate: filenameTemplate.value });
     }
     toast(`已导出到「${result.parent}」：${result.fileCount} 个文件，统计表：${result.excelName || "未生成"}。`, { duration: 6500 });
   } catch (e) {
@@ -238,6 +251,12 @@ const exportBtnCls = "btn px-2.75 py-1.75 text-[13px]";
       </div>
     </div>
 
+    <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
+      <label>文件名格式 <input v-model="filenameTemplate" class="field-input w-72" /></label>
+      <label>导出顺序 <select v-model="exportSort" class="field-input"><option value="original">当前顺序</option><option value="date">日期</option><option value="seller">销售方</option><option value="total">金额</option><option value="number">发票号码</option></select></label>
+      <select v-model="exportDirection" class="field-input" aria-label="排序方向"><option value="asc">升序</option><option value="desc">降序</option></select>
+      <span class="text-ink-soft">可用：{销售方} {日期} {金额} {购买方} {发票号码}；文件夹显示顺序由系统决定。</span>
+    </div>
     <div class="mt-2 text-ink-soft text-[13px]" v-if="busy && msg">{{ msg }}</div>
     <div v-if="pendingPrintedCount" class="mt-2 flex items-center gap-2 flex-wrap p-2 rounded-md border border-[#bbf7d0] bg-[#f0fdf4] text-[#166534] text-[13px]">
       <span>本次 {{ pendingPrintedCount }} 张是否均已打印？</span>

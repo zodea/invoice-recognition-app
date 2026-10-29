@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from "vue";
-import { invoiceActions } from "../invoiceStore";
+import { invoiceActions, invoiceStore } from "../invoiceStore";
 import { filesFromDrop, partitionFiles, dragHasSupported, SUPPORTED_HINT } from "../lib/upload";
 import { toastWarn } from "../lib/toast";
 
@@ -9,11 +9,13 @@ const rejected = ref(false);
 const input = ref(null);
 const folderInput = ref(null);
 
-function intake(files) {
+async function intake(files) {
+  if (invoiceStore.busy) { toastWarn("正在识别发票，请等待本批完成后再导入。"); return; }
   const { supported, ignored } = partitionFiles(files);
   if (supported.length) {
-    invoiceActions.addFiles(supported);
+    await invoiceActions.addFiles(supported);
     if (ignored > 0) toastWarn(`已添加 ${supported.length} 个，忽略 ${ignored} 个不支持的文件。\n${SUPPORTED_HINT}`);
+    await invoiceActions.recognizeAll();
   } else if ((files || []).length) {
     toastWarn(`没有可识别的文件。\n${SUPPORTED_HINT}`);
   }
@@ -32,11 +34,12 @@ function onDragLeave() {
 async function onDrop(e) {
   dragging.value = false;
   rejected.value = false;
-  intake(await filesFromDrop(e.dataTransfer));
+  await intake(await filesFromDrop(e.dataTransfer));
 }
 function onPick(e) {
-  intake(Array.from(e.target.files || []));
+  const files = Array.from(e.target.files || []);
   e.target.value = "";
+  intake(files);
 }
 </script>
 
@@ -55,7 +58,7 @@ function onPick(e) {
     <div class="text-base font-600 mt-1.5">
       {{ rejected ? "该类型不支持，请拖入 PDF / 图片 / 文件夹" : "把发票 PDF / 图片 / 文件夹 拖到这里，或点击选择" }}
     </div>
-    <div class="text-ink-soft mt-1">支持电子发票 PDF（直接抽文字）和扫描件 / 图片（OCR）；可多选、可拖整个文件夹</div>
+    <div class="text-ink-soft mt-1">支持 PDF 和图片，可选择或拖入文件夹；导入后自动识别并匹配台账</div>
     <div class="mt-2">
       <button type="button" class="btn px-2.5 py-1.25 text-xs" @click.stop="folderInput.click()">📁 选择文件夹</button>
     </div>

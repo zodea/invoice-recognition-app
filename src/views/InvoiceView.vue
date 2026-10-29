@@ -5,7 +5,6 @@ import InvoiceUpload from "../components/InvoiceUpload.vue";
 import InvoicePreview from "../components/InvoicePreview.vue";
 import InvoiceRow from "../components/InvoiceRow.vue";
 import InvoicePrintPanel from "../components/InvoicePrintPanel.vue";
-import InvoiceLedgerPanel from "../components/InvoiceLedgerPanel.vue";
 import { toast, toastInfo } from "../lib/toast";
 
 const sorted = computed(() => sortedInvoices());
@@ -23,8 +22,8 @@ function dedupe() {
 }
 function excludeReused() {
   const n = invoiceActions.excludeReused(visibleInvs.value);
-  if (n) toast(`已排除 ${n} 张历史已用发票（避免重复使用）。`);
-  else toastInfo("勾选中没有历史已用的发票。");
+  if (n) toast(`已排除 ${n} 张有历史勾选或使用记录的发票。`);
+  else toastInfo("勾选中没有带历史勾选或使用记录的发票。");
 }
 
 // 打印勾选批量操作：作用于当前筛选后可见的发票
@@ -62,10 +61,9 @@ const filterBtn = (active) =>
 
 <template>
   <div class="flex flex-col gap-3">
-    <div class="grid gap-3 items-stretch grid-cols-[minmax(300px,0.9fr)_minmax(420px,1.1fr)_minmax(300px,0.8fr)] lt-lg:grid-cols-1">
+    <div class="grid gap-3 items-stretch grid-cols-[minmax(300px,0.9fr)_minmax(420px,1.1fr)] lt-lg:grid-cols-1">
       <InvoiceUpload />
       <InvoicePrintPanel />
-      <InvoiceLedgerPanel />
     </div>
 
     <div v-if="invoiceStore.invoices.length" class="flex items-center gap-2.5 flex-wrap px-2.5 py-2 border border-line rounded-lg bg-white">
@@ -74,14 +72,14 @@ const filterBtn = (active) =>
         <span v-if="unrecognizedCount">，{{ unrecognizedCount }} 张未识别</span>
         <span v-else>，全部已识别</span>
         <span v-if="duplicateCount" class="ml-2 chip text-[#991b1b] bg-[#fef2f2] border border-[#fecaca] px-2 py-0.5">含 {{ duplicateCount }} 张重复(已排除)</span>
-        <span v-if="reusedIncludedCount" class="ml-2 chip text-[#92400e] bg-[#fffbeb] border border-[#fde68a] px-2 py-0.5">勾选中 {{ reusedIncludedCount }} 张历史已用</span>
+        <span v-if="reusedIncludedCount" class="ml-2 chip text-[#92400e] bg-[#fffbeb] border border-[#fde68a] px-2 py-0.5">勾选中 {{ reusedIncludedCount }} 张有历史记录</span>
       </div>
       <div class="flex items-center gap-2">
         <button class="btn-primary px-2.5 py-1.5" :disabled="invoiceStore.busy || !unrecognizedCount" @click="invoiceActions.recognizeAll">
           {{ invoiceStore.busy ? "识别中…" : "全部识别" }}
         </button>
         <button class="btn px-2.5 py-1.5" :disabled="invoiceStore.busy || invoiceStore.invoices.length < 2" @click="dedupe">去重</button>
-        <button class="btn px-2.5 py-1.5" :disabled="!reusedIncludedCount" :title="'排除历史台账里已认证/已报销过的发票，避免重复使用'" @click="excludeReused">排除历史已用{{ reusedIncludedCount ? ` (${reusedIncludedCount})` : "" }}</button>
+        <button class="btn px-2.5 py-1.5" :disabled="!reusedIncludedCount" title="排除台账中有勾选或使用记录的发票" @click="excludeReused">排除历史记录{{ reusedIncludedCount ? ` (${reusedIncludedCount})` : "" }}</button>
         <button class="btn-ghost px-2.5 py-1.5" @click="invoiceActions.clearAll">清空</button>
       </div>
       <div class="flex items-center gap-1.5">
@@ -90,7 +88,7 @@ const filterBtn = (active) =>
         <button class="btn px-2.5 py-1.5" @click="invertSelect">反选</button>
         <button class="btn px-2.5 py-1.5" @click="selectNone">全不选</button>
       </div>
-      <span class="text-ink-soft" v-if="invoiceStore.busy && invoiceStore.msg">{{ invoiceStore.msg }}</span>
+      <span class="text-ink-soft" v-if="invoiceStore.msg">{{ invoiceStore.msg }}</span>
     </div>
 
     <div v-if="invoiceStore.invoices.length" class="flex flex-col gap-2 px-2.5 py-2.5 border border-line rounded-lg bg-white">

@@ -4,10 +4,12 @@ import { invoiceStore, invoiceActions } from "../invoiceStore";
 import { buildCurrentInputInvoiceReportBytes, buildHistoryReportBytes, currentInputReportName, historyReportName, ledgerStats } from "../lib/invoice-ledger";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
 import { downloadBytes } from "../lib/invoice-layout";
-import InvoiceLedgerViewer from "./InvoiceLedgerViewer.vue";
+import InvoiceReconciliation from "./InvoiceReconciliation.vue";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 
-const viewerOpen = ref(false);
+defineProps({ ledgerPage: Boolean });
+const emit = defineEmits(["open-ledger"]);
+const reconciliationOpen = ref(false);
 
 const fileRef = ref(null);
 const busy = ref(false);
@@ -19,26 +21,20 @@ function chooseFile() {
   fileRef.value?.click();
 }
 
-function pickExcelFile(files) {
-  return Array.from(files || []).find((f) => /\.(xlsx|xls)$/i.test(f.name));
-}
-
-async function importLedgerFile(file) {
-  if (!file) return;
-  if (!/\.(xlsx|xls)$/i.test(file.name)) {
-    toastWarn("请导入税务局导出的 Excel 文件（.xlsx / .xls）。");
-    return;
-  }
+async function importLedgerFiles(files) {
+  const excel = Array.from(files || []).filter(f => /\.(xlsx|xls)$/i.test(f.name) && !f.name.startsWith("~$"));
+  if (!excel.length) { toastWarn("没有找到可导入的 Excel 文件。"); return; }
   busy.value = true;
-  msg.value = "正在导入进项发票历史…";
+  let imported = 0, added = 0, updated = 0, failed = 0;
   try {
-    const r = await invoiceActions.importInputInvoiceReport(file);
-    toast(`已导入 ${r.imported} 张，新增 ${r.added} 张，更新 ${r.updated} 张。`);
-  } catch (err) {
-    toastError("导入失败：" + ((err && err.message) || err));
-  } finally {
-    busy.value = false;
-  }
+    for (const [index, file] of excel.entries()) {
+      msg.value = `正在导入 ${index + 1}/${excel.length}：${file.name}`;
+      try { const r = await invoiceActions.importInputInvoiceReport(file); imported += r.imported; added += r.added; updated += r.updated; }
+      catch (err) { failed++; console.error(file.name, err); }
+    }
+    if (failed) toastWarn(`导入完成：${excel.length - failed} 个文件成功，${failed} 个失败；识别 ${imported} 条。`);
+    else toast(`已导入 ${excel.length} 个文件，识别 ${imported} 条，新增 ${added} 条，更新 ${updated} 条。`);
+  } finally { busy.value = false; }
 }
 
 async function saveLedgerBytes(bytes, name, okMsg, dlMsg) {
@@ -69,20 +65,13 @@ async function exportCurrentInputStatus() {
 }
 
 async function importReport(e) {
-  const file = pickExcelFile(e.target.files);
+  const files = Array.from(e.target.files || []);
   e.target.value = "";
-  await importLedgerFile(file);
+  await importLedgerFiles(files);
 }
-
 async function onDrop(e) {
   dragging.value = false;
-  if (busy.value) return;
-  const file = pickExcelFile(e.dataTransfer?.files);
-  if (!file) {
-    toastWarn("没有找到可导入的 Excel 文件，请拖入 .xlsx 或 .xls。");
-    return;
-  }
-  await importLedgerFile(file);
+  if (!busy.value) await importLedgerFiles(e.dataTransfer?.files);
 }
 
 function clearLedger() {
@@ -105,14 +94,15 @@ function clearLedger() {
     @dragleave.prevent="dragging = false"
     @drop.prevent="onDrop"
   >
-    <input ref="fileRef" class="hidden" type="file" accept=".xlsx,.xls" @change="importReport" />
+    <input ref="fileRef" class="hidden" type="file" accept=".xlsx,.xls" multiple @change="importReport" />
     <div class="flex items-start justify-between gap-2.5">
       <div>
         <h2 class="m-0 text-[15px] font-700">历史进项台账</h2>
-        <p class="mt-0.5 text-ink-soft text-xs leading-relaxed">拖入或选择税务局进项发票清单，本地记录认证/使用状态。</p>
+        <p v-if="!ledgerPage" class="mt-0.5 text-ink-soft text-xs leading-relaxed">拖入或选择税务局进项发票清单，记录官方勾选状态，并核对历史报销。</p>
       </div>
     </div>
     <div
+      v-if="!ledgerPage || dragging"
       class="mt-2 p-2 border border-dashed rounded-md text-xs font-700 transition-colors"
       :class="dragging ? 'border-brand bg-white text-brand' : 'border-line-strong bg-[#f8fafc] text-ink-soft'"
     >
@@ -120,17 +110,18 @@ function clearLedger() {
     </div>
     <div class="flex gap-2.5 flex-wrap my-2.25 text-ink-soft text-xs">
       <span><b class="text-ink text-[15px]">{{ stats.total }}</b> 张</span>
-      <span><b class="text-ink text-[15px]">{{ stats.verified }}</b> 已认证</span>
+      <span><b class="text-ink text-[15px]">{{ stats.verified }}</b> 已抵税</span>
       <span><b class="text-ink text-[15px]">{{ stats.printed }}</b> 已打印</span>
     </div>
     <div class="flex gap-2 flex-wrap">
       <button class="btn-primary px-2.5 py-1.75" :disabled="busy" @click="chooseFile">导入进项 Excel</button>
-      <button class="btn px-2.5 py-1.75" :disabled="!stats.total" @click="viewerOpen = true">查看台账</button>
+      <button v-if="!ledgerPage" class="btn px-2.5 py-1.75" @click="emit('open-ledger')">打开台账页面</button>
+      <button class="btn px-2.5 py-1.75" :disabled="!stats.total" @click="reconciliationOpen = true">历史报销核对</button>
       <button class="btn px-2.5 py-1.75" :disabled="busy || !stats.total" @click="exportHistory">导出历史台账</button>
       <button class="btn px-2.5 py-1.75" :disabled="busy || !invoiceStore.invoices.length" @click="exportCurrentInputStatus">导出当前进项状态</button>
       <button class="btn px-2.5 py-1.75 border-[#fecaca] text-[#991b1b] bg-[#fef2f2]" :disabled="busy || !stats.total" @click="clearLedger">清空历史台账</button>
     </div>
     <div class="mt-2 text-ink-soft text-xs" v-if="busy && msg">{{ msg }}</div>
-    <InvoiceLedgerViewer v-model:open="viewerOpen" />
+    <InvoiceReconciliation v-model:open="reconciliationOpen" />
   </section>
 </template>
