@@ -1,3 +1,4 @@
+import { isMultiProject, projectNames } from './invoice-allocation.js';
 import { paymentDate } from "./payment-records.js";
 import * as XLSX from "xlsx";
 import { inferExpenseTag } from "./invoice-tags.js";
@@ -43,12 +44,13 @@ export function importExpenseWorkbook(ledger, bytes, options = {}) {
     if (prev?.reimbursement === "已报销" && prev.reimbursementPeriod && options.period && prev.reimbursementPeriod !== options.period) { conflicts++; review.push({...item,status:"冲突",reason:"已在其他报销期间登记"}); continue; }
     if (prev && (!prev.date || prev.total === "" || prev.total == null)) { conflicts++; review.push({...item,status:"待核对",reason:"台账日期或金额不完整，请先补全复核"}); continue; }
     if (prev && (item.total === "" || !Number.isFinite(Number(item.total)) || !item.date)) { conflicts++; review.push({...item,status:"待核对",reason:"缺少有效日期或金额，不能确认报销"}); continue; }
-    if (prev && ((prev.total !== "" && prev.total != null && item.total !== "" && Math.abs(Number(prev.total) - item.total) > 0.01) || (prev.date && item.date && prev.date !== item.date) || ["project", "payer"].some(k => prev[k] && item[k] && prev[k] !== item[k]))) { conflicts++; review.push({...item, status:"冲突", reason:"金额、日期、工地或付款人不一致"}); continue; }
+    if (prev && isMultiProject(prev) && item.project && item.project !== projectNames(prev)) { conflicts++; review.push({...item, status:'冲突', reason:'台账已有多工地分配，请核对原分配，不以单工地覆盖'}); continue; }
+    if (prev && ((prev.total !== "" && prev.total != null && item.total !== "" && Math.abs(Number(prev.total) - item.total) > 0.01) || (prev.date && item.date && prev.date !== item.date) || ["project", "payer"].some(k => !(k === "project" && isMultiProject(prev)) && prev[k] && item[k] && prev[k] !== item[k]))) { conflicts++; review.push({...item, status:"冲突", reason:"金额、日期、工地或付款人不一致"}); continue; }
     if (prev) {
       const merged = { ...prev };
       if (options.period) { merged.reimbursement = "已报销"; merged.reimbursementPeriod = options.period; merged.reimbursementSource = item.source; }
       review.push({...item, status:"匹配", reason:"号码及已有金额、日期已核对"});
-      for (const k of ["project", "payer", "service", "paymentDate", "remark"]) if (!merged[k] && item[k]) merged[k] = item[k];
+      for (const k of ["project", "payer", "service", "paymentDate", "remark"]) if (!(k === "project" && isMultiProject(prev)) && !merged[k] && item[k]) merged[k] = item[k];
       if (!merged.expenseTagSet && !merged.expenseTag && item.expenseTag) merged.expenseTag = item.expenseTag;
       if (options.period || merged.project !== prev.project || merged.payer !== prev.payer || merged.expenseTag !== prev.expenseTag || merged.service !== prev.service || merged.paymentDate !== prev.paymentDate || merged.remark !== prev.remark) { next[number] = merged; updated++; }
     } else { review.push({...item, status:"未找到", reason:"台账没有此号码，不新增发票"}); }

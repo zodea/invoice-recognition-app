@@ -1,3 +1,4 @@
+import { isMultiProject, projectAllocationState, projectNames, projectExpenseRows } from './invoice-allocation.js';
 import { allocationKind } from "./payment-records.js";
 // 历史发票台账（本地持久化）：跨批次按「发票号码」查重，避免同一张发票被重复报销/使用；
 // 并支持导入电子税务局导出的「已认证发票清单」标记认证状态，导出历史报表。
@@ -59,8 +60,9 @@ export function deductionStatus(entry) {
 }
 
 export function missingReimbursementFields(entry) {
-  return [["reimburser", "报销人"], ["project", "工地"], ["purpose", "用途"]]
-    .filter(([key]) => key === "project" ? ["指定工地", "待确认"].includes(allocationKind(entry)) && !cellText(entry?.project) : !cellText(entry?.[key])).map(([, label]) => label);
+  const missing = isMultiProject(entry) && !projectAllocationState(entry).complete ? ['工地分配未完成'] : [];
+  return missing.concat([["reimburser", "报销人"], ["project", "工地"], ["purpose", "用途"]]
+    .filter(([key]) => key === "project" ? ["指定工地", "待确认"].includes(allocationKind(entry)) && !cellText(entry?.project) : !cellText(entry?.[key])).map(([, label]) => label));
 }
 
 export function markReimbursedBatch(ledger, keys, date) {
@@ -523,7 +525,7 @@ export function ledgerStats(ledger) {
 export function buildHistoryReportBytes(ledger) {
   const wb = XLSX.utils.book_new();
   const header = ["发票号码", "开票日期", "销售方", "购买方", "不含税金额", "税率", "税额", "价税合计", "发票种类", "进项类型", "货物/劳务/服务", "发票状态", "抵税状态", "认证日期", "是否已打印", "打印日期", "使用批次数", "最近使用", "是否重复使用", "导入来源", "使用批次", "官方勾选状态", "报销状态", "工地", "支付方式", "标签", "有效抵扣税额", "票种标签", "勾选时间", "红字蓝字", "红冲标记", "报销人", "用途"];
-  header.push("付款账户 / 付款人", "报销日期", "费用标签", "报销期间", "费用归属", "复核时间");
+  header.push("付款账户 / 付款人", "报销日期", "费用标签", "报销期间", "费用归属", "复核时间", "工地分配状态");
   const rows = [header];
   const entries = Object.values(ledger || {}).sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   let total = 0, verifiedCount = 0, printedCount = 0, repeatCount = 0;
@@ -546,8 +548,8 @@ export function buildHistoryReportBytes(ledger) {
       used, e.lastUsed || "", repeat ? "是" : "",
       (e.importSources || []).map((s) => s.name || s.date).filter(Boolean).join("；"),
       (e.batches || []).map((b) => b.name || b.date).filter(Boolean).join("；"),
-      e.officialSelection || "", e.reimbursement || "未核对", e.project || "", e.payment || "", e.tags || "",
-      e.validTax === "" || e.validTax == null ? "" : Number(e.validTax), e.typeLabel || "", e.selectionTime || "", e.redBlue || "", redInvoiceStatus(e), e.reimburser || "", e.purpose || "", e.payer || "", e.reimbursementDate || "", e.expenseTag || "", e.reimbursementPeriod || "", allocationKind(e), e.reviewedAt || "",
+      e.officialSelection || "", e.reimbursement || "未核对", projectNames(e), e.payment || "", e.tags || "",
+      e.validTax === "" || e.validTax == null ? "" : Number(e.validTax), e.typeLabel || "", e.selectionTime || "", e.redBlue || "", redInvoiceStatus(e), e.reimburser || "", e.purpose || "", e.payer || "", e.reimbursementDate || "", e.expenseTag || "", e.reimbursementPeriod || "", allocationKind(e), e.reviewedAt || "", isMultiProject(e) ? projectAllocationState(e).label : "",
     ]);
   }
   rows.push([]);
@@ -559,6 +561,13 @@ export function buildHistoryReportBytes(ledger) {
     { wch: 10 }, { wch: 11 }, { wch: 10 }, { wch: 11 }, { wch: 11 }, { wch: 30 }, { wch: 30 },
   ];
   XLSX.utils.book_append_sheet(wb, ws, "历史发票台账");
+  const allocationRows = [['发票号码', '开票日期', '销售方', '购买方', '工地 / 费用归属', '分配金额（含税）', '分配备注', '分配状态', '报销状态']];
+  for (const entry of entries) {
+    for (const row of projectExpenseRows(entry)) allocationRows.push([entry.number || entry.key, entry.date || '', entry.seller || '', entry.buyer || '', isMultiProject(entry) ? row.project : allocationKind(entry) === '指定工地' ? row.project : allocationKind(entry), row.total, row.remark, isMultiProject(entry) ? projectAllocationState(entry).label : '单一归属', entry.reimbursement || '未核对']);
+  }
+  const allocationSheet = XLSX.utils.aoa_to_sheet(allocationRows);
+  allocationSheet['!cols'] = [22,12,28,28,24,20,30,12,12].map(wch => ({wch}));
+  XLSX.utils.book_append_sheet(wb, allocationSheet, '工地分配明细');
   return XLSX.write(wb, { type: "array", bookType: "xlsx" });
 }
 

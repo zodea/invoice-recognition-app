@@ -1,4 +1,8 @@
 <script setup>
+import InvoiceProjectAllocationDialog from './InvoiceProjectAllocationDialog.vue';
+import { directory } from '../lib/expense-directory.js';
+import { allocationKind } from '../lib/payment-records.js';
+import { projectNames, isMultiProject, projectAllocationState, projectExpenseRows } from '../lib/invoice-allocation.js';
 import ConfirmAction from './ConfirmAction.vue';
 import { useConfirmation } from '../composables/useConfirmation.js';
 const { confirmation, requestConfirmation, answerConfirmation } = useConfirmation();
@@ -44,8 +48,14 @@ async function purgeEntries(ids) {
  } catch(error) { trashNotice.value = '清理未完成：'+error.message; }
  finally { refreshCleanupQueue(); }
 }
+const allocationKey = ref('');
+const allocationEntry = computed(() => invoiceStore.ledger[allocationKey.value] || null);
 const editInitially = ref(false);
 const query = ref("");
+const projectFilter = ref('');
+const projectRows = entry => isMultiProject(entry) ? projectExpenseRows(entry) : allocationKind(entry) === '指定工地' ? projectExpenseRows(entry) : [];
+const projectOptions = computed(() => [...new Set([...directory.projects, ...entries.value.flatMap(entry => projectRows(entry).map(row => row.project))].filter(Boolean))]);
+const filteredProjectTotal = computed(() => filtered.value.reduce((sum, entry) => sum + projectRows(entry).filter(row => row.project === projectFilter.value).reduce((subtotal,row) => subtotal + Math.round(row.total * 100),0),0) / 100);
 const startDate = ref("");
 const endDate = ref("");
 const selection = ref("all");
@@ -69,10 +79,11 @@ const filtered = computed(() => {
   const q = query.value.trim().toLowerCase();
   const list = entries.value.filter(e => {
     if (!matchesBuyerCheck(buyerChecker.value(e), buyerCheckFilter.value)) return false;
+    if (projectFilter.value && !projectRows(e).some(row => row.project === projectFilter.value)) return false;
     const date = String(e.date || "").slice(0, 10);
     if (startDate.value && (!date || date < startDate.value)) return false;
     if (endDate.value && (!date || date > endDate.value)) return false;
-    if (q && !`${e.number || ""} ${e.seller || ""} ${e.buyer || ""} ${e.type || ""} ${e.reimburser || ""} ${e.project || ""} ${e.purpose || ""} ${e.tags || ""}`.toLowerCase().includes(q)) return false;
+    if (q && !`${e.number || ""} ${e.seller || ""} ${e.buyer || ""} ${e.type || ""} ${e.reimburser || ""} ${projectNames(e)} ${e.purpose || ""} ${e.tags || ""}`.toLowerCase().includes(q)) return false;
     const official = deductionStatus(e);
     if (selection.value === "selected" && official !== "已抵税") return false;
     if (selection.value === "unselected" && official !== "未勾选") return false;
@@ -115,7 +126,7 @@ watch(pageCount, count => {page.value=Math.min(page.value,count);});
 const money = n => n === "" || n == null ? "—" : Number(n).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function setSort(key) { if (sortKey.value === key) sortDir.value = sortDir.value === "asc" ? "desc" : "asc"; else { sortKey.value = key; sortDir.value = "desc"; } }
 function sortIcon(key) { return sortKey.value === key ? (sortDir.value === "asc" ? "↑" : "↓") : "↕"; }
-function resetFilters() { buyerCheckFilter.value = 'all'; query.value = ""; startDate.value = ""; endDate.value = ""; selection.value = "all"; reimbursement.value = "all"; redFilter.value = "all"; attachmentFilter.value = "all"; }
+function resetFilters() { projectFilter.value = ''; buyerCheckFilter.value = 'all'; query.value = ""; startDate.value = ""; endDate.value = ""; selection.value = "all"; reimbursement.value = "all"; redFilter.value = "all"; attachmentFilter.value = "all"; }
 async function refreshAttachments() {
   try { attachmentKeys.value = new Set(await listLedgerAttachmentKeys()); attachmentVersion.value++; }
   catch (err) { notice.value = `无法读取原件：${err.message || err}`; }
@@ -128,7 +139,7 @@ async function syncCurrent() {
     notice.value = `同步完成：关联 ${saved} 张${needsReview ? `，${needsReview} 张信息不一致或号码不唯一，需手动核对` : ""}${failed ? `，${failed} 张保存失败` : ""}。`;
   } finally { syncing.value = false; }
 }
-watch([buyerCheckFilter, buyerChecker, query, startDate, endDate, selection, reimbursement, redFilter, attachmentFilter, pageSize, sortKey, sortDir], () => { page.value = 1; });
+watch([buyerCheckFilter, buyerChecker, query, projectFilter, startDate, endDate, selection, reimbursement, redFilter, attachmentFilter, pageSize, sortKey, sortDir], () => { page.value = 1; });
 watch(() => invoiceStore.attachmentVersion, refreshAttachments);
 onMounted(refreshAttachments);
 </script>
@@ -144,6 +155,7 @@ onMounted(refreshAttachments);
         <div class="ledger-delete-tools"><label><input type="checkbox" :checked="allPageChecked" :disabled="!paged.length" @change="togglePage($event.target.checked)" />全选当前页</label><span>已选 {{ checkedKeys.length }} 张</span><button class="btn-danger" :disabled="!checkedKeys.length" @click="deleteEntries(checkedKeys)">删除所选</button><button v-if="checkedKeys.length" class="btn" @click="checkedKeys=[]">取消选择</button><button class="btn trash-entry" @click="openTrash">回收站（{{ invoiceStore.ledgerTrash.length }}）</button></div>
         <div class="ledger-filters">
           <label class="search">搜索<input v-model="query" class="field-input" placeholder="发票号码、公司、项目或标签" /></label>
+          <label>使用工地<select v-model="projectFilter" class="field-input"><option value="">全部</option><option v-for="value in projectOptions" :key="value">{{ value }}</option></select></label>
           <label>开票日期从<input v-model="startDate" class="field-input" type="date" /></label><label>至<input v-model="endDate" class="field-input" type="date" :min="startDate || undefined" /></label>
           <label>抵税状态<select v-model="selection" class="field-input"><option value="all">全部</option><option value="selected">已抵税</option><option value="unselected">未勾选</option><option value="unknown">未知</option></select></label>
           <label>报销核对<select v-model="reimbursement" class="field-input"><option value="all">全部</option><option>未核对</option><option>已报销</option><option>未报销</option></select></label>
@@ -151,16 +163,18 @@ onMounted(refreshAttachments);
           <label>原件<select v-model="attachmentFilter" class="field-input"><option value="all">全部</option><option value="yes">已关联</option><option value="no">未关联</option></select></label><button class="btn reset" @click="resetFilters">重置</button>
         </div>
         <div v-if="startDate && endDate && startDate > endDate" class="ledger-notice">开始日期不能晚于结束日期。</div><div v-if="notice" class="ledger-notice" role="status">{{ notice }}<button aria-label="关闭提示" class="notice-close" @click="notice=''">×</button></div><div v-else-if="invoiceStore.attachmentSync && invoiceStore.invoices.length" class="ledger-notice" role="status">自动匹配 {{ invoiceStore.attachmentSync.matched }} 张，新增关联 {{ invoiceStore.attachmentSync.saved }} 张<span v-if="invoiceStore.attachmentSync.needsReview">，{{ invoiceStore.attachmentSync.needsReview }} 张需人工核对</span><span v-if="invoiceStore.attachmentSync.failed">，{{ invoiceStore.attachmentSync.failed }} 张保存失败</span>。</div>
-        <div class="ledger-summary"><span>筛选结果 <b>{{ filtered.length }}</b> 张</span><span>金额 <b>{{ totals.amountCount ? money(totals.amount) : '—' }}</b></span><span>税额 <b>{{ totals.taxCount ? money(totals.tax) : '—' }}</b></span><span>价税合计 <b>{{ totals.totalCount ? money(totals.total) : '—' }}</b><small v-if="totals.totalCount < filtered.length">（{{ filtered.length - totals.totalCount }} 张缺失）</small></span><span>有效抵扣税额 <b>{{ totals.validTaxCount ? money(totals.validTax) : '—' }}</b><small v-if="totals.validTaxCount < filtered.length">（{{ filtered.length - totals.validTaxCount }} 张缺失）</small></span></div>
+        <div class="ledger-summary"><span>筛选结果 <b>{{ filtered.length }}</b> 张</span><span>金额 <b>{{ totals.amountCount ? money(totals.amount) : '—' }}</b></span><span>税额 <b>{{ totals.taxCount ? money(totals.tax) : '—' }}</b></span><span>{{ projectFilter ? '整票价税合计' : '价税合计' }} <b>{{ totals.totalCount ? money(totals.total) : '—' }}</b><small v-if="totals.totalCount < filtered.length">（{{ filtered.length - totals.totalCount }} 张缺失）</small></span><span v-if="projectFilter">{{ projectFilter }}分配金额 <b>{{ money(filteredProjectTotal) }}</b></span><span>有效抵扣税额 <b>{{ totals.validTaxCount ? money(totals.validTax) : '—' }}</b><small v-if="totals.validTaxCount < filtered.length">（{{ filtered.length - totals.validTaxCount }} 张缺失）</small></span></div>
 
-        <div class="ledger-body"><div class="ledger-table-wrap" tabindex="0" aria-label="发票列表，可左右滚动"><table class="ledger-table finance-table"><thead><tr><th class="sticky-action">操作</th><th v-for="[key,label] in invoiceExpenseColumns" :key="key" :class="{numeric:key==='total'}"><button @click="setSort(key)">{{ label }} {{ sortIcon(key) }}</button></th><th>购买方</th><th>复核状态</th><th>报销状态</th><th>发票状态</th><th>抵扣 / 勾选时间</th><th>原件</th></tr></thead><tbody><tr v-for="e in paged" :key="e.key" :class="{active:selectedKey===e.key}"><td class="sticky-action"><input v-model="checkedKeys" type="checkbox" :value="e.key" :aria-label="'选择发票 '+e.number" /><button class="detail-link" @click="editInitially=false;selectedKey=e.key">详情</button><button class="detail-link" @click="editInitially=true;selectedKey=e.key"><AppIcon name="edit" :size="14" /> 编辑</button><button class="detail-link delete-link" @click="deleteEntries([e.key])">删除</button></td><td v-for="[key] in invoiceExpenseColumns" :key="key" :class="{numeric:key==='total',number:key==='number'}"><InvoiceTypeTags v-if="key==='type'" :entry="e" /><MiddleEllipsis v-else-if="['seller','project','payer'].includes(key)" :text="String(e[key] || '—')" :tail="6" :class="key==='seller'?'ledger-company-text':'ledger-short-text'" /><template v-else>{{ key==='total'?money(e[key]):e[key]||'—' }}</template></td><td><MiddleEllipsis :text="e.buyer || '—'" :tail="6" class="ledger-company-text" /><small v-if="['missing','unmatched'].includes(buyerChecker(e))" class="buyer-issue">{{ buyerCheckLabels[buyerChecker(e)] }}</small></td><td><span class="status-pill" :class="invoiceProblems(e).length?'warning':'neutral'">{{ invoiceProblems(e).length?'待补全':e.reviewedAt?'已复核':'待复核' }}</span></td><td><span class="status-pill" :class="e.reimbursement==='已报销'?'success':'neutral'">{{ e.reimbursement||'未核对' }}</span></td><td><InvoiceStatusTags :entry="e" /></td><td :title="deductionDisplay(e).title"><span v-if="deductionDisplay(e).hasTime">{{ deductionDisplay(e).label }}</span><UiTag v-else :tone="deductionDisplay(e).label==='已抵扣'?'green':'neutral'">{{ deductionDisplay(e).label }}</UiTag></td><td>{{ attachmentKeys.has(e.key)?'已关联':'未关联' }}</td></tr><tr v-if="!paged.length"><td :colspan="invoiceExpenseColumns.length + 7" class="empty">没有符合条件的发票记录，请导入清单或调整筛选。</td></tr></tbody></table></div></div>
-        <footer class="ledger-footer"><span>合计仅统计已有金额；空值以“—”显示。</span><label>每页 <select v-model.number="pageSize" class="field-input"><option :value="20">20</option><option :value="50">50</option><option :value="100">100</option></select></label><button class="btn" :disabled="page <= 1" @click="page--">上一页</button><span>{{ Math.min(page, pageCount) }} / {{ pageCount }}</span><button class="btn" :disabled="page >= pageCount" @click="page++">下一页</button></footer>
+        <div class="ledger-body"><div class="ledger-table-wrap" tabindex="0" aria-label="发票列表，可左右滚动"><table class="ledger-table finance-table"><thead><tr><th class="sticky-action">操作</th><th v-for="[key,label] in invoiceExpenseColumns" :key="key" :class="{numeric:key==='total'}"><button @click="setSort(key)">{{ label }} {{ sortIcon(key) }}</button></th><th>购买方</th><th>复核状态</th><th>报销状态</th><th>发票状态</th><th>抵扣 / 勾选时间</th><th>原件</th></tr></thead><tbody><tr v-for="e in paged" :key="e.key" :class="{active:selectedKey===e.key}"><td class="sticky-action"><input v-model="checkedKeys" type="checkbox" :value="e.key" :aria-label="'选择发票 '+e.number" /><button class="detail-link" @click="editInitially=false;selectedKey=e.key">详情</button><button class="detail-link" @click="editInitially=true;selectedKey=e.key"><AppIcon name="edit" :size="14" /> 编辑</button><button class="detail-link" @click="allocationKey=e.key">分配</button><button class="detail-link delete-link" @click="deleteEntries([e.key])">删除</button></td><td v-for="[key] in invoiceExpenseColumns" :key="key" :class="{numeric:key==='total',number:key==='number'}"><InvoiceTypeTags v-if="key==='type'" :entry="e" /><span v-else-if="key==='project' && isMultiProject(e)" class="multi-project-cell"><MiddleEllipsis :text="projectNames(e) || '尚未指定工地'" :tail="4" class="ledger-short-text" /><small :class="projectAllocationState(e).complete ? 'allocation-complete' : 'allocation-incomplete'">{{ projectAllocationState(e).label }} · {{ (e.projectAllocations || []).length }} 个工地</small></span><MiddleEllipsis v-else-if="['seller','project','payer'].includes(key)" :text="String(e[key] || '—')" :tail="6" :class="key==='seller'?'ledger-company-text':'ledger-short-text'" /><template v-else>{{ key==='total'?money(e[key]):e[key]||'—' }}</template></td><td><MiddleEllipsis :text="e.buyer || '—'" :tail="6" class="ledger-company-text" /><small v-if="['missing','unmatched'].includes(buyerChecker(e))" class="buyer-issue">{{ buyerCheckLabels[buyerChecker(e)] }}</small></td><td><span class="status-pill" :class="invoiceProblems(e).length?'warning':'neutral'">{{ invoiceProblems(e).length?'待补全':e.reviewedAt?'已复核':'待复核' }}</span></td><td><span class="status-pill" :class="e.reimbursement==='已报销'?'success':'neutral'">{{ e.reimbursement||'未核对' }}</span></td><td><InvoiceStatusTags :entry="e" /></td><td :title="deductionDisplay(e).title"><span v-if="deductionDisplay(e).hasTime">{{ deductionDisplay(e).label }}</span><UiTag v-else :tone="deductionDisplay(e).label==='已抵扣'?'green':'neutral'">{{ deductionDisplay(e).label }}</UiTag></td><td>{{ attachmentKeys.has(e.key)?'已关联':'未关联' }}</td></tr><tr v-if="!paged.length"><td :colspan="invoiceExpenseColumns.length + 7" class="empty">没有符合条件的发票记录，请导入清单或调整筛选。</td></tr></tbody></table></div></div>
+        <footer class="ledger-footer"><span>{{ projectFilter ? '已单列本工地分配金额，表格金额和税额仍为整票数据。' : '合计仅统计已有金额；空值以“—”显示。' }}</span><label>每页 <select v-model.number="pageSize" class="field-input"><option :value="20">20</option><option :value="50">50</option><option :value="100">100</option></select></label><button class="btn" :disabled="page <= 1" @click="page--">上一页</button><span>{{ Math.min(page, pageCount) }} / {{ pageCount }}</span><button class="btn" :disabled="page >= pageCount" @click="page++">下一页</button></footer>
         <InvoiceLedgerRecycleBin v-model="trashOpen" :records="invoiceStore.ledgerTrash" :ledger="invoiceStore.ledger" :message="trashNotice" :busy="invoiceStore.purgingTrash" :pending-cleanup="pendingCleanup" @restore="restoreEntries" @purge="purgeEntries" @retry="purgeEntries([])" />
+        <InvoiceProjectAllocationDialog v-if="allocationEntry" :entry="allocationEntry" @close="allocationKey=''" />
         <DialogRoot :open="!!selected" @update:open="value => { if (!value) selectedKey = '' }"><DialogPortal><DialogOverlay class="drawer-overlay" /><DialogContent class="drawer-content"><DialogTitle class="sr-only">发票详情</DialogTitle><InvoiceLedgerDetail v-if="selected" :entry="selected" :edit-initially="editInitially" :version="attachmentVersion" @close="selectedKey = ''" @attachment-change="refreshAttachments" /></DialogContent></DialogPortal></DialogRoot>
   </section>
 </template>
 
 <style scoped>
+.multi-project-cell{display:flex;flex-direction:column;gap:1px}.allocation-complete{color:#16803b}.allocation-incomplete{color:#a15c08}
 .ledger-delete-tools{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 20px;border-bottom:1px solid #e3e9f0;font-size:12px}.ledger-delete-tools label{display:flex;align-items:center;gap:6px}.ledger-table .delete-link{color:#b91c1c}
 .ledger-company-text{width:220px;max-width:220px}.ledger-short-text{width:120px;max-width:120px}
 .ledger-table .buyer-issue{color:#a15c08}

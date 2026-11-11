@@ -6,7 +6,7 @@ import DirectoryRecordsDialog from '../components/DirectoryRecordsDialog.vue';
 import { directory, saveDirectory } from '../lib/expense-directory';
 import { invoiceStore } from '../invoiceStore';
 import { paymentStore } from '../lib/payment-store';
-import { allocationKind } from '../lib/payment-records';
+import { expenseSummary } from '../lib/expense-summary.js';
 import { toast, toastError, toastWarn } from '../lib/toast';
 
 const emit = defineEmits(['inspect-buyers']);
@@ -37,7 +37,7 @@ function rule() {
     toast('对应关系已保存');
   } catch (error) { toastError('保存失败：'+error.message); }
 }
-const summary=computed(()=>{const map=new Map();for(const e of [...Object.values(invoiceStore.ledger),...paymentStore.rows.filter(r=>r.evidenceConfirmed&&!r.duplicateOf&&!r.linkedLedgerKey)]){const kind=allocationKind(e),b=e.buyer||'未归属公司',p=kind==='指定工地'?e.project:kind;const seller=bySeller.value?(e.seller||"未知厂家"):"全部厂家";const k=JSON.stringify([b,p,seller]);const r=map.get(k)||{buyer:b,project:p,seller,total:0,reimbursed:0,count:0};r.total+=Number(e.total)||0;if(e.reimbursement==='已报销')r.reimbursed+=Number(e.total)||0;r.count++;map.set(k,r);}return [...map.values()];});
+const summary = computed(() => expenseSummary([...Object.values(invoiceStore.ledger), ...paymentStore.rows.filter(row => row.evidenceConfirmed && !row.duplicateOf && !row.linkedLedgerKey)], bySeller.value));
 
 </script>
 

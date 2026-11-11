@@ -2,6 +2,7 @@ import { intakeDecision, intakeFingerprint, canEnterLedger, planRecognizedInvoic
 import { transferReceipt, receiptHash } from './lib/receipt-transfer.js';
 import { paymentStore, savePayments } from './lib/payment-store.js';
 import { saveLedgerAttachment, saveLedgerAttachmentIfMissing, appendInvoiceSupplement } from './lib/ledger-attachments.js';
+import { withProjectAllocation, isMultiProject, projectAllocationState } from './lib/invoice-allocation.js';
 import { directory } from './lib/expense-directory.js';
 import { planTrashPurge, persistTrashPurge, readTrashCleanupQueue, cleanupPurgedAttachments } from './lib/ledger-trash-purge.js';
 import { deleteUnusedLedgerAttachments } from './lib/ledger-attachments.js';
@@ -559,12 +560,29 @@ export const invoiceActions = {
       return result;
     } finally { invoiceStore.ledgerTrash = loadLedgerTrash(); }
   },
+  saveProjectAllocation(key, allocation) {
+    const previous = invoiceStore.ledger[key];
+    if (!previous) return { ok: false, message: '未找到台账记录。' };
+    try {
+      const entry = withProjectAllocation(previous, allocation);
+      const next = { ...invoiceStore.ledger, [key]: entry };
+      saveLedger(next);
+      invoiceStore.ledger = next;
+      refreshHistory();
+      return { ok: true };
+    } catch (error) { return { ok: false, message: error.message }; }
+  },
   saveReviewedInvoice(key, changes) {
     const prev = invoiceStore.ledger[key];
     if (!prev) return {ok:false, message:"记录不存在"};
     const allowed = ["paymentDate","service","remark","allocation","date","buyer","seller","type","amount","tax","total","project","purpose","payer","reimburser"];
     const entry = {...prev, ...Object.fromEntries(Object.entries(changes).filter(([k])=>allowed.includes(k)))};
-    const errors = invoiceProblems(entry);
+    if (isMultiProject(prev)) {
+      entry.allocation = prev.allocation;
+      entry.project = '';
+      entry.projectAllocations = prev.projectAllocations;
+    }
+    const errors = [...invoiceProblems(entry), ...(isMultiProject(entry) ? projectAllocationState(entry).errors : [])];
     if (errors.length) return {ok:false, message:errors.join("；")};
     entry.reviewedAt = new Date().toISOString();
     const next = {...invoiceStore.ledger, [key]:entry};
@@ -599,6 +617,9 @@ export const invoiceActions = {
     if (!previous) return { ok: false, message: "未找到台账记录。" };
     const allowed = ["reimbursement", "reimbursementDate", "reimburser", "project", "purpose", "payment", "payer", "tags", "allocation"];
     const patch = Object.fromEntries(Object.entries(changes).filter(([k]) => allowed.includes(k)));
+    if (isMultiProject(previous) && ('project' in patch || 'allocation' in patch)) return { ok: false, message: '请在工地分配中调整多工地归属。' };
+    if (patch.allocation === '多工地分配') return { ok: false, message: '请在工地分配中填写各工地金额。' };
+    if (patch.project) patch.allocation = '指定工地';
     const nextEntry = { ...previous, ...patch };
     if (patch.reimbursement === "已报销" && !nextEntry.reimbursementDate) return { ok: false, message: "请先填写报销日期。" };
     const clearsRequiredField = ["reimburser", "project", "purpose"].some(k => Object.hasOwn(patch, k) && !String(patch[k] || "").trim());

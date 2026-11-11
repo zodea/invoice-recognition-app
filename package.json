@@ -10,7 +10,7 @@
     "preview": "vite preview --port 4173",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "test": "node scripts/selftest.mjs && node scripts/reimbursement-selftest.mjs && node scripts/preview-pan-selftest.mjs && node scripts/invoice-company-selftest.mjs && node scripts/expense-review-selftest.mjs && node scripts/export-document-folders-selftest.mjs && node scripts/invoice-type-tags-selftest.mjs && node scripts/expense-options-selftest.mjs && node scripts/invoice-buyer-check-selftest.mjs && node scripts/deletion-selftest.mjs && node scripts/trash-purge-selftest.mjs && node scripts/intake-selftest.mjs && node scripts/supplier-selftest.mjs",
+    "test": "node scripts/selftest.mjs && node scripts/reimbursement-selftest.mjs && node scripts/preview-pan-selftest.mjs && node scripts/invoice-company-selftest.mjs && node scripts/expense-review-selftest.mjs && node scripts/export-document-folders-selftest.mjs && node scripts/invoice-type-tags-selftest.mjs && node scripts/expense-options-selftest.mjs && node scripts/invoice-buyer-check-selftest.mjs && node scripts/deletion-selftest.mjs && node scripts/trash-purge-selftest.mjs && node scripts/intake-selftest.mjs && node scripts/supplier-selftest.mjs && node scripts/invoice-allocation-selftest.mjs",
     "postinstall": "node scripts/copy-pdf-worker.mjs"
   },
   "dependencies": {
