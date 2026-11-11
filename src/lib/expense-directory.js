@@ -11,6 +11,14 @@ export function restoreArchive(kind, value) {
  if (!directory.deletedArchives.some(r=>r.kind===kind&&r.value===value)) return;
  saveDirectory({...directory,[kind]:[...new Set([...directory[kind],value])],deletedArchives:directory.deletedArchives.filter(r=>r.kind!==kind||r.value!==value)});
 }
+// 仅清理已删除档案备份，票据中的名称和现有档案不受影响。
+export function purgeDeletedArchives(items) {
+ const selected = new Set(items.map(item => JSON.stringify([item.kind, item.value])));
+ const remaining = directory.deletedArchives.filter(item => !selected.has(JSON.stringify([item.kind, item.value])));
+ const changed = directory.deletedArchives.length - remaining.length;
+ if (changed) saveDirectory({ ...directory, deletedArchives: remaining });
+ return changed;
+}
 export function isAllocationRuleActive(rule) { return directory.buyers.includes(rule.buyer) && directory.projects.includes(rule.project); }
 export function suggestAllocation(seller,buyer='') {
  const rules=directory.rules.filter(r=>isAllocationRuleActive(r) && r.seller===seller && (!buyer || r.buyer===buyer));

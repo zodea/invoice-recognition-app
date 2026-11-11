@@ -26,6 +26,21 @@ async function run(mode, operation) {
 
 export const getLedgerAttachment = (key) => run("readonly", store => store.get(key));
 export const listLedgerAttachmentKeys = () => run("readonly", store => store.getAllKeys());
+export async function deleteUnusedLedgerAttachments(keys, isReferenced) {
+  if (!keys.length) return;
+  const db = await openDb();
+  try {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('原件清理中断，可重试'));
+      try {
+        for (const key of new Set(keys)) if (!isReferenced(key)) tx.objectStore(STORE).delete(key);
+      } catch (error) { tx.abort(); reject(error); }
+    });
+  } finally { db.close(); }
+}
 export function saveLedgerAttachment(key, file) {
   if (!key || !file) throw new Error("缺少发票号码或原件");
   return run("readwrite", store => store.put({ key, name: file.name || "发票原件", blob: file, savedAt: new Date().toISOString() }));

@@ -9,7 +9,7 @@ const emit = defineEmits(['answer']);
     <DialogPortal><DialogOverlay class="confirm-overlay" /><DialogContent v-if="request" class="confirm-dialog" role="alertdialog">
       <DialogTitle class="confirm-title">{{ request.title }}</DialogTitle>
       <DialogDescription class="confirm-message">{{ request.message }}</DialogDescription>
-      <footer class="confirm-actions"><button class="btn" @click="emit('answer',false)">取消</button><button class="btn-danger" @click="emit('answer',true)">确认删除</button></footer>
+      <footer class="confirm-actions"><button class="btn" @click="emit('answer',false)">取消</button><button class="btn-danger" @click="emit('answer',true)">{{ request.confirmLabel || '确认删除' }}</button></footer>
     </DialogContent></DialogPortal>
   </DialogRoot>
 </template>

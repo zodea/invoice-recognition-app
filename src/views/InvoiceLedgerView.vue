@@ -12,6 +12,6 @@ defineProps({ initialBuyerCheck: { type: String, default: 'all' } });
 </template>
 
 <style scoped>
-.ledger-page { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; height: 100%; }
+.ledger-page { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; height: 100%; }
 .ledger-page > :first-child { flex: none; }
 </style>

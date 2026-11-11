@@ -3,6 +3,8 @@ import ConfirmAction from './ConfirmAction.vue';
 import { useConfirmation } from '../composables/useConfirmation.js';
 const { confirmation, requestConfirmation, answerConfirmation } = useConfirmation();
 import { computed, ref } from "vue";
+import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
+const expenseImportOpen = ref(false);
 import { invoiceStore, invoiceActions } from "../invoiceStore";
 import { buildCurrentInputInvoiceReportBytes, buildHistoryReportBytes, currentInputReportName, historyReportName, ledgerStats } from "../lib/invoice-ledger";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
@@ -109,7 +111,7 @@ async function clearLedger() {
 <template>
   <ConfirmAction :request="confirmation" @answer="answerConfirmation" />
   <section
-    class="panel p-2.5 transition-colors"
+    class="panel ledger-panel p-2.5 transition-colors"
     :class="dragging ? '!border-brand bg-brand-soft shadow-[0_0_0_2px_rgba(37,99,235,0.16)]' : ''"
     @dragenter.prevent="dragging = true"
     @dragover.prevent="dragging = true"
@@ -118,11 +120,16 @@ async function clearLedger() {
   >
     <input ref="fileRef" class="hidden" type="file" accept=".xlsx,.xls" multiple @change="importReport" />
     <input ref="expenseRef" class="hidden" type="file" accept=".xlsx,.xls" multiple @change="importExpenses" />
-    <div class="flex items-start justify-between gap-2.5">
+    <div class="ledger-heading">
       <div>
         <h2 class="m-0 text-[15px] font-700">历史进项台账</h2>
         <p v-if="!ledgerPage" class="mt-0.5 text-ink-soft text-xs leading-relaxed">拖入或选择税务局进项发票清单，记录官方勾选状态，并核对历史报销。</p>
       </div>
+    <div class="ledger-stats text-ink-soft text-xs">
+      <span><b class="text-ink text-[15px]">{{ stats.total }}</b> 张</span>
+      <span><b class="text-ink text-[15px]">{{ stats.verified }}</b> 已抵税</span>
+      <span><b class="text-ink text-[15px]">{{ stats.printed }}</b> 已打印</span>
+    </div>
     </div>
     <div
       v-if="!ledgerPage || dragging"
@@ -131,21 +138,27 @@ async function clearLedger() {
     >
       {{ dragging ? "松开即可导入进项 Excel" : "可拖拽 .xlsx / .xls 到这里导入" }}
     </div>
-    <div class="flex gap-2.5 flex-wrap my-2.25 text-ink-soft text-xs">
-      <span><b class="text-ink text-[15px]">{{ stats.total }}</b> 张</span>
-      <span><b class="text-ink text-[15px]">{{ stats.verified }}</b> 已抵税</span>
-      <span><b class="text-ink text-[15px]">{{ stats.printed }}</b> 已打印</span>
-    </div>
-    <div class="flex gap-2 flex-wrap">
+    <div class="ledger-panel-actions">
       <button class="btn-primary px-2.5 py-1.75" :disabled="busy" @click="chooseFile">导入进项 Excel</button>
 
       <button v-if="!ledgerPage" class="btn px-2.5 py-1.75" @click="emit('open-ledger')">打开台账页面</button>
+      <button class="btn" @click="expenseImportOpen = true">导入报销记录</button>
       <button class="btn px-2.5 py-1.75" :disabled="!stats.total" @click="reconciliationOpen = true">历史报销核对</button>
       <button class="btn px-2.5 py-1.75" :disabled="busy || !stats.total" @click="exportHistory">导出历史台账</button>
       <button class="btn px-2.5 py-1.75" :disabled="busy || !invoiceStore.invoices.length" @click="exportCurrentInputStatus">导出当前进项状态</button>
       <button class="btn px-2.5 py-1.75 border-[#fecaca] text-[#991b1b] bg-[#fef2f2]" :disabled="busy || !stats.total" @click="clearLedger">清空历史台账</button>
     </div>
     <div class="mt-2 text-ink-soft text-xs" v-if="msg" role="status">{{ msg }}</div>
-    <ExpenseImportReview /><InvoiceReconciliation v-model:open="reconciliationOpen" />
+    <InvoiceReconciliation v-model:open="reconciliationOpen" />
+    <DialogRoot v-model:open="expenseImportOpen"><DialogPortal><DialogOverlay class="expense-overlay" /><DialogContent class="expense-dialog">
+      <header><DialogTitle>导入报销记录</DialogTitle><button class="btn" @click="expenseImportOpen=false">关闭</button></header>
+      <DialogDescription>选择报销表，核对匹配结果后确认导入。</DialogDescription>
+      <ExpenseImportReview standalone />
+    </DialogContent></DialogPortal></DialogRoot>
   </section>
 </template>
+
+<style scoped>
+.ledger-panel{padding:8px 12px}.ledger-heading{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:6px}.ledger-stats{display:flex;gap:12px}.ledger-panel-actions{display:flex;gap:6px;flex-wrap:wrap}.ledger-panel-actions button{min-height:30px;padding:4px 9px;font-size:12px}
+.expense-overlay{position:fixed;inset:0;background:#0f172a66;z-index:60}.expense-dialog{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(1000px,94vw);max-height:84vh;overflow:auto;z-index:61;background:white;border-radius:10px;padding:18px;outline:none}.expense-dialog header{display:flex;align-items:center;justify-content:space-between;gap:12px}.expense-dialog h2{margin:0;font-size:18px}.expense-dialog p{color:#64748b;font-size:12px}
+</style>

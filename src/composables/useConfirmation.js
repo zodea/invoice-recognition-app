@@ -9,9 +9,9 @@ export function useConfirmation() {
     confirmation.value = null;
     resolve?.(accepted);
   }
-  function requestConfirmation(title, message) {
+  function requestConfirmation(title, message, confirmLabel = '确认删除') {
     if (resolveAnswer) return Promise.resolve(false);
-    confirmation.value = { title, message };
+    confirmation.value = { title, message, confirmLabel };
     return new Promise(resolve => { resolveAnswer = resolve; });
   }
   onBeforeUnmount(() => answerConfirmation(false));

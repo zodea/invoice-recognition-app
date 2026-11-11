@@ -63,7 +63,7 @@ assert.equal(cleanupFailure.trash.length,1);
 assert.ok(cleanupFailure.warning);
 
 globalThis.localStorage=storage;
-const {directory,saveDirectory,deleteArchive,restoreArchive,suggestAllocation}=await import('../src/lib/expense-directory.js');
+const {directory,saveDirectory,deleteArchive,restoreArchive,suggestAllocation,purgeDeletedArchives}=await import('../src/lib/expense-directory.js');
 saveDirectory({...directory,buyers:['公司甲'],projects:['工地甲'],rules:[{seller:'厂家甲',buyer:'公司甲',project:'工地甲'}]});
 deleteArchive('buyers','公司甲');
 assert.deepEqual(directory.buyers,[]);
@@ -84,3 +84,24 @@ assert.throws(()=>deleteArchive('buyers','公司甲'));
 assert.deepEqual(directory.buyers,['公司甲']);
 storage.setItem=originalSet;
 console.log('单张/批量删除、持久化恢复、同号冲突、保存失败保护、档案恢复与规则停用测试通过');
+
+// 档案永久删除只移除回收站备份；类型相同/名称相同均需精确匹配。
+saveDirectory({...directory,buyers:['同名档案'],projects:['同名档案'],deletedArchives:[]});
+deleteArchive('buyers','同名档案');
+deleteArchive('projects','同名档案');
+assert.equal(purgeDeletedArchives([{kind:'buyers',value:'同名档案'}]),1);
+assert.equal(directory.deletedArchives.length,1);
+assert.equal(directory.deletedArchives[0].kind,'projects');
+assert.deepEqual(directory.buyers,[]);
+assert.equal(ledger.a.total,100,'永久删除档案不改历史票据');
+const prior=JSON.stringify(directory);
+storage.setItem=()=>{throw Error('持久化失败');};
+assert.throws(()=>purgeDeletedArchives([...directory.deletedArchives]));
+assert.equal(JSON.stringify(directory),prior,'写入失败保留档案备份');
+storage.setItem=originalSet;
+assert.equal(purgeDeletedArchives([...directory.deletedArchives]),1);
+assert.equal(directory.deletedArchives.length,0);
+assert.equal(purgeDeletedArchives([{kind:'buyers',value:'missing'}]),0);
+restoreArchive('projects','同名档案');
+assert.deepEqual(directory.projects,[],'永久删除后不能从回收站恢复');
+console.log('档案永久删除、类型精确匹配、清空与写入失败保护测试通过');

@@ -47,3 +47,6 @@ Thumbs.db
 /发票/
 /送货单/
 public/octest/
+
+# Local release previews (synthetic data only)
+/release-output/

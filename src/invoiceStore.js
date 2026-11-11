@@ -1,4 +1,6 @@
 import { directory } from './lib/expense-directory.js';
+import { planTrashPurge, persistTrashPurge, readTrashCleanupQueue, cleanupPurgedAttachments } from './lib/ledger-trash-purge.js';
+import { deleteUnusedLedgerAttachments } from './lib/ledger-attachments.js';
 import { loadLedgerTrash, readLedgerTrashForChange, moveLedgerToTrash, restoreLedgerFromTrash, persistLedgerTransition } from './lib/ledger-trash.js';
 import { normalizeBuyerName } from './lib/invoice-buyer-check.js';
 import { invoiceProblems } from "./lib/invoice-review.js";
@@ -142,6 +144,7 @@ export const invoiceStore = reactive({
   groupDims: [], // 待优化#3：分目录维度（顺序即嵌套顺序），同时驱动左右两栏分组排序
   ledger: loadLedger(), // 历史发票台账（跨批次查重 + 认证状态），本地持久化
   ledgerTrash: loadLedgerTrash(),
+  purgingTrash: false,
   attachmentSync: null,
   attachmentVersion: 0,
 });
@@ -456,6 +459,20 @@ export const invoiceActions = {
   },
 
   // —— 历史台账 / 认证查重 ——
+  async purgeLedgerTrash(ids) {
+    if (invoiceStore.purgingTrash) throw new Error('正在清理，请稍候');
+    invoiceStore.purgingTrash = true;
+    try {
+      const plan = planTrashPurge(invoiceStore.ledger, readLedgerTrashForChange(), ids);
+      if (plan.changed) persistTrashPurge(plan);
+      invoiceStore.ledgerTrash = readLedgerTrashForChange();
+      let warning = '';
+      try { await cleanupPurgedAttachments(() => invoiceStore.ledger, deleteUnusedLedgerAttachments); }
+      catch (error) { warning = '部分原件副本尚未清理，可点击“重试原件清理”：' + error.message; }
+      invoiceStore.attachmentVersion++;
+      return { changed: plan.changed, pending: readTrashCleanupQueue().length, warning };
+    } finally { invoiceStore.ledgerTrash = loadLedgerTrash(); invoiceStore.purgingTrash = false; }
+  },
   deleteLedgerEntries(keys) {
     const previousTrash = readLedgerTrashForChange();
     const plan = moveLedgerToTrash(invoiceStore.ledger, previousTrash, keys);
