@@ -38,6 +38,10 @@ npm run build
 npm run tauri:build
 ```
 
+安装包唯一存放位置为项目外层的 `../安装包/`（本机：`F:/送货单发票识别助手/安装包`）。当前版本直接放在该目录，旧版和同名副本放在 `历史版本/`，不覆盖历史文件。`release-output/` 只保存界面预览图。
+
+使用 `npm run tauri:build` 时，成功后会自动运行归档步骤，从 Cargo 实际输出目录收集当前版本的 Windows 安装包；校验内容一致后移动到统一目录，避免构建目录再留一份。安装包和归档清单只保存在本机，不提交到仓库。若直接运行了 Tauri CLI，可再运行 `npm run release:collect`；自定义目标架构或输出位置时，使用 `npm run release:collect -- "安装包的完整路径"` 指定生成的文件。
+
 依赖统一使用 `pnpm-lock.yaml`，不再维护第二份 npm 锁定文件。`npm test` 仍是默认测试入口，自动发现 `scripts/*-selftest.mjs` 和 `scripts/selftest.mjs`，每组在独立进程运行；包含台账回归以及共用文件操作、PDF 资源释放检查。开发和测试建议使用 Node.js 24（PDF 模拟测试使用 Node.js 22.15 起提供的模块加载钩子）。
 
 `scripts/e2e-selftest.mjs`、`scripts/test-invoices.mjs`、`scripts/invoice-batch.mjs` 和云识别批测需要本机票据或识别服务，按需手动执行，不包含在默认离线自测中。
@@ -65,7 +69,7 @@ npm run tauri:build
 - 报销导入选择 Excel 或已解压目录，先预览再确认。只更新已有台账匹配项，冲突和未找到的号码不新增发票；路径中的季度或日期区间保存为报销期间，不推算具体报销日期。
 - 付款凭证独立导入垫资清单与图片，截图按日期和金额找候选，人工核对收款方；日期、金额和截图 SHA-256 一致时阻止重复保存。缺少截图或尚未确认的记录在导航及付款页面持续提醒。截图不同仅视为待核对，不自动合并。
 - 付款表含多行材料时保留付款汇总金额并合并费用名称，退款保留原值供核实；付款只有确认截图后才计入汇总。注意避免将已有发票的同一费用再次登记为无票付款。
-- 数据保存在当前应用本机；原始目录和旧安装包不改动。构建产物位于 dist 和 Cargo 配置的 target/release/bundle/nsis（本机为 D:/Cargo/target/release/bundle/nsis）。
+- 数据保存在当前应用本机。构建时的中间安装包来自 Cargo 的 `target/release/bundle/nsis`；最终统一归档到项目外层 `安装包/`，旧版放在 `历史版本/`。
 
 ## 0.3.9 导出目录修复
 

@@ -10,6 +10,8 @@
     "preview": "vite preview --port 4173",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
+    "posttauri:build": "node scripts/collect-installers.mjs",
+    "release:collect": "node scripts/collect-installers.mjs",
     "test": "node scripts/run-selftests.mjs",
     "postinstall": "node scripts/copy-pdf-worker.mjs"
   },
