@@ -14,6 +14,7 @@ import {
 import { invoiceStore, invoiceActions, printUnits, selectInvoice } from "../invoiceStore";
 import { A4_RATIO, perPageCount, planSlots } from "../lib/print-layout";
 import DocumentImage from "./DocumentImage.vue";
+import PreviewMinimap from './PreviewMinimap.vue';
 import { createPreviewPan } from "../lib/preview-pan.js";
 
 const units = computed(() => printUnits());
@@ -33,6 +34,7 @@ function slotStyle(slot) {
 const zoomUnit = ref(null);
 const zoomLevel = ref(1); // 1=适应栏宽；>1 放大并可平移
 const viewport = ref(null);
+const zoomPage = ref(null);
 
 const zoomSrc = computed(() => {
   const u = zoomUnit.value;
@@ -115,7 +117,7 @@ const menuItemCls = "flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cu
             v-model="zoomPct"
             :min="100"
             :max="400"
-            :step="5"
+            :step="1"
             class="relative flex items-center select-none touch-none w-36 h-5"
           >
             <SliderTrack class="relative grow rounded-full bg-line h-1.5">
@@ -130,6 +132,7 @@ const menuItemCls = "flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cu
           · {{ zoomUnit.inv.fields.seller || "未识别销售方" }}
         </span>
       </div>
+      <div class="relative">
       <div
         ref="viewport"
         class="relative h-[64vh] overflow-auto rounded-card border border-line bg-[#eef1f5] touch-none"
@@ -141,24 +144,26 @@ const menuItemCls = "flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cu
         @lostpointercapture="pan.up"
         @wheel="onWheel"
       >
+        <div v-if="zoomSrc" ref="zoomPage" :style="{ width: zoomWidth }" class="relative mx-auto">
         <DocumentImage
-          v-if="zoomSrc"
           :file="zoomUnit.inv.blob"
           :name="zoomUnit.inv.name"
           :page-number="zoomUnit.page + 1"
           :rotation="zoomUnit.inv.rotation"
           :src="zoomSrc"
-          :style="{ width: zoomWidth }"
-          class="block max-w-none select-none mx-auto bg-white"
+          class="block w-full max-w-none select-none bg-white"
           draggable="false"
           alt=""
         />
+        </div>
         <div v-else class="m-auto max-w-100 flex flex-col gap-2 p-12 bg-white rounded-card">
           <strong class="text-lg">{{ zoomUnit.inv.fields.seller || "电子发票 PDF" }}</strong>
           <span class="text-ink-soft">{{ zoomUnit.inv.fields.date || "日期待复核" }}</span>
           <span class="text-ink-soft">{{ zoomUnit.inv.fields.total ? `¥${zoomUnit.inv.fields.total}` : "金额待复核" }}</span>
           <small class="text-ink-soft text-xs break-all">{{ zoomUnit.inv.name }}</small>
         </div>
+      </div>
+      <PreviewMinimap :viewport="viewport" :page="zoomPage" :src="zoomSrc" :enabled="zoomLevel > 1.5" />
       </div>
     </div>
 

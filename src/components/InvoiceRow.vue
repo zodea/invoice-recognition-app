@@ -1,6 +1,5 @@
 <script setup>
 import SupplierMatch from './SupplierMatch.vue';
-import { ref } from "vue";
 import { CheckboxIndicator, CheckboxRoot } from "reka-ui";
 import { invoiceStore, invoiceActions, selectInvoice, groupPath } from "../invoiceStore";
 import { invoiceExportFileName } from "../lib/invoice-export-package";
@@ -12,8 +11,6 @@ import MiddleEllipsis from "./MiddleEllipsis.vue";
 
 defineProps({ item: Object, reimbursementSelected: Boolean });
 const emit = defineEmits(["select-reimbursement"]);
-
-const showText = ref(false);
 
 function syncDate(inv) {
   inv.fields.dateText = inv.fields.date;
@@ -73,13 +70,6 @@ const tagBase = "chip flex-none px-1.75 py-0.5 border";
           </CheckboxRoot>
           打印/汇总
         </label>
-        <button class="btn px-2 py-1 text-xs" :disabled="item.inv.rendering || invoiceStore.busy" @click.stop="invoiceActions.recognizeOne(item.inv)">
-          {{ item.inv.status === "running" ? "识别中" : "识别" }}
-        </button>
-        <button v-if="item.inv.rawText" class="btn px-2 py-1 text-xs" @click.stop="showText = !showText">{{ showText ? "收起文本" : "文本" }}</button>
-        <button class="btn px-2 py-1 text-xs" title="顺时针旋转 90°（影响预览与打印）" @click.stop="invoiceActions.rotateInvoice(item.inv)">
-          ↻ 方向<span v-if="item.inv.rotation" class="text-brand"> {{ item.inv.rotation }}°</span>
-        </button>
         <button class="btn-danger px-2 py-1 text-xs" @click.stop="invoiceActions.removeInvoice(item.inv.id)">移除</button>
       </div>
     </div>
@@ -95,10 +85,6 @@ const tagBase = "chip flex-none px-1.75 py-0.5 border";
         {{ item.inv.history.entry?.reimbursement === '已报销' ? '已报销，请勿重复报销' : '历史台账已记录，' + (item.inv.history.printed ? '已打印' : item.inv.history.verified ? '已抵税' : '有使用记录') }}
       </span>
       <span v-if="item.inv.historyAutoExcluded" class="text-[#b45309]">已按历史记录默认取消勾选，可手动勾选</span>
-    </div>
-
-    <div v-if="showText && item.inv.rawText" class="bg-[#f8fafc] border border-line rounded-md p-2 mb-2">
-      <pre class="m-0 max-h-37.5 overflow-auto whitespace-pre-wrap text-xs">{{ item.inv.rawText }}</pre>
     </div>
 
     <div class="grid grid-cols-4 gap-2 max-md:grid-cols-2" @change="invoiceActions.refreshInvoiceMatches">
