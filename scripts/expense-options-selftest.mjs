@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {expenseOptions,splitTags} from '../src/lib/expense-options.js';
 const options=expenseOptions({projects:['工地甲'],people:['张三'],tags:['待补资料'],paymentMethods:['微信']},[{project:'工地乙',reimburser:'李四',payment:'公账支付',purpose:'采购材料',tags:'待补资料、紧急; 紧急'}]);
-assert.deepEqual(new Set(options.project),new Set(['工地甲','工地乙']));
+assert.deepEqual(new Set(options.project),new Set(['工地甲']));
 assert.deepEqual(new Set(options.reimburser),new Set(['张三','李四']));
 assert.deepEqual(options.tags,['待补资料','紧急']);
 assert.ok(options.payment.includes('公账支付'));

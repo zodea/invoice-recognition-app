@@ -1,14 +1,17 @@
-import { reactive } from "vue";
+import { reactive, watch } from "vue";
 import { renderFileToPages } from "./lib/pdf";
 import { recognizePages } from "./lib/ocr";
 import { parseDoc } from "./lib/parse";
 import { buildTree, buildTreeFromStore, flattenForApply } from "./lib/delivery-tree";
-import { loadSuppliers, matchSupplier, normalizeCompanyName } from "./lib/supplier-db";
+import { loadSuppliers, matchSupplierExact as matchSupplier, normalizeCompanyName } from "./lib/supplier-db";
 import { vlConfigured, vlParseDocument } from "./lib/ocr-vl";
 import { parseVlToDocs } from "./lib/vl-parse";
 import { rotateImageUrl } from "./lib/pdftext";
 import { toastWarn } from "./lib/toast";
 
+import { directory, saveDirectory, deleteArchive } from './lib/expense-directory.js';
+let savedPartitions=[];try{savedPartitions=JSON.parse(localStorage.getItem('deliveryPartitions.v1')||'[]');}catch{}
+function rememberProject(name){if(name&&name!=='默认项目'&&!directory.projects.includes(name))saveDirectory({...directory,projects:[...directory.projects,name]});}
 let seq = 0;
 const uid = (p) => `${p}_${Date.now().toString(36)}_${(seq++).toString(36)}`;
 
@@ -20,7 +23,7 @@ export function makeDoc() {
 }
 
 export const store = reactive({
-  partitions: [{ id: "p_default", name: "默认项目" }],
+  partitions: savedPartitions.length?savedPartitions:[{ id: "p_default", name: "默认项目" }],
   activePartitionId: "all", // 'all' 或某个分区 id（仅用于过滤显示）
   files: [],
   ocrBusy: false,
@@ -28,6 +31,13 @@ export const store = reactive({
   staging: null, // 整理树（导入向导/重新整理）：{ tree, mode: 'import'|'reorg' }，确认才生效
   problemsOpen: false, // 问题弹窗（识别失败/无法读取/公司不一致 等需人工处理的事项）
 });
+
+watch(()=>[...directory.projects], projects=>{
+ for(const name of projects)if(!store.partitions.some(p=>p.name===name))store.partitions.push({id:uid('p'),name,archiveManaged:true});
+ store.partitions=store.partitions.filter(p=>!p.archiveManaged||projects.includes(p.name)||store.files.some(f=>f.partitionId===p.id));
+ if(!store.partitions.length)store.partitions=[{id:'p_default',name:'默认项目'}];
+},{immediate:true,flush:'sync'});
+watch(()=>store.partitions, value=>{try{localStorage.setItem('deliveryPartitions.v1',JSON.stringify(value));}catch(error){toastWarn('工地保存失败：'+error.message);}},{deep:true});
 
 // 汇总当前所有"需要人解决的问题"，问题弹窗和工具栏角标共用。
 export function collectProblems() {
@@ -102,14 +112,15 @@ export const actions = {
   // —— 分区 ——
   addPartition(name) {
     const nm = (name || "").trim() || `项目${store.partitions.length + 1}`;
-    const p = { id: uid("p"), name: nm };
-    store.partitions.push(p);
+    rememberProject(nm);
+    const p = store.partitions.find(p=>p.name===nm) || { id: uid("p"), name: nm };
+    if(!store.partitions.includes(p))store.partitions.push(p);
     store.activePartitionId = p.id;
     return p;
   },
   renamePartition(id, name) {
     const p = store.partitions.find((x) => x.id === id);
-    if (p && name && name.trim()) p.name = name.trim();
+    if (p && name && name.trim()) {const old=p.name,nm=name.trim();if(store.partitions.some(x=>x!==p&&x.name===nm))return; p.name=nm;if(directory.projects.includes(old))saveDirectory({...directory,projects:directory.projects.map(v=>v===old?nm:v)});else rememberProject(nm);}
   },
   removePartition(id) {
     if (store.partitions.length <= 1) return false; // 至少保留一个
@@ -117,7 +128,9 @@ export const actions = {
     if (idx < 0) return false;
     const fallback = store.partitions[idx === 0 ? 1 : 0].id;
     for (const f of store.files) if (f.partitionId === id) f.partitionId = fallback;
+    const removed=store.partitions[idx];
     store.partitions.splice(idx, 1);
+    if(directory.projects.includes(removed.name))deleteArchive("projects",removed.name);
     if (store.activePartitionId === id) store.activePartitionId = "all";
     return true;
   },
@@ -152,8 +165,9 @@ export const actions = {
     const ensurePartition = (name) => {
       const nm = (name || "").trim() || "默认项目";
       if (partByName.has(nm)) return partByName.get(nm);
-      const p = { id: uid("p"), name: nm };
-      store.partitions.push(p);
+      rememberProject(nm);
+      const p = store.partitions.find(p=>p.name===nm) || { id: uid("p"), name: nm };
+      if(!store.partitions.includes(p))store.partitions.push(p);
       partByName.set(nm, p);
       return p;
     };

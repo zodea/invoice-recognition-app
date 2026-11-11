@@ -1,4 +1,5 @@
 <script setup>
+import SupplierMatch from './SupplierMatch.vue';
 import { ref } from "vue";
 import { CheckboxIndicator, CheckboxRoot } from "reka-ui";
 import { invoiceStore, invoiceActions, selectInvoice, groupPath } from "../invoiceStore";
@@ -103,7 +104,7 @@ const tagBase = "chip flex-none px-1.75 py-0.5 border";
     <div class="grid grid-cols-4 gap-2 max-md:grid-cols-2" @change="invoiceActions.refreshInvoiceMatches">
       <label class="field-label">发票号码<input class="field-input" v-model="item.inv.fields.number" /></label>
       <label class="field-label">开票日期<input class="field-input" v-model="item.inv.fields.date" placeholder="2026-03-09" @input="syncDate(item.inv)" /></label>
-      <label class="field-label col-span-2">销售方<input class="field-input" v-model="item.inv.fields.seller" /></label>
+      <label class="field-label col-span-2">销售方<input class="field-input" v-model="item.inv.fields.seller" /><SupplierMatch v-model="item.inv.fields.seller" /></label>
       <label class="field-label col-span-2">购买方<SearchSelect v-model="item.inv.fields.buyer" :options="directory.buyers" label="购买方" placeholder="选择已添加的购买方公司" /></label>
       <label class="field-label">金额<input class="field-input" v-model="item.inv.fields.amount" inputmode="decimal" /></label>
       <label class="field-label">税额<input class="field-input" v-model="item.inv.fields.tax" inputmode="decimal" /></label>

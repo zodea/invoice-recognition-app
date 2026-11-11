@@ -17,14 +17,16 @@ import { downloadBytes } from "../lib/invoice-layout";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 
+import { directory } from '../lib/expense-directory.js';
+import { supplierStore, matchSupplierExact } from '../lib/supplier-db.js';
 const importedObs = ref([]); // 历史 Excel 导入的观测点
 const manualGroups = ref(loadManualGroups());
 const siteFilter = ref(""); // "" = 全部工地汇总
 const tableRef = ref(null);
 const importInput = ref(null);
 
-const siteOptions = computed(() => [{ value: "", label: "全部工地（汇总）" }, ...store.partitions.map((p) => ({ value: p.name, label: p.name }))]);
-const obs = computed(() => [...aggregateItems(store.files, store.partitions), ...importedObs.value]);
+const siteOptions = computed(() => [{ value: "", label: "全部工地（汇总）" }, ...[...new Set([...directory.projects,...store.partitions.map(p=>p.name),...importedObs.value.map(o=>o.site)].filter(Boolean))].map(name=>({value:name,label:name}))]);
+const obs = computed(() => [...aggregateItems(store.files, store.partitions), ...importedObs.value].map(o=>({...o,supplier:matchSupplierExact(supplierStore.list,o.supplier)?.supplier.name||o.supplier})));
 const compare = computed(() => buildPriceCompare(obs.value, { manualGroups: manualGroups.value, site: siteFilter.value }));
 
 function fmtCell(v) {

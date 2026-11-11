@@ -15,15 +15,15 @@ export function intakeDecision(inv, buyers, ledger = {}) {
   if (inv.status !== 'done') return { state: 'unrecognized', label: '待识别', reason: '请先完成识别。' };
   if (inv.otherReceiptConfirmed || receiptType(inv.fields)) return { state: 'receipt', label: '其他票据', reason: '保存到付款凭证，不进入历史进项台账。' };
   const match = createBuyerChecker(buyers)(inv.fields);
-  if (match !== 'matched') return { state: 'review', label: '待二次确认', reason: buyerCheckLabels[match]+'，请核对购买方或标记为其他票据。' };
+  if (match !== 'matched') return { state: 'review', label: '需要核对', reason: buyerCheckLabels[match]+'，请核对购买方或标记为其他票据。' };
   const problems = invoiceProblems(inv.fields);
-  if (problems.length) return { state: 'review', label: '待二次确认', reason: problems.join('；') };
+  if (problems.length) return { state: 'review', label: '需要核对', reason: problems.join('；') };
   const previous = ledger[ledgerKey(inv)];
   if (previous && (historyStatus(ledger, inv).needsReview || ['buyer','seller'].some(key => previous[key] && normalizeBuyerName(previous[key]) !== normalizeBuyerName(inv.fields[key])))) {
     return { state: 'review', label: '同号信息冲突', reason: '同号码历史发票的日期、金额、代码或买卖方不一致，请在历史台账对照原件，不能直接覆盖。' };
   }
   if (inv.savedFingerprint === intakeFingerprint(inv) && previous) return { state: 'saved', label: '已保存到台账', reason: '原件已关联。' };
-  return { state: 'ready', label: '购买方已匹配', reason: '可保存到历史进项台账。' };
+  return { state: 'ready', label: '可直接入账', reason: '购买方已在档案中，号码、日期和金额检查通过，可保存到历史进项台账。' };
 }
 export function canEnterLedger(inv, buyers, ledger = {}) {
   return ['ready', 'saved'].includes(intakeDecision(inv, buyers, ledger).state);

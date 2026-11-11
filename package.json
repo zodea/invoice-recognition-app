@@ -1,7 +1,7 @@
 {
   "name": "songhuodan-ocr-app",
   "private": true,
-  "version": "0.3.14",
+  "version": "0.3.15",
   "type": "module",
   "description": "送货单扫描件识别整理 - 本地 Vue 应用（PaddleOCR.js 识别、分区、同类合并、导出 Excel+PDF）",
   "scripts": {
@@ -10,7 +10,7 @@
     "preview": "vite preview --port 4173",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "test": "node scripts/selftest.mjs && node scripts/reimbursement-selftest.mjs && node scripts/preview-pan-selftest.mjs && node scripts/invoice-company-selftest.mjs && node scripts/expense-review-selftest.mjs && node scripts/export-document-folders-selftest.mjs && node scripts/invoice-type-tags-selftest.mjs && node scripts/expense-options-selftest.mjs && node scripts/invoice-buyer-check-selftest.mjs && node scripts/deletion-selftest.mjs && node scripts/trash-purge-selftest.mjs && node scripts/intake-selftest.mjs",
+    "test": "node scripts/selftest.mjs && node scripts/reimbursement-selftest.mjs && node scripts/preview-pan-selftest.mjs && node scripts/invoice-company-selftest.mjs && node scripts/expense-review-selftest.mjs && node scripts/export-document-folders-selftest.mjs && node scripts/invoice-type-tags-selftest.mjs && node scripts/expense-options-selftest.mjs && node scripts/invoice-buyer-check-selftest.mjs && node scripts/deletion-selftest.mjs && node scripts/trash-purge-selftest.mjs && node scripts/intake-selftest.mjs && node scripts/supplier-selftest.mjs",
     "postinstall": "node scripts/copy-pdf-worker.mjs"
   },
   "dependencies": {

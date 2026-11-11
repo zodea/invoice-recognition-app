@@ -50,3 +50,7 @@ public/octest/
 
 # Local release previews (synthetic data only)
 /release-output/
+
+# App source asset: empty supplier import form, contains no business data
+!src/assets/supplier-import.xlsx
+/outputs/

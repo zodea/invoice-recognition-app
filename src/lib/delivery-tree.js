@@ -9,7 +9,7 @@
 //   5) 归一化后同名的组自动合并（"智道"与"智道(1)"、"兆鑫建 材"）。
 //   6) 工地根目录散文件 → "（待分组）"；文件名命中本工地其它组 → 给"疑似→"建议（不自动移）。
 //   7) 文件名里的日期（2026.5.23 / 2026-05-23）解析为 dateGuess 预填。
-import { matchSupplier, normalizeCompanyName } from "./supplier-db.js";
+import { matchSupplierExact as matchSupplier, normalizeCompanyName } from "./supplier-db.js";
 import { isSupportedFile } from "./upload.js";
 
 let seq = 0;

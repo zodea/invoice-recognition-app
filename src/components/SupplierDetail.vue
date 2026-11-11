@@ -1,6 +1,7 @@
 <script setup>
 import { computed, reactive } from "vue";
 import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
+import { directory } from "../lib/expense-directory.js";
 import { store } from "../store";
 import { aggregateSupplierDelivery, emptyPurchase, emptyPayment, companySearchUrl } from "../lib/supplier-db";
 import { openExternal } from "../lib/open-external";
@@ -76,6 +77,7 @@ const money = (v) => (Number(v) || 0).toFixed(2);
 </script>
 
 <template>
+  <datalist id="supplier-projects"><option v-for="p in directory.projects" :key="p" :value="p" /></datalist>
   <DialogRoot :open="open" @update:open="emit('update:open', $event)">
     <DialogPortal>
       <DialogOverlay class="fixed inset-0 z-50 bg-black/40" />
@@ -128,7 +130,7 @@ const money = (v) => (Number(v) || 0).toFixed(2);
           <h3 class="m-0 mb-2 text-sm font-700">采购记录（手动补记，送货单之外的）</h3>
           <div class="grid grid-cols-8 lt-lg:grid-cols-4 gap-1.5 mb-2">
             <input class="field-input" v-model="draftP.date" placeholder="日期 2026-06-12" />
-            <input class="field-input" v-model="draftP.site" placeholder="工地" />
+            <input class="field-input" list="supplier-projects" v-model="draftP.site" placeholder="工地" />
             <input class="field-input col-span-2" v-model="draftP.item" placeholder="材料/事项" />
             <input class="field-input" v-model="draftP.quantity" @input="recalcDraftTotal" placeholder="数量" inputmode="decimal" />
             <input class="field-input" v-model="draftP.unitPrice" @input="recalcDraftTotal" placeholder="单价" inputmode="decimal" />
@@ -157,7 +159,7 @@ const money = (v) => (Number(v) || 0).toFixed(2);
           <h3 class="m-0 mb-2 text-sm font-700">支付记录</h3>
           <div class="grid grid-cols-6 lt-lg:grid-cols-3 gap-1.5 mb-2">
             <input class="field-input" v-model="draftM.date" placeholder="日期 2026-06-12" />
-            <input class="field-input" v-model="draftM.site" placeholder="工地" />
+            <input class="field-input" list="supplier-projects" v-model="draftM.site" placeholder="工地" />
             <input class="field-input" v-model="draftM.amount" placeholder="金额" inputmode="decimal" />
             <input class="field-input" v-model="draftM.method" placeholder="方式(转账/现金/承兑)" />
             <input class="field-input" v-model="draftM.note" placeholder="备注" />

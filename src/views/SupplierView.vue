@@ -2,7 +2,7 @@
 import { computed, reactive, ref } from "vue";
 import { invoiceStore } from "../invoiceStore";
 import {
-  loadSuppliers,
+  supplierStore,
   saveSuppliers,
   emptySupplier,
   collectFromInvoices,
@@ -18,7 +18,16 @@ import { saveBytesToChosenDir } from "../lib/invoice-export-package";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 import SupplierDetail from "../components/SupplierDetail.vue";
 
-const db = reactive({ list: loadSuppliers() });
+import { directory } from '../lib/expense-directory.js';
+import { withSupplierTemplateOptions } from '../lib/supplier-template.js';
+import SupplierForm from '../components/SupplierForm.vue';
+import ConfirmAction from '../components/ConfirmAction.vue';
+import { useConfirmation } from '../composables/useConfirmation.js';
+import { DialogContent,DialogOverlay,DialogPortal,DialogRoot,DialogTitle,DialogDescription } from 'reka-ui';
+import { SUPPLIER_TYPES } from '../lib/supplier-schema.js';
+const {confirmation,requestConfirmation,answerConfirmation}=useConfirmation();
+const db=supplierStore;
+const typeOpen=ref(false),selectedType=ref(SUPPLIER_TYPES[0]),typeFilter=ref(''),importResult=ref(null);
 const query = ref("");
 const importInput = ref(null);
 
@@ -32,71 +41,20 @@ function persist() {
 
 const filtered = computed(() => {
   const q = normalizeCompanyName(query.value);
-  if (!q) return db.list;
   return db.list.filter((s) => {
+    if(typeFilter.value && (s.type||SUPPLIER_TYPES[0])!==typeFilter.value)return false;
+    if(!q)return true;
     const hay = [s.name, ...(s.aliases || []), s.taxNo, s.contact, s.phone, s.note].map(normalizeCompanyName).join("|");
     return hay.includes(q);
   });
 });
 
-function startAdd() {
-  Object.assign(draft, emptySupplier());
-  draft.aliasesText = "";
-  editingId.value = "__new__";
-}
-function startEdit(s) {
-  Object.assign(draft, JSON.parse(JSON.stringify(s)));
-  draft.aliasesText = (s.aliases || []).join("、");
-  editingId.value = s.id;
-}
-function cancelEdit() {
-  editingId.value = "";
-}
-function commitEdit() {
-  const name = (draft.name || "").trim();
-  if (name.length < 2) {
-    toastWarn("公司全称至少 2 个字。");
-    return;
-  }
-  const aliases = String(draft.aliasesText || "")
-    .split(/[、,，;；/]+/)
-    .map((x) => x.trim())
-    .filter(Boolean);
-  const dup = db.list.find((s) => s.id !== draft.id && normalizeCompanyName(s.name) === normalizeCompanyName(name));
-  if (dup) {
-    toastWarn(`已存在同名分供方：${dup.name}`);
-    return;
-  }
-  const record = {
-    id: draft.id,
-    name,
-    aliases,
-    taxNo: (draft.taxNo || "").trim(),
-    bank: (draft.bank || "").trim(),
-    bankAccount: (draft.bankAccount || "").trim(),
-    contact: (draft.contact || "").trim(),
-    phone: (draft.phone || "").trim(),
-    note: (draft.note || "").trim(),
-    source: draft.source || "manual",
-  };
-  if (editingId.value === "__new__") {
-    db.list.push(record);
-    toast(`已新增分供方：${name}`);
-  } else {
-    const i = db.list.findIndex((s) => s.id === editingId.value);
-    if (i >= 0) db.list.splice(i, 1, record);
-    toast(`已保存：${name}`);
-  }
-  persist();
-  editingId.value = "";
-}
-function remove(s) {
-  if (!window.confirm(`删除分供方「${s.name}」？不影响已导出的文件。`)) return;
-  const i = db.list.findIndex((x) => x.id === s.id);
-  if (i >= 0) db.list.splice(i, 1);
-  persist();
-  toastInfo(`已删除：${s.name}`);
-}
+function startAdd(){typeOpen.value=true;}
+function confirmType(){for(const key of Object.keys(draft))delete draft[key];Object.assign(draft,emptySupplier(),{type:selectedType.value});editingId.value='__new__';typeOpen.value=false;}
+function startEdit(s){for(const key of Object.keys(draft))delete draft[key];Object.assign(draft,emptySupplier(),JSON.parse(JSON.stringify(s)));editingId.value=s.id;}
+function saved(again){editingId.value='';if(again)startAdd();}
+async function remove(s){if(!await requestConfirmation('删除分供方','删除「'+s.name+'」的档案？历史票据仍保留原名称。'))return;try{saveSuppliers(db.list.filter(x=>x.id!==s.id));toastInfo('已删除：'+s.name);}catch(e){toastError(e.message);}}
+async function downloadTemplate(){try{const response=await fetch(new URL('../assets/supplier-import.xlsx',import.meta.url));if(!response.ok)throw new Error('模板读取失败');const bytes=withSupplierTemplateOptions(new Uint8Array(await response.arrayBuffer()),{projects:directory.projects,suppliers:db.list});const name='分供方批量导入模板（下拉选项）.xlsx';const r=await saveBytesToChosenDir(bytes,name);if(r.fallbackDownload)downloadBytes(bytes,name,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');else if(!r.canceled)toast('模板已保存');}catch(e){toastError(e.message);}}
 
 async function jumpSearch(s) {
   try {
@@ -120,8 +78,9 @@ function collectNow() {
     toastWarn("发票页还没有已识别的发票，先去「发票批量打印」识别。");
     return;
   }
-  const r = collectFromInvoices(db.list, done);
-  persist();
+  const next=JSON.parse(JSON.stringify(db.list));
+  const r = collectFromInvoices(next, done);
+  saveSuppliers(next);
   if (r.added || r.updated) toast(`从发票收集完成：新增 ${r.added} 家，补充 ${r.updated} 家。`);
   else toastInfo("没有新的销售方可收集。");
 }
@@ -154,8 +113,10 @@ async function onImportPick(e) {
   }
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const r = importSuppliersWorkbookBytes(db.list, bytes);
-    persist();
+    const next=JSON.parse(JSON.stringify(db.list));
+    const r = importSuppliersWorkbookBytes(next, bytes);
+    saveSuppliers(next);
+    importResult.value=r;
     toast(`导入完成：读取 ${r.imported} 行，新增 ${r.added} 家，补充 ${r.updated} 家。`);
   } catch (err) {
     toastError("导入失败：" + ((err && err.message) || err));
@@ -170,33 +131,21 @@ async function onImportPick(e) {
       <h2 class="m-0 text-[15px] font-700">分供方资料库</h2>
       <span class="text-ink-soft text-xs">共 {{ db.list.length }} 家；供送货单文件夹简称映射、单价对比与对账使用</span>
       <div class="ml-auto flex items-center gap-2 flex-wrap">
+        <select v-model="typeFilter" class="field-input supplier-type-filter" aria-label="分供方类型筛选"><option value="">全部类型</option><option v-for="type in SUPPLIER_TYPES" :key="type">{{ type }}</option></select>
         <input v-model="query" class="field-input w-56 py-1.5" placeholder="搜索 名称/别名/税号/联系人" />
         <button class="btn-primary px-2.75 py-1.5" @click="startAdd">＋ 新增分供方</button>
         <button class="btn px-2.75 py-1.5" @click="collectNow">从已识别发票收集</button>
+        <button class="btn px-2.75 py-1.5" @click="downloadTemplate">下载导入模板</button>
         <button class="btn px-2.75 py-1.5" @click="importInput.click()">导入 Excel</button>
         <button class="btn px-2.75 py-1.5" :disabled="!db.list.length" @click="exportExcel">导出 Excel</button>
         <input ref="importInput" type="file" accept=".xlsx,.xls" hidden @change="onImportPick" />
       </div>
     </div>
 
-    <!-- 新增/编辑表单 -->
-    <div v-if="editingId" class="panel p-3">
-      <h3 class="m-0 mb-2 text-sm font-700">{{ editingId === "__new__" ? "新增分供方" : "编辑分供方" }}</h3>
-      <div class="grid grid-cols-4 lt-lg:grid-cols-2 gap-2.5">
-        <label class="field-label col-span-2">公司全称 *<input class="field-input" v-model="draft.name" placeholder="如：广州市大板东建材有限公司" /></label>
-        <label class="field-label col-span-2">简称/别名（顿号分隔，用于文件夹名对应）<input class="field-input" v-model="draft.aliasesText" placeholder="如：大板东、大板东建材" /></label>
-        <label class="field-label">公司税号<input class="field-input" v-model="draft.taxNo" placeholder="统一社会信用代码" /></label>
-        <label class="field-label">开户行<input class="field-input" v-model="draft.bank" /></label>
-        <label class="field-label">银行账号<input class="field-input" v-model="draft.bankAccount" /></label>
-        <label class="field-label">联系人<input class="field-input" v-model="draft.contact" /></label>
-        <label class="field-label">电话<input class="field-input" v-model="draft.phone" /></label>
-        <label class="field-label col-span-3">备注<input class="field-input" v-model="draft.note" /></label>
-      </div>
-      <div class="mt-2.5 flex gap-2">
-        <button class="btn-primary px-3 py-1.5" @click="commitEdit">保存</button>
-        <button class="btn px-3 py-1.5" @click="cancelEdit">取消</button>
-      </div>
-    </div>
+    <SupplierForm v-if="editingId" :key="draft.id" :record="draft" :is-new="editingId==='__new__'" @close="editingId=''" @saved="saved" />
+    <DialogRoot :open="typeOpen" @update:open="typeOpen=$event"><DialogPortal><DialogOverlay class="supplier-choice-overlay" /><DialogContent class="supplier-choice"><DialogTitle>新建分供方</DialogTitle><DialogDescription>选择分供方类型，填写对应资料。</DialogDescription><label v-for="type in SUPPLIER_TYPES" :key="type"><input v-model="selectedType" type="radio" :value="type" name="supplier-type" />{{ type }}</label><footer><button class="btn" @click="typeOpen=false">取消</button><button class="btn-primary" @click="confirmType">确定</button></footer></DialogContent></DialogPortal></DialogRoot>
+    <DialogRoot :open="!!importResult" @update:open="value=>{if(!value)importResult=null}"><DialogPortal><DialogOverlay class="supplier-choice-overlay" /><DialogContent class="supplier-import-result"><DialogTitle>批量导入结果</DialogTitle><DialogDescription v-if="importResult">成功读取 {{ importResult.imported }} 行，新增 {{ importResult.added }} 家，补充 {{ importResult.updated }} 家。资料和附件可稍后在编辑界面补全。</DialogDescription><ul v-if="importResult?.errors.length"><li v-for="(error,index) in importResult.errors" :key="index">{{ error.sheet }} 第 {{ error.row }} 行 · {{ error.name }}：{{ error.message }}</li></ul><p v-else>没有发现格式错误。</p><button class="btn-primary" @click="importResult=null">知道了</button></DialogContent></DialogPortal></DialogRoot>
+    <ConfirmAction :request="confirmation" @answer="answerConfirmation" />
 
     <!-- 列表：vxe-table，固定表头 + 固定首列(公司全称)/尾列(操作)，超宽超高滚动 -->
     <div class="panel p-2">
@@ -219,8 +168,9 @@ async function onImportPick(e) {
           </template>
         </vxe-column>
         <vxe-column title="简称/别名" min-width="130">
-          <template #default="{ row }">{{ (row.aliases || []).join("、") }}</template>
+          <template #default="{ row }">{{ [row.shortName,...(row.aliases || [])].filter(Boolean).join("、") }}</template>
         </vxe-column>
+        <vxe-column title="类型 / 资料" width="160"><template #default="{ row }">{{ row.type || SUPPLIER_TYPES[0] }}<br /><small class="text-ink-soft">{{ row.status || '待补全' }} · {{ (row.attachments || []).length }} 个附件</small></template></vxe-column>
         <vxe-column field="taxNo" title="税号" width="185" />
         <vxe-column field="bank" title="开户行" min-width="150" />
         <vxe-column field="bankAccount" title="银行账号" width="175" />
@@ -244,3 +194,8 @@ async function onImportPick(e) {
     <SupplierDetail v-model:open="detailOpen" :supplier="detailSupplier" @changed="persist" />
   </div>
 </template>
+
+<style scoped>
+.supplier-type-filter{width:150px!important;min-width:150px}
+.supplier-choice-overlay{position:fixed;inset:0;background:#15263c66;z-index:60}.supplier-choice,.supplier-import-result{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:61;width:min(560px,90vw);max-height:80vh;overflow:auto;background:white;border-radius:10px;padding:26px;outline:none}.supplier-choice h2,.supplier-import-result h2{font-size:21px;margin:0 0 15px}.supplier-choice p,.supplier-import-result p{color:#7c8998;font-size:13px}.supplier-choice label{display:flex;align-items:center;gap:12px;padding:12px 4px}.supplier-choice input{width:18px;height:18px;accent-color:#1769cb}.supplier-choice footer{display:flex;justify-content:flex-end;gap:12px;border-top:1px solid #e5eaf0;margin-top:20px;padding-top:16px}.supplier-import-result li{margin:10px 0;color:#a34e11;line-height:1.7}
+</style>

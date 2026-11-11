@@ -10,7 +10,7 @@ import { allocationKind } from '../lib/payment-records';
 import { toast, toastError, toastWarn } from '../lib/toast';
 
 const emit = defineEmits(['inspect-buyers']);
-const archiveKinds = { buyers: '购买方公司', projects: '工地', people: '报销人', purposes: '常用用途', tags: '自定义标签', paymentMethods: '付款方式' };
+const archiveKinds = { buyers: '购买方公司', projects: '工地', allocations: '费用归属', people: '报销人', purposes: '常用用途', tags: '自定义标签', paymentMethods: '付款方式' };
 const bySeller = ref(false);
 const name = ref(''), kind = ref('buyers'), seller = ref(''), buyer = ref(''), project = ref('');
 const recordsOpen = ref(false), recordsMode = ref('archives');

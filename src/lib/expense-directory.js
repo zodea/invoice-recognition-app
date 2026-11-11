@@ -1,7 +1,8 @@
 import { reactive } from 'vue';
+import { normalizeCompanyName, matchSupplierExact, supplierStore } from './supplier-db.js';
 const key='expenseDirectory.v1';
 let saved={}; try { saved=JSON.parse(localStorage.getItem(key)||'{}'); } catch {}
-export const directory=reactive({buyers:[],projects:[],people:[],tags:[],purposes:[],paymentMethods:["微信","支付宝","银行转账","现金","其他"],rules:[],deletedArchives:[],...saved});
+export const directory=reactive({buyers:[],projects:[],allocations:[],people:[],tags:[],purposes:[],paymentMethods:["微信","支付宝","银行转账","现金","其他"],rules:[],deletedArchives:[],...saved});
 export function saveDirectory(next) { localStorage.setItem(key,JSON.stringify(next)); Object.assign(directory,next); }
 export function deleteArchive(kind, value) {
  if (!Array.isArray(directory[kind]) || !directory[kind].includes(value)) return;
@@ -21,6 +22,6 @@ export function purgeDeletedArchives(items) {
 }
 export function isAllocationRuleActive(rule) { return directory.buyers.includes(rule.buyer) && directory.projects.includes(rule.project); }
 export function suggestAllocation(seller,buyer='') {
- const rules=directory.rules.filter(r=>isAllocationRuleActive(r) && r.seller===seller && (!buyer || r.buyer===buyer));
+ const rules=directory.rules.filter(r=>isAllocationRuleActive(r) && (normalizeCompanyName(r.seller)===normalizeCompanyName(seller) || (matchSupplierExact(supplierStore.list,r.seller)?.supplier.id && matchSupplierExact(supplierStore.list,r.seller)?.supplier.id===matchSupplierExact(supplierStore.list,seller)?.supplier.id)) && (!buyer || normalizeCompanyName(r.buyer)===normalizeCompanyName(buyer)));
  return rules.length===1 ? rules[0] : null;
 }
