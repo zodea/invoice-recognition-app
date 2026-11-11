@@ -12,6 +12,7 @@ import {
   normalizeCompanyName,
 } from "../lib/supplier-db";
 import { openExternal } from "../lib/open-external";
+import MiddleEllipsis from "../components/MiddleEllipsis.vue";
 import { downloadBytes } from "../lib/invoice-layout";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
@@ -212,8 +213,8 @@ async function onImportPick(e) {
         <vxe-column type="seq" title="#" width="52" fixed="left" />
         <vxe-column field="name" title="公司全称" min-width="230" fixed="left">
           <template #default="{ row }">
-            <button class="border-none bg-transparent p-0 text-brand font-600 cursor-pointer hover:underline text-left" :title="'查看合作工地/材料单价/采购支付记录'" @click="openDetail(row)">
-              {{ row.name }}
+            <button class="border-none bg-transparent p-0 text-brand font-600 cursor-pointer hover:underline text-left" style="max-width: 100%" @click="openDetail(row)">
+              <MiddleEllipsis :text="row.name" />
             </button>
           </template>
         </vxe-column>

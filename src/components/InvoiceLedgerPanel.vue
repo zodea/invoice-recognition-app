@@ -1,9 +1,13 @@
 <script setup>
+import ConfirmAction from './ConfirmAction.vue';
+import { useConfirmation } from '../composables/useConfirmation.js';
+const { confirmation, requestConfirmation, answerConfirmation } = useConfirmation();
 import { computed, ref } from "vue";
 import { invoiceStore, invoiceActions } from "../invoiceStore";
 import { buildCurrentInputInvoiceReportBytes, buildHistoryReportBytes, currentInputReportName, historyReportName, ledgerStats } from "../lib/invoice-ledger";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
 import { downloadBytes } from "../lib/invoice-layout";
+import ExpenseImportReview from "./ExpenseImportReview.vue";
 import InvoiceReconciliation from "./InvoiceReconciliation.vue";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 
@@ -12,6 +16,7 @@ const emit = defineEmits(["open-ledger"]);
 const reconciliationOpen = ref(false);
 
 const fileRef = ref(null);
+const expenseRef = ref(null);
 const busy = ref(false);
 const dragging = ref(false);
 const msg = ref("");
@@ -69,23 +74,40 @@ async function importReport(e) {
   e.target.value = "";
   await importLedgerFiles(files);
 }
+async function importExpenses(e) {
+  const files = Array.from(e.target.files || []);
+  e.target.value = "";
+  busy.value = true;
+  let added = 0, updated = 0, conflicts = 0, skipped = 0, failed = 0;
+  try {
+    for (const file of files) {
+      msg.value = `正在读取：${file.name}`;
+      try { const r = await invoiceActions.importExpenseReport(file); added += r.added; updated += r.updated; conflicts += r.conflicts; skipped += r.skipped; }
+      catch (err) { failed++; console.error(file.name, err); }
+    }
+    const result = `报销表导入：新增 ${added} 条，补充 ${updated} 条；${conflicts} 条冲突、${skipped} 条号码不完整需核对${failed ? `，${failed} 个文件读取失败` : ""}。`;
+    if (conflicts || skipped || failed) toastWarn(result); else toast(result);
+    msg.value = result;
+  } finally { busy.value = false; }
+}
 async function onDrop(e) {
   dragging.value = false;
   if (!busy.value) await importLedgerFiles(e.dataTransfer?.files);
 }
 
-function clearLedger() {
+async function clearLedger() {
   if (!stats.value.total) return;
-  const ok = window.confirm(
-    `确认清空历史进项台账吗？\n\n当前共有 ${stats.value.total} 张历史记录。清空后，已认证/已打印状态会被删除；如果是误上传了错误 Excel，可以清空后重新导入正确文件。`
+  const ok = await requestConfirmation('清空历史台账',
+    `确认清空历史进项台账吗？\n\n当前共有 ${stats.value.total} 张历史记录。这些记录将移入回收站，暂不参与汇总和查重；原件保留，可在发票列表的回收站中恢复。`
   );
   if (!ok) { toastInfo("已取消清空。"); return; }
-  invoiceActions.clearLedger();
-  toast("已清空历史进项台账，可以重新导入正确的进项 Excel。");
+  try { invoiceActions.clearLedger(); toast(invoiceStore.msg); }
+  catch (error) { toastError("清空失败，原记录仍保留：" + error.message); }
 }
 </script>
 
 <template>
+  <ConfirmAction :request="confirmation" @answer="answerConfirmation" />
   <section
     class="panel p-2.5 transition-colors"
     :class="dragging ? '!border-brand bg-brand-soft shadow-[0_0_0_2px_rgba(37,99,235,0.16)]' : ''"
@@ -95,6 +117,7 @@ function clearLedger() {
     @drop.prevent="onDrop"
   >
     <input ref="fileRef" class="hidden" type="file" accept=".xlsx,.xls" multiple @change="importReport" />
+    <input ref="expenseRef" class="hidden" type="file" accept=".xlsx,.xls" multiple @change="importExpenses" />
     <div class="flex items-start justify-between gap-2.5">
       <div>
         <h2 class="m-0 text-[15px] font-700">历史进项台账</h2>
@@ -115,13 +138,14 @@ function clearLedger() {
     </div>
     <div class="flex gap-2 flex-wrap">
       <button class="btn-primary px-2.5 py-1.75" :disabled="busy" @click="chooseFile">导入进项 Excel</button>
+
       <button v-if="!ledgerPage" class="btn px-2.5 py-1.75" @click="emit('open-ledger')">打开台账页面</button>
       <button class="btn px-2.5 py-1.75" :disabled="!stats.total" @click="reconciliationOpen = true">历史报销核对</button>
       <button class="btn px-2.5 py-1.75" :disabled="busy || !stats.total" @click="exportHistory">导出历史台账</button>
       <button class="btn px-2.5 py-1.75" :disabled="busy || !invoiceStore.invoices.length" @click="exportCurrentInputStatus">导出当前进项状态</button>
       <button class="btn px-2.5 py-1.75 border-[#fecaca] text-[#991b1b] bg-[#fef2f2]" :disabled="busy || !stats.total" @click="clearLedger">清空历史台账</button>
     </div>
-    <div class="mt-2 text-ink-soft text-xs" v-if="busy && msg">{{ msg }}</div>
-    <InvoiceReconciliation v-model:open="reconciliationOpen" />
+    <div class="mt-2 text-ink-soft text-xs" v-if="msg" role="status">{{ msg }}</div>
+    <ExpenseImportReview /><InvoiceReconciliation v-model:open="reconciliationOpen" />
   </section>
 </template>

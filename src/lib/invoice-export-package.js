@@ -1,3 +1,4 @@
+import { standaloneDocumentType } from "./document-kind.js";
 const ILLEGAL_FILE_CHARS = /[\x00-\x1f\\/:*?"<>|]/g;
 
 function valueOrFallback(value, fallback) {
@@ -97,6 +98,8 @@ export const GROUP_DIMENSIONS = [
 
 // 按所选维度(保持传入顺序)返回该发票的嵌套文件夹路径数组
 export function invoiceFolderParts(inv, dims = []) {
+  const standaloneType = standaloneDocumentType(inv?.fields);
+  if (standaloneType) return [standaloneType];
   const parts = [];
   for (const key of dims) {
     const fn = DIMENSION_PART[key];

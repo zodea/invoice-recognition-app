@@ -1,12 +1,21 @@
 <script setup>
+import SearchSelect from "./SearchSelect.vue";
+import SearchTags from "./SearchTags.vue";
+import { useExpenseOptions } from "../composables/useExpenseOptions";
+const expenseChoices = useExpenseOptions();
+import InvoiceTypeTags from "./InvoiceTypeTags.vue";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { invoiceActions } from "../invoiceStore";
 import { deductionStatus, missingReimbursementFields, redInvoiceStatus } from "../lib/invoice-ledger";
 import { getLedgerAttachment, saveLedgerAttachment } from "../lib/ledger-attachments";
 import { renderPdfPages } from "../lib/pdftext";
 
-const props = defineProps({ entry: { type: Object, required: true }, version: { type: Number, default: 0 } });
+import InvoiceReviewEditor from "./InvoiceReviewEditor.vue";
+import { invoiceProblems } from "../lib/invoice-review";
+const editing = ref(false);
+const props = defineProps({ entry: { type: Object, required: true }, version: { type: Number, default: 0 }, editInitially: Boolean });
 const emit = defineEmits(["close", "attachment-change"]);
+watch(() => props.entry.key, () => { editing.value = props.editInitially; }, { immediate: true });
 const fileInput = ref(null);
 const attachment = ref(null);
 const images = ref([]);
@@ -54,6 +63,9 @@ async function attach(event) {
   try { await saveLedgerAttachment(key, file); emit("attachment-change"); }
   catch (err) { message.value = `保存失败：${err.message || err}`; }
 }
+function updateValue(key, value) {
+  try { const r=invoiceActions.updateReconciliation(props.entry.key,{[key]:value});formMessage.value=r.ok?"":r.message; } catch(error) { formMessage.value="保存失败："+error.message; }
+}
 function update(key, event) {
   try {
     const result = invoiceActions.updateReconciliation(props.entry.key, { [key]: event.target.value });
@@ -75,14 +87,14 @@ function update(key, event) {
           <div v-for="(url, index) in images" :key="url" class="preview-page" :style="{ width: `${zoom}%` }"><img :src="url" :alt="`发票原件第 ${index + 1} 页`" /></div>
           <p v-if="isPdf && images.length === 20" class="preview-note">预览最多显示前 20 页。</p>
         </div>
-        <div class="preview-foot">原件保存在本机；手动关联前请核对发票号码。</div>
+
       </section>
       <aside class="detail-scroll" aria-label="票面和报销信息" tabindex="0">
         <div class="detail-status"><span :class="{ deducted: deductionStatus(entry) === '已抵税' }">抵税：{{ deductionStatus(entry) }}</span><span>报销：{{ entry.reimbursement || '未核对' }}</span><span v-if="redInvoiceStatus(entry)" class="red-tag">{{ redInvoiceStatus(entry) }}</span></div>
-        <p class="section-note">抵税与个人报销分别记录，互不影响。</p>
-        <h3>票面信息</h3>
+
+        <p v-if="invoiceProblems(entry).length" class="form-notice">待复核：{{ invoiceProblems(entry).join("、") }}</p><button class="btn-primary" @click="editing = true">编辑 / 复核发票</button><InvoiceReviewEditor v-if="editing" :entry="entry" @close="editing=false" /><p v-if="entry.reviewedAt">已人工复核</p><p v-if="entry.reimbursementPeriod">报销期间：{{ entry.reimbursementPeriod }}（具体日期以原记录为准）</p><h3>票面信息</h3>
         <dl class="detail-grid">
-          <div><dt>开票日期</dt><dd>{{ entry.date || '—' }}</dd></div><div><dt>票种</dt><dd>{{ entry.type || '—' }}</dd></div>
+          <div><dt>开票日期</dt><dd>{{ entry.date || '—' }}</dd></div><div><dt>票种</dt><dd><InvoiceTypeTags :entry="entry" /></dd></div>
           <div class="wide"><dt>销售方</dt><dd>{{ entry.seller || '—' }}</dd></div><div class="wide"><dt>购买方</dt><dd>{{ entry.buyer || '—' }}</dd></div>
           <div><dt>金额</dt><dd>{{ money(entry.amount) }}</dd></div><div><dt>税额</dt><dd>{{ money(entry.tax) }}</dd></div>
           <div><dt>价税合计</dt><dd>{{ money(entry.total) }}</dd></div><div><dt>有效抵扣税额</dt><dd>{{ money(entry.validTax) }}</dd></div>
@@ -96,10 +108,12 @@ function update(key, event) {
           <div class="detail-total">价税合计 <strong>{{ money(detailTotals.total) }}</strong></div>
         </template>
         <h3>个人报销</h3>
-        <p class="section-note">记录个人向公司报账的情况。标记已报销前请填写报销人、工地和用途。</p>
+
+        <label>付款账户 / 付款人<input class="field-input" :value="entry.payer || ''" placeholder="付款账户或付款人" @change="update('payer', $event)" /></label>
+        <label>报销日期<input class="field-input" type="date" :value="entry.reimbursementDate || ''" @change="update('reimbursementDate', $event)" /></label>
         <p v-if="entry.reimbursement === '已报销' && missing.length" class="form-notice">这条已有报销记录还缺少：{{ missing.join('、') }}，请补充。</p>
         <p v-if="formMessage" class="form-notice" role="status">{{ formMessage }}</p>
-        <div class="detail-fields"><label>报销人<input class="field-input" :value="entry.reimburser || ''" placeholder="谁报销" @change="update('reimburser', $event)" /></label><label>工地<input class="field-input" :value="entry.project || ''" placeholder="工地或项目名称" @change="update('project', $event)" /></label><label class="wide">用途<input class="field-input" :value="entry.purpose || ''" placeholder="这笔费用的用途" @change="update('purpose', $event)" /></label><label>报销状态<select class="field-input" :value="entry.reimbursement || '未核对'" @change="update('reimbursement', $event)"><option>未核对</option><option>已报销</option><option>未报销</option></select></label><label>支付方式<input class="field-input" :value="entry.payment || ''" @change="update('payment', $event)" /></label><label class="wide">标签<input class="field-input" :value="entry.tags || ''" @change="update('tags', $event)" /></label></div>
+        <div class="detail-fields"><label>报销人<SearchSelect :model-value="entry.reimburser || ''" :options="expenseChoices.reimburser" label="报销人"  @update:model-value="updateValue('reimburser', $event)" /></label><label>工地<SearchSelect :model-value="entry.project || ''" :options="expenseChoices.project" label="工地"  @update:model-value="updateValue('project', $event)" /></label><label class="wide">用途<SearchSelect :model-value="entry.purpose || ''" :options="expenseChoices.purpose" label="用途" allow-custom @update:model-value="updateValue('purpose', $event)" /></label><label>报销状态<select class="field-input" :value="entry.reimbursement || '未核对'" @change="update('reimbursement', $event)"><option>未核对</option><option>已报销</option><option>未报销</option></select></label><label>付款方式<SearchSelect :model-value="entry.payment || ''" :options="expenseChoices.payment" label="付款方式"  @update:model-value="updateValue('payment', $event)" /></label><label class="wide">自定义标签<SearchTags :model-value="entry.tags || ''" :options="expenseChoices.tags" @update:model-value="updateValue('tags', $event)" /></label></div>
       </aside>
     </div>
   </section>

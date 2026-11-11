@@ -55,6 +55,20 @@ export function isDuplicateInvoice(candidate, original) {
   return invoiceContentFingerprint(candidate) === invoiceContentFingerprint(original);
 }
 
+// 只有号码完整且票面内容一致时才自动移除；其余疑似重复仍保留供人工核对。
+export function confirmedDuplicateInvoices(invoices) {
+  const originals = [];
+  const duplicates = [];
+  for (const inv of invoices) {
+    const number = invoiceNumber(inv);
+    if (inv.status !== "done" || !/^\d{18,25}$/.test(number)) continue;
+    const original = originals.find((item) => invoiceNumber(item) === number && isDuplicateInvoice(inv, item));
+    if (original) duplicates.push(inv);
+    else originals.push(inv);
+  }
+  return duplicates;
+}
+
 export function markInvoiceDuplicates(invoices) {
   const originals = [];
   let count = 0;

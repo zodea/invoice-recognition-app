@@ -2,9 +2,10 @@
 import { computed, ref } from "vue";
 import { CheckboxIndicator, CheckboxRoot } from "reka-ui";
 import { store, actions, makeItem, partitionName } from "../store";
-import { appSettings } from "../lib/app-settings";
+import { appSettings, saveAppSettings } from "../lib/app-settings";
 import FieldsTable from "./FieldsTable.vue";
 import HoverZoom from "./HoverZoom.vue";
+import MiddleEllipsis from "./MiddleEllipsis.vue";
 
 const props = defineProps({ file: Object });
 const showText = ref(false);
@@ -34,6 +35,7 @@ function useCandidate(name) {
   if (empty) empty.name = name;
   else d.items.push({ ...makeItem(), name });
 }
+function toggleHoverZoom() { appSettings.hoverZoom = !appSettings.hoverZoom; saveAppSettings(); }
 
 const fieldInput = "w-full min-w-0 border border-line-strong rounded-md px-2.5 py-1.5 font-inherit bg-white text-ink";
 </script>
@@ -75,6 +77,7 @@ const fieldInput = "w-full min-w-0 border border-line-strong rounded-md px-2.5 p
         </template>
 
         <div class="mt-2 text-xs text-ink-soft leading-relaxed">
+          <button class="btn px-2 py-1 text-xs mb-2" type="button" @click="toggleHoverZoom">悬停放大：{{ appSettings.hoverZoom ? '开' : '关' }}</button>
           <div>{{ partitionName(file.partitionId) }}</div>
           <div>{{ docCount }} 张单据，{{ itemCount }} 行材料</div>
           <div v-if="file.pages.length > 1">{{ file.pages.length }} 页扫描</div>
@@ -84,7 +87,7 @@ const fieldInput = "w-full min-w-0 border border-line-strong rounded-md px-2.5 p
       <section class="min-w-0 p-3">
         <header class="flex items-start gap-3 border-b border-line pb-2.5">
           <div class="min-w-0 flex-1">
-            <h3 class="m-0 text-base font-700 truncate" :title="file.name">{{ file.name }}</h3>
+            <h3 class="m-0 min-w-0 text-base font-700"><MiddleEllipsis :text="file.name" /></h3>
             <div class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-ink-soft">
               <span v-if="file.companySource === 'ocr'" class="chip bg-[#e0f2fe] text-[#0369a1]">公司来自识别</span>
               <span v-else-if="file.companySource === 'folder'" class="chip bg-[#f1f5f9] text-[#475569]">公司来自文件夹</span>

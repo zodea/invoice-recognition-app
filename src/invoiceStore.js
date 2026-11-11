@@ -1,13 +1,21 @@
+import { directory } from './lib/expense-directory.js';
+import { loadLedgerTrash, readLedgerTrashForChange, moveLedgerToTrash, restoreLedgerFromTrash, persistLedgerTransition } from './lib/ledger-trash.js';
+import { normalizeBuyerName } from './lib/invoice-buyer-check.js';
+import { invoiceProblems } from "./lib/invoice-review.js";
 import { reactive } from "vue";
 import { PDFDocument } from "pdf-lib";
 import { renderFileToPages, isPdf } from "./lib/pdf";
 import { extractPdfText, renderPdfPages, rotateImageUrl, imgNaturalSize } from "./lib/pdftext";
 import { recognizePages } from "./lib/ocr";
 import { parseInvoice, isProbablyInvoiceText } from "./lib/invoice-parse";
+import { applyParsedInvoiceFields } from "./lib/invoice-fields";
 import { applyInvoiceFilenameFallback } from "./lib/invoice-filename";
-import { markInvoiceDuplicates } from "./lib/invoice-dedupe";
+import { confirmedDuplicateInvoices, markInvoiceDuplicates } from "./lib/invoice-dedupe";
 import { invoiceFolderParts } from "./lib/invoice-export-package";
 import { loadLedger, saveLedger, recordInvoices, markVerified, parseVerifiedNumbers, historyStatus, importInputInvoiceWorkbookBytes, markPrintedInvoices, shouldDefaultExcludeByHistory, missingReimbursementFields } from "./lib/invoice-ledger";
+import { importExpenseWorkbook } from "./lib/expense-import";
+import { markReimbursedBatch, updateCurrentReimbursements, setInvoiceExpenseTag } from "./lib/invoice-ledger";
+import { inferExpenseTag } from "./lib/invoice-tags";
 import { perPageCount } from "./lib/print-layout.js";
 import { syncLedgerMatches } from "./lib/ledger-matching.js";
 
@@ -81,6 +89,8 @@ async function renderInvoicePreview(inv) {
   } catch (e) {
     inv.renderedPages = [];
     inv.previewStatus = "error";
+  } finally {
+    if (inv.removed) revokeInvoiceUrls(inv);
   }
 }
 function queuePreviewRender(inv) {
@@ -95,7 +105,7 @@ async function processPreviewQueue() {
   try {
     while (previewRenderQueue.length) {
       const batch = previewRenderQueue.splice(0, 3);
-      await Promise.all(batch.map((inv) => renderInvoicePreview(inv)));
+      await Promise.all(batch.filter((inv) => !inv.removed).map((inv) => renderInvoicePreview(inv)));
       await new Promise((r) => setTimeout(r, 80));
     }
   } finally {
@@ -131,6 +141,7 @@ export const invoiceStore = reactive({
   docTypeFilter: "全部",
   groupDims: [], // 待优化#3：分目录维度（顺序即嵌套顺序），同时驱动左右两栏分组排序
   ledger: loadLedger(), // 历史发票台账（跨批次查重 + 认证状态），本地持久化
+  ledgerTrash: loadLedgerTrash(),
   attachmentSync: null,
   attachmentVersion: 0,
 });
@@ -162,18 +173,13 @@ function refreshHistory() {
 }
 
 // 只填空字段，保留人工编辑
-function applyParsed(fields, parsed) {
-  for (const k of Object.keys(parsed)) {
-    if ((fields[k] === "" || fields[k] == null) && parsed[k] !== "" && parsed[k] != null) {
-      fields[k] = parsed[k];
-    }
-  }
-}
+const applyParsed = applyParsedInvoiceFields;
 
 function applyFilenameFallback(inv) {
   const { filled } = applyInvoiceFilenameFallback(inv.fields, inv.name);
   if (filled.length) {
-    inv.systemNote = inv.systemNote || "已按文件名补录，需复核";
+    const note = "已按文件名补录，需复核";
+    if (!String(inv.systemNote || "").includes(note)) inv.systemNote = inv.systemNote ? `${inv.systemNote}；${note}` : note;
     return true;
   }
   return false;
@@ -273,6 +279,7 @@ export const invoiceActions = {
   removeInvoice(id) {
     const i = invoiceStore.invoices.findIndex((x) => x.id === id);
     if (i >= 0) {
+      invoiceStore.invoices[i].removed = true;
       revokeInvoiceUrls(invoiceStore.invoices[i]); // 回收预览图对象 URL，防内存泄漏
       invoiceStore.invoices.splice(i, 1);
     }
@@ -280,7 +287,7 @@ export const invoiceActions = {
   },
 
   clearAll() {
-    invoiceStore.invoices.forEach(revokeInvoiceUrls); // 回收全部预览图对象 URL
+    invoiceStore.invoices.forEach((inv) => { inv.removed = true; revokeInvoiceUrls(inv); });
     invoiceStore.invoices.splice(0);
     invoiceStore.selectedId = "";
     invoiceStore.buyerFilter = "全部";
@@ -289,6 +296,7 @@ export const invoiceActions = {
   },
 
   toggleInclude(inv) {
+    if (!inv.include && inv.history?.entry?.reimbursement === "已报销") return;
     inv.include = !inv.include;
     inv.includeTouched = true;
   },
@@ -296,12 +304,14 @@ export const invoiceActions = {
   // 打印勾选批量操作（作用于当前筛选后可见的发票）
   setIncludeAll(list, value) {
     for (const inv of list) {
+      if (value && inv.history?.entry?.reimbursement === "已报销") continue;
       inv.include = value;
       inv.includeTouched = true;
     }
   },
   invertInclude(list) {
     for (const inv of list) {
+      if (!inv.include && inv.history?.entry?.reimbursement === "已报销") continue;
       inv.include = !inv.include;
       inv.includeTouched = true;
     }
@@ -337,6 +347,13 @@ export const invoiceActions = {
     return markInvoiceDuplicates(invoiceStore.invoices);
   },
 
+  removeConfirmedDuplicates() {
+    const duplicates = confirmedDuplicateInvoices(invoiceStore.invoices);
+    for (const inv of duplicates) invoiceActions.removeInvoice(inv.id);
+    invoiceActions.refreshDuplicates();
+    return duplicates.length;
+  },
+
   async recognizeOne(inv, { skipDedupe = false } = {}) {
     // 等待文件读取（抽图/抽文字探测）完成，避免点早了被直接跳过（点"全部识别"会静默漏掉）
     let waited = 0;
@@ -366,7 +383,7 @@ export const invoiceActions = {
           // 文字层可用：直接解析（最准最快）
           inv.isTextPdf = true;
           inv.rawText = text;
-          applyParsed(inv.fields, parseInvoice(text));
+          applyParsed(inv.fields, parseInvoice(text), text);
         } else {
           // 文字层缺失(扫描件) 或 被字体加密成乱码(电子票) → 渲染整页转 OCR。
           // 加密票虽抽不到文字，但渲染出来视觉正常，OCR 能读出真实文字。
@@ -384,7 +401,7 @@ export const invoiceActions = {
           }
           if (ocrText.trim()) {
             inv.rawText = ocrText;
-            applyParsed(inv.fields, parseInvoice(ocrText));
+            applyParsed(inv.fields, parseInvoice(ocrText), ocrText);
             inv.systemNote = inv.systemNote || "OCR 识别，请重点核对";
           }
           // 无论 OCR 成否，最后都会执行下方 applyFilenameFallback 补齐日期/金额等空字段
@@ -393,16 +410,23 @@ export const invoiceActions = {
         invoiceStore.msg = "OCR 识别发票图片…";
         const lines = await recognizePages(inv.pages, (m) => (invoiceStore.msg = m));
         inv.rawText = lines.join("\n");
-        applyParsed(inv.fields, parseInvoice(inv.rawText));
+        applyParsed(inv.fields, parseInvoice(inv.rawText), inv.rawText);
+        if (inv.fields.docType === "医疗票据") inv.systemNote = inv.systemNote || "医疗票据 OCR 识别，请重点核对";
       }
       applyFilenameFallback(inv);
       inv.status = "done";
+      const suggestedTag = inferExpenseTag(inv);
+      const previousTagEntry = historyStatus(invoiceStore.ledger, inv).entry;
+      if (suggestedTag && !previousTagEntry?.expenseTag && !previousTagEntry?.expenseTagSet) {
+        const next = setInvoiceExpenseTag(invoiceStore.ledger, inv, suggestedTag);
+        if (next) { saveLedger(next); invoiceStore.ledger = next; }
+      }
       // 批量识别时跳过逐张去重（O(n²)，整批结束后统一跑一次即可），大幅提速
       if (skipDedupe) {
         invoiceStore.msg = "识别完成，请核对。";
       } else {
-        const duplicateCount = invoiceActions.refreshDuplicates();
-        invoiceStore.msg = duplicateCount ? `识别完成，已自动排除 ${duplicateCount} 张重复发票。` : "识别完成，请核对。";
+        const duplicateCount = invoiceActions.removeConfirmedDuplicates();
+        invoiceStore.msg = duplicateCount ? `识别完成，已自动移除 ${duplicateCount} 张重复发票。` : "识别完成，请核对。";
       }
       applyHistoryToInvoice(inv); // 历史台账查重/认证/已打印默认不勾选
       if (!skipDedupe) await syncMatchedAttachments();
@@ -422,16 +446,62 @@ export const invoiceActions = {
       for (const inv of invoiceStore.invoices) {
         if (inv.status !== "done") await invoiceActions.recognizeOne(inv, { skipDedupe: true });
       }
-      const duplicateCount = invoiceActions.refreshDuplicates();
+      const duplicateCount = invoiceActions.removeConfirmedDuplicates();
       refreshHistory();
       const reused = invoiceStore.invoices.filter((i) => i.history && i.history.usedBefore).length;
       const unfinished = invoiceStore.invoices.filter((i) => i.status !== "done").length;
       const matched = await syncMatchedAttachments();
-      invoiceStore.msg = `本批识别结束${unfinished ? `，${unfinished} 张未识别成功` : ""}${duplicateCount ? `，已排除 ${duplicateCount} 张本批重复` : ""}${reused ? `，⚠ ${reused} 张有历史勾选或使用记录` : ""}；匹配台账 ${matched.matched} 张，新增原件 ${matched.saved} 张${matched.needsReview ? `，${matched.needsReview} 张需人工核对` : ""}${matched.failed ? `，${matched.failed} 张原件保存失败` : ""}。`;
+      invoiceStore.msg = `本批识别结束${unfinished ? `，${unfinished} 张未识别成功` : ""}${duplicateCount ? `，已自动移除 ${duplicateCount} 张本批重复` : ""}${reused ? `，⚠ ${reused} 张有历史勾选或使用记录` : ""}；匹配台账 ${matched.matched} 张，新增原件 ${matched.saved} 张${matched.needsReview ? `，${matched.needsReview} 张需人工核对` : ""}${matched.failed ? `，${matched.failed} 张原件保存失败` : ""}。`;
     } finally { invoiceStore.busy = false; }
   },
 
   // —— 历史台账 / 认证查重 ——
+  deleteLedgerEntries(keys) {
+    const previousTrash = readLedgerTrashForChange();
+    const plan = moveLedgerToTrash(invoiceStore.ledger, previousTrash, keys);
+    if (!plan.changed) return plan;
+    try {
+      const result = persistLedgerTransition(plan, previousTrash, saveLedger);
+      invoiceStore.ledger = result.ledger;
+      refreshHistory();
+      return result;
+    } finally { invoiceStore.ledgerTrash = loadLedgerTrash(); }
+  },
+  restoreLedgerEntries(ids) {
+    const previousTrash = readLedgerTrashForChange();
+    const plan = restoreLedgerFromTrash(invoiceStore.ledger, previousTrash, ids);
+    if (!plan.changed) return plan;
+    try {
+      const result = persistLedgerTransition(plan, previousTrash, saveLedger);
+      invoiceStore.ledger = result.ledger;
+      refreshHistory();
+      return result;
+    } finally { invoiceStore.ledgerTrash = loadLedgerTrash(); }
+  },
+  saveReviewedInvoice(key, changes) {
+    const prev = invoiceStore.ledger[key];
+    if (!prev) return {ok:false, message:"记录不存在"};
+    const allowed = ["paymentDate","service","remark","allocation","date","buyer","seller","type","amount","tax","total","project","purpose","payer","reimburser"];
+    const entry = {...prev, ...Object.fromEntries(Object.entries(changes).filter(([k])=>allowed.includes(k)))};
+    const errors = invoiceProblems(entry);
+    if (errors.length) return {ok:false, message:errors.join("；")};
+    entry.reviewedAt = new Date().toISOString();
+    const next = {...invoiceStore.ledger, [key]:entry};
+    saveLedger(next); invoiceStore.ledger = next;
+    for (const inv of invoiceStore.invoices) if (inv.fields?.number === entry.number) Object.assign(inv.fields, Object.fromEntries(allowed.filter(k=>entry[k]!=null).map(k=>[k,entry[k]])));
+    refreshHistory(); return {ok:true};
+  },
+  applyExpensePreview(result) {
+    saveLedger(result.ledger); invoiceStore.ledger = result.ledger; refreshHistory();
+  },
+  async importExpenseReport(file) {
+    const result = importExpenseWorkbook(invoiceStore.ledger, await file.arrayBuffer());
+    if (!result.recognized) throw new Error("未找到可识别的发票号码和工地或付款账户列。");
+    saveLedger(result.ledger);
+    invoiceStore.ledger = result.ledger;
+    refreshHistory();
+    return result;
+  },
   async importInputInvoiceReport(file) {
     if (!file) return { imported: 0, added: 0, updated: 0 };
     const bytes = await file.arrayBuffer();
@@ -446,9 +516,10 @@ export const invoiceActions = {
   updateReconciliation(key, changes) {
     const previous = invoiceStore.ledger[key];
     if (!previous) return { ok: false, message: "未找到台账记录。" };
-    const allowed = ["reimbursement", "reimburser", "project", "purpose", "payment", "tags"];
+    const allowed = ["reimbursement", "reimbursementDate", "reimburser", "project", "purpose", "payment", "payer", "tags", "allocation"];
     const patch = Object.fromEntries(Object.entries(changes).filter(([k]) => allowed.includes(k)));
     const nextEntry = { ...previous, ...patch };
+    if (patch.reimbursement === "已报销" && !nextEntry.reimbursementDate) return { ok: false, message: "请先填写报销日期。" };
     const clearsRequiredField = ["reimburser", "project", "purpose"].some(k => Object.hasOwn(patch, k) && !String(patch[k] || "").trim());
     if (nextEntry.reimbursement === "已报销" && (patch.reimbursement === "已报销" || clearsRequiredField)) {
       const missing = missingReimbursementFields(nextEntry);
@@ -457,18 +528,51 @@ export const invoiceActions = {
     const next = { ...invoiceStore.ledger, [key]: nextEntry };
     saveLedger(next);
     invoiceStore.ledger = next;
+    if (patch.reimbursement === "已报销") {
+      for (const inv of invoiceStore.invoices) {
+        if (historyStatus(next, inv).entry?.key === key) { inv.include = false; inv.includeTouched = false; }
+      }
+    }
+    refreshHistory();
+    return { ok: true };
+  },
+  markReimbursedBatch(keys, date) {
+    const result = markReimbursedBatch(invoiceStore.ledger, keys, date);
+    saveLedger(result.ledger);
+    invoiceStore.ledger = result.ledger;
+    for (const inv of invoiceStore.invoices) {
+      if (historyStatus(result.ledger, inv).entry?.reimbursement === "已报销") {
+        inv.include = false;
+        inv.includeTouched = false;
+      }
+    }
+    refreshHistory();
+    return result;
+  },
+  updateCurrentReimbursements(invoices, action, date) {
+    if (action === "mark") { const bad = invoices.find(inv => invoiceProblems(inv.fields).length); if (bad) throw new Error("请先复核完整票面：" + invoiceProblems(bad.fields).join("、")); }
+    const result = updateCurrentReimbursements(invoiceStore.ledger, invoices, action, date);
+    saveLedger(result.ledger);
+    invoiceStore.ledger = result.ledger;
+    if (action === "mark") {
+      for (const inv of invoiceStore.invoices) {
+        if (historyStatus(result.ledger, inv).entry?.reimbursement === "已报销") { inv.include = false; inv.includeTouched = false; }
+      }
+    }
+    refreshHistory();
+    return result;
+  },
+  setInvoiceExpenseTag(inv, tag) {
+    const next = setInvoiceExpenseTag(invoiceStore.ledger, inv, tag);
+    if (!next) return { ok: false, message: "请先识别并核对发票号码；旧版短号码需要匹配发票代码。" };
+    saveLedger(next);
+    invoiceStore.ledger = next;
     refreshHistory();
     return { ok: true };
   },
   clearLedger() {
-    invoiceStore.ledger = {};
-    saveLedger(invoiceStore.ledger);
-    for (const inv of invoiceStore.invoices) {
-      if (inv.historyAutoExcluded && !inv.includeTouched) inv.include = true;
-      inv.historyAutoExcluded = false;
-    }
-    refreshHistory();
-    invoiceStore.msg = "已清空历史进项台账。";
+    const result = invoiceActions.deleteLedgerEntries(Object.keys(invoiceStore.ledger));
+    invoiceStore.msg = `已将 ${result.changed} 张发票移入回收站，可随时恢复。${result.warning || ''}`;
   },
   recordToLedger(name) {
     const list = orderedForPrint().map((x) => x.inv).filter((inv) => inv.status === "done");
@@ -527,7 +631,7 @@ export const UNSET_LABEL = "未识别";
 
 export function buyerOptions() {
   const set = new Set();
-  for (const inv of invoiceStore.invoices) set.add((inv.fields.buyer || "").trim() || UNSET_LABEL);
+  for (const buyer of directory.buyers) if (String(buyer).trim()) set.add(String(buyer).trim());
   return ["全部", ...[...set].sort((a, b) => a.localeCompare(b, "zh-Hans-CN"))];
 }
 
@@ -540,7 +644,7 @@ export function docTypeOptions() {
 export function passesInvoiceFilters(inv) {
   const buyer = (inv.fields.buyer || "").trim() || UNSET_LABEL;
   const docType = (inv.fields.docType || inv.fields.type || "").trim() || UNSET_LABEL;
-  return (invoiceStore.buyerFilter === "全部" || buyer === invoiceStore.buyerFilter)
+  return (invoiceStore.buyerFilter === "全部" || normalizeBuyerName(buyer) === normalizeBuyerName(invoiceStore.buyerFilter))
     && (invoiceStore.docTypeFilter === "全部" || docType === invoiceStore.docTypeFilter);
 }
 
@@ -575,7 +679,7 @@ export function sortedInvoices({ applyFilters = true } = {}) {
   return arr.map((inv, i) => ({
     inv,
     seq: i + 1,
-    needsReview: !inv.fields.date || !inv.fields.total || !inv.fields.seller || !inv.fields.buyer || /需复核/.test(inv.systemNote || "") || !!inv.duplicateReason || !!inv.history?.usedBefore,
+    needsReview: !inv.fields.date || !inv.fields.total || !inv.fields.seller || !inv.fields.buyer || /需复核|请.*核对/.test(inv.systemNote || "") || !!inv.duplicateReason || !!inv.history?.usedBefore,
   })).filter((x) => !applyFilters || passesInvoiceFilters(x.inv));
 }
 

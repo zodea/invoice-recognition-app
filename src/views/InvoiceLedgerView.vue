@@ -1,12 +1,13 @@
 <script setup>
 import InvoiceLedgerPanel from "../components/InvoiceLedgerPanel.vue";
 import InvoiceLedgerViewer from "../components/InvoiceLedgerViewer.vue";
+defineProps({ initialBuyerCheck: { type: String, default: 'all' } });
 </script>
 
 <template>
   <div class="ledger-page">
     <InvoiceLedgerPanel ledger-page />
-    <InvoiceLedgerViewer />
+    <InvoiceLedgerViewer :initial-buyer-check="initialBuyerCheck" />
   </div>
 </template>
 

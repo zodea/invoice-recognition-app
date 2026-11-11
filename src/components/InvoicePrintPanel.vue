@@ -1,5 +1,6 @@
 <script setup>
-import { ref, computed } from "vue";
+import { invoiceProblems } from "../lib/invoice-review";
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from "vue";
 import {
   PopoverContent,
   PopoverPortal,
@@ -27,6 +28,50 @@ const filenameTemplate = ref(localStorage.getItem("invoiceFilenameTemplate") || 
 const exportSort = ref(localStorage.getItem("invoiceExportSort") || "original");
 const exportDirection = ref(localStorage.getItem("invoiceExportDirection") || "asc");
 const busy = ref(false);
+const dockRef = ref(null);
+const activePanel = ref("");
+const runningAction = ref(false);
+function closeDockPanels() {
+  activePanel.value = "";
+  dimsOpen.value = false;
+}
+function toggleDockPanel(panel) {
+  dimsOpen.value = false;
+  activePanel.value = activePanel.value === panel ? "" : panel;
+}
+function onOutsideInteraction(event) {
+  if (dockRef.value?.contains(event.target)) return;
+  if (event.target?.closest?.('[data-print-dimensions]')) return;
+  closeDockPanels();
+}
+function onEscape(event) {
+  if (event.key !== "Escape") return;
+  if (dimsOpen.value) dimsOpen.value = false;
+  else closeDockPanels();
+}
+onMounted(() => {
+  document.addEventListener("pointerdown", onOutsideInteraction, true);
+  document.addEventListener("focusin", onOutsideInteraction);
+  document.addEventListener("keydown", onEscape);
+});
+onBeforeUnmount(() => {
+  document.removeEventListener("pointerdown", onOutsideInteraction, true);
+  document.removeEventListener("focusin", onOutsideInteraction);
+  document.removeEventListener("keydown", onEscape);
+});
+async function runDockAction(action) {
+  if (runningAction.value || busy.value) return;
+  closeDockPanels();
+  runningAction.value = true;
+  try {
+    await nextTick();
+    await action();
+  } catch (error) {
+    toastError("操作失败：" + (error?.message || error));
+  } finally {
+    runningAction.value = false;
+  }
+}
 const msg = ref("");
 const pendingPrintedIds = ref([]);
 const pendingPrintedCount = computed(() => pendingPrintedIds.value.length);
@@ -92,6 +137,7 @@ async function makeLayout() {
 }
 
 async function printNow() {
+  if (!checkComplete()) return;
   const bytes = await makeLayout();
   if (bytes) {
     openForPrint(bytes);
@@ -130,23 +176,34 @@ async function saveWithDialog(bytes, name, mime, okMsg, dlMsg) {
   }
 }
 
+function checkComplete() {
+ const bad=included.value.filter(inv=>invoiceProblems(inv.fields).length);
+ if(!bad.length)return true;
+ toastWarn('有 '+bad.length+' 张票据未通过复核，不能保存：'+invoiceProblems(bad[0].fields).join('、')); return false;
+}
 async function downloadPdf() {
+  if (!checkComplete()) return;
   const bytes = await makeLayout();
   if (!bytes) return;
   await saveWithDialog(bytes, `发票打印版_每页${invoiceStore.perPage}张.pdf`, "application/pdf", "已保存打印版 PDF", "已下载打印版 PDF。");
 }
 async function exportExcel() {
+  if (!checkComplete()) return;
   if (!included.value.length) { window.alert("没有勾选发票。"); return; }
   const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   await saveWithDialog(buildInvoiceWorkbookBytes(included.value), "发票开票明细与汇总账单.xlsx", mime, "已保存 Excel", "已导出明细 + 汇总账单 Excel。");
 }
 async function exportReimburse() {
+  if (!checkComplete()) return;
   if (!included.value.length) { window.alert("没有勾选发票。"); return; }
+  const repeated = included.value.filter(inv => inv.history?.entry?.reimbursement === "已报销");
+  if (repeated.length && !window.confirm(`当前选择中有 ${repeated.length} 张发票已报销，可能重复报销。仍要导出报销表吗？`)) return;
   const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   await saveWithDialog(buildReimburseWorkbookBytes(included.value), reimburseWorkbookName(included.value), mime, "已保存财务费用报销表", "已导出财务费用报销表。");
 }
 
 async function exportPackage() {
+  if (!checkComplete()) return;
   if (!included.value.length) { window.alert("没有勾选发票。"); return; }
   if (!canUseTauriExport() && typeof window.showDirectoryPicker !== "function") {
     window.alert("当前运行环境不支持直接选择保存目录，请先使用 Excel / PDF 下载。");
@@ -186,82 +243,28 @@ async function exportPackage() {
   }
 }
 
-const exportBtnCls = "btn px-2.75 py-1.75 text-[13px]";
 </script>
 
 <template>
-  <div class="panel p-2.5">
-    <div class="flex gap-3 flex-wrap text-ink-soft mb-2">
-      <span>勾选 <b class="text-ink text-[15px]">{{ summary.count }}</b> 张</span>
-      <span>价税合计 <b class="text-brand text-[15px]">{{ summary.total.toFixed(2) }}</b></span>
-      <span>税额 <b class="text-ink text-[15px]">{{ summary.tax.toFixed(2) }}</b></span>
+  <section ref="dockRef" class="print-dock" aria-label="打印与导出">
+    <div class="print-dock-summary"><span>已勾选 <strong>{{ summary.count }}</strong> 张</span><span>价税合计 <strong class="print-total">¥{{ summary.total.toFixed(2) }}</strong></span><span class="print-tax">税额 ¥{{ summary.tax.toFixed(2) }}</span></div>
+    <div class="print-dock-actions">
+      <details class="dock-popover print-options" :open="activePanel === 'settings'"><summary class="dock-button" :aria-expanded="activePanel === 'settings'" @click.prevent="toggleDockPanel('settings')">打印与导出设置</summary><div class="dock-popover-content print-options-content">
+        <div class="print-options-heading"><strong>打印与导出设置</strong><span>调整后对当前选中发票生效</span></div>
+        <div class="print-options-grid">
+          <div class="print-option"><span class="print-option-label">每页张数</span><RadioGroupRoot v-model="perPageStr" class="print-page-options"><label v-for="n in [1, 2, 4]" :key="n"><RadioGroupItem :value="String(n)" class="print-page-radio"><RadioGroupIndicator class="print-page-indicator" /></RadioGroupItem>{{ n }} 张</label></RadioGroupRoot></div>
+          <div class="print-option"><span class="print-option-label">分目录</span><PopoverRoot :open="dimsOpen" @update:open="onDimsOpen"><PopoverTrigger class="btn print-dim-trigger">{{ dimsLabel }} <span aria-hidden="true">▾</span></PopoverTrigger><PopoverPortal><PopoverContent data-print-dimensions align="start" :side-offset="4" class="z-60 min-w-55 bg-white border border-line-strong rounded-lg shadow-card p-2 flex flex-col gap-1"><p class="m-0 mb-1 text-[11px] text-ink-soft">勾选顺序即文件夹层级；左右两栏同步分组</p><label v-for="d in GROUP_DIMENSIONS" :key="d.key" class="flex items-center gap-1.5 px-1.5 py-1 rounded-md cursor-pointer text-ink hover:bg-brand-soft"><input type="checkbox" :checked="dimOrder(d.key) >= 0" @change="toggleDim(d.key)" /><span v-if="dimOrder(d.key) >= 0" class="min-w-4.5 h-4.5 inline-flex items-center justify-center rounded-full bg-brand text-white text-[11px] font-800">{{ dimOrder(d.key) + 1 }}</span>{{ d.label }}</label><div class="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-line"><button type="button" class="btn-primary px-2.5 py-1 text-xs" @click="confirmDims">确认</button><button type="button" class="btn px-2.5 py-1 text-xs" @click="cancelDims">取消</button><button type="button" class="btn-danger px-2.5 py-1 text-xs ml-auto" :disabled="!invoiceStore.groupDims.length" @click="clearDims">清空</button></div></PopoverContent></PopoverPortal></PopoverRoot></div>
+          <label class="print-option print-name"><span class="print-option-label">文件名格式</span><input v-model="filenameTemplate" class="field-input" /></label>
+          <label class="print-option"><span class="print-option-label">导出顺序</span><select v-model="exportSort" class="field-input"><option value="original">当前顺序</option><option value="date">日期</option><option value="seller">销售方</option><option value="total">金额</option><option value="number">发票号码</option></select></label>
+          <label class="print-option"><span class="print-option-label">排序方向</span><select v-model="exportDirection" class="field-input"><option value="asc">升序</option><option value="desc">降序</option></select></label>
+        </div>
+        <p class="print-option-hint">文件名可用：{销售方} {日期} {金额} {购买方} {发票号码}。</p>
+      </div></details>
+      <button class="btn-primary" :disabled="busy || runningAction || !included.length" @click="runDockAction(printNow)">打印</button>
+      <button class="btn" :disabled="busy || runningAction || !included.length || !hasRecognized" :title="!hasRecognized ? '请先识别后再导出' : ''" @click="runDockAction(exportExcel)">导出 Excel</button>
+      <details class="dock-popover export-menu" :open="activePanel === 'export'"><summary class="dock-button" :aria-expanded="activePanel === 'export'" @click.prevent="toggleDockPanel('export')">更多导出 ▾</summary><div class="dock-popover-content export-menu-content"><button class="export-menu-item" :disabled="busy || runningAction || !included.length || !hasRecognized" @click="runDockAction(downloadPdf)">导出打印版 PDF</button><button class="export-menu-item" :disabled="busy || runningAction || !included.length || !hasRecognized" @click="runDockAction(exportPackage)">整理导出原文件</button><button class="export-menu-item" :disabled="busy || runningAction || !included.length || !hasRecognized" @click="runDockAction(exportReimburse)">导出财务费用报销表</button></div></details>
     </div>
-
-    <div class="flex items-center justify-between gap-2.5 flex-wrap">
-      <div class="flex items-center gap-2.25 flex-wrap text-ink-soft">
-        <span>每页</span>
-        <RadioGroupRoot v-model="perPageStr" class="flex items-center gap-2.5">
-          <label v-for="n in [1, 2, 4]" :key="n" class="inline-flex items-center gap-1.5 cursor-pointer text-ink">
-            <RadioGroupItem
-              :value="String(n)"
-              class="relative w-4 h-4 rounded-full border border-line-strong bg-white flex items-center justify-center p-0 data-[state=checked]:border-brand"
-            >
-              <RadioGroupIndicator class="block w-2 h-2 rounded-full bg-brand" />
-            </RadioGroupItem>
-            {{ n }}张
-          </label>
-        </RadioGroupRoot>
-
-        <PopoverRoot :open="dimsOpen" @update:open="onDimsOpen">
-          <PopoverTrigger class="btn px-2.5 py-1.5 text-ink">
-            分目录：<b class="text-brand font-800">{{ dimsLabel }}</b> <span class="text-ink-soft">▾</span>
-          </PopoverTrigger>
-          <PopoverPortal>
-            <PopoverContent
-              align="start"
-              :side-offset="4"
-              class="z-30 min-w-55 bg-white border border-line-strong rounded-lg shadow-card p-2 flex flex-col gap-1"
-            >
-              <p class="m-0 mb-1 text-[11px] text-ink-soft">勾选顺序即文件夹层级；左右两栏同步分组</p>
-              <label
-                v-for="d in GROUP_DIMENSIONS"
-                :key="d.key"
-                class="flex items-center gap-1.5 px-1.5 py-1 rounded-md cursor-pointer text-ink hover:bg-brand-soft"
-              >
-                <input type="checkbox" :checked="dimOrder(d.key) >= 0" @change="toggleDim(d.key)" />
-                <span v-if="dimOrder(d.key) >= 0" class="min-w-4.5 h-4.5 inline-flex items-center justify-center rounded-full bg-brand text-white text-[11px] font-800">{{ dimOrder(d.key) + 1 }}</span>
-                {{ d.label }}
-              </label>
-              <div class="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-line">
-                <button type="button" class="btn-primary px-2.5 py-1 text-xs" @click="confirmDims">确认</button>
-                <button type="button" class="btn px-2.5 py-1 text-xs" @click="cancelDims">取消</button>
-                <button type="button" class="btn-danger px-2.5 py-1 text-xs ml-auto" :disabled="!invoiceStore.groupDims.length" @click="clearDims">清空</button>
-              </div>
-            </PopoverContent>
-          </PopoverPortal>
-        </PopoverRoot>
-      </div>
-
-      <div class="flex gap-2 flex-wrap">
-        <button class="btn-primary px-2.75 py-1.75 text-[13px]" :disabled="busy || !included.length" @click="printNow">打印</button>
-        <button :class="exportBtnCls" :disabled="busy || !included.length || !hasRecognized" :title="!hasRecognized ? '请先识别后再导出' : ''" @click="downloadPdf">PDF</button>
-        <button :class="exportBtnCls" :disabled="busy || !included.length || !hasRecognized" :title="!hasRecognized ? '请先识别后再导出' : ''" @click="exportExcel">Excel</button>
-        <button :class="exportBtnCls" :disabled="busy || !included.length || !hasRecognized" :title="!hasRecognized ? '请先识别后再导出' : ''" @click="exportPackage">整理导出</button>
-        <button :class="exportBtnCls" :disabled="busy || !included.length || !hasRecognized" :title="!hasRecognized ? '请先识别后再导出' : ''" @click="exportReimburse">财务费用报销导出</button>
-      </div>
-    </div>
-
-    <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
-      <label>文件名格式 <input v-model="filenameTemplate" class="field-input w-72" /></label>
-      <label>导出顺序 <select v-model="exportSort" class="field-input"><option value="original">当前顺序</option><option value="date">日期</option><option value="seller">销售方</option><option value="total">金额</option><option value="number">发票号码</option></select></label>
-      <select v-model="exportDirection" class="field-input" aria-label="排序方向"><option value="asc">升序</option><option value="desc">降序</option></select>
-      <span class="text-ink-soft">可用：{销售方} {日期} {金额} {购买方} {发票号码}；文件夹显示顺序由系统决定。</span>
-    </div>
-    <div class="mt-2 text-ink-soft text-[13px]" v-if="busy && msg">{{ msg }}</div>
-    <div v-if="pendingPrintedCount" class="mt-2 flex items-center gap-2 flex-wrap p-2 rounded-md border border-[#bbf7d0] bg-[#f0fdf4] text-[#166534] text-[13px]">
-      <span>本次 {{ pendingPrintedCount }} 张是否均已打印？</span>
-      <button class="btn px-2 py-1.25 border-ok bg-ok text-white" :disabled="busy" @click="confirmPrinted">确认已打印</button>
-      <button class="btn px-2 py-1.25" :disabled="busy" @click="cancelPrinted">暂不标记</button>
-    </div>
-  </div>
+    <div v-if="busy && msg" class="print-dock-notice" role="status">{{ msg }}</div>
+    <div v-if="pendingPrintedCount" class="print-dock-confirm"><span>本次 {{ pendingPrintedCount }} 张是否均已打印？</span><button class="btn" :disabled="busy" @click="confirmPrinted">确认已打印</button><button class="btn" :disabled="busy" @click="cancelPrinted">暂不标记</button></div>
+  </section>
 </template>

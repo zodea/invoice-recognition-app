@@ -3,7 +3,20 @@ function pad2(n) {
 }
 
 export function parseInvoiceFilename(name) {
-  const base = String(name || "").replace(/\.pdf$/i, "");
+  const base = String(name || "").replace(/\.(?:pdf|png|jpe?g|bmp|webp|gif|tiff?)$/i, "");
+
+  // 明确标明医院、日期和金额的文件名可作为待核对的兜底；未写年份时不猜年份。
+  const medical = base.match(/^(.{2,60}医院)[：:]\s*(?:(\d{2}|\d{4})-)?(\d{1,2})-(\d{1,2})\s*=\s*(\d+(?:\.\d{1,2})?)元?$/);
+  if (medical) {
+    let date = "";
+    if (medical[2]) {
+      const year = medical[2].length === 2 ? 2000 + Number(medical[2]) : Number(medical[2]);
+      const month = Number(medical[3]), day = Number(medical[4]);
+      const parsed = new Date(Date.UTC(year, month - 1, day));
+      if (year >= 1900 && year <= 2100 && parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day) date = `${year}-${pad2(month)}-${pad2(day)}`;
+    }
+    return { date, total: medical[5], seller: medical[1], number: "", type: "医疗票据", source: "filename", hasSellerTruth: true };
+  }
 
   let m = base.match(/^(\d{2})(\d{2})(\d{2})_([0-9]+(?:\.[0-9]+)?)_(.+)$/);
   if (m) {

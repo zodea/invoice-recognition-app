@@ -7,7 +7,7 @@ import * as XLSX from "xlsx";
 const CATEGORY_RULES = [
   [/汽油|柴油|成品油|燃油|加油/, "汽油"],
   [/餐饮|餐厅|饭店|食堂|烧烤|火锅/, "餐饮服务"],
-  [/客运|出租|网约|行程|打车|滴滴|曹操|优行|如约|运输|货拉拉|货运|高速|路桥|停车|车费/, "交通运输"],
+  [/客运|出租|网约|行程|打车|滴滴|曹操|优行|如约|运输|货拉拉|货运|高速|路桥|停车|停泊|停放|车费/, "交通运输"],
   [/住宿|酒店|宾馆|旅业/, "住宿服务"],
   [/物业|管理服务|现代服务|供电|电费|水费|租赁|房租|租金/, "企业管理服务"],
   [/服装|鞋|纺织|西服|衣/, "服装"],
@@ -31,6 +31,7 @@ export function classifyReimburseKind(inv) {
   const f = (inv && inv.fields) || inv || {};
   const t = `${f.taxKind || ""}${f.type || ""}`;
   const doc = f.docType || "";
+  if (doc === "医疗票据") return "医疗门诊";
   if (/医疗|门诊|医院|挂号|诊疗/.test(`${f.category || ""}${f.service || ""}${f.seller || ""}`)) return "医疗门诊";
   if (doc === "行程单" || doc === "货物运输凭证" || doc === "未识别") return "其他";
   if (/专用/.test(t)) return "专用发票";

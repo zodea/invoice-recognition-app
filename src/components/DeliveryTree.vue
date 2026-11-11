@@ -14,6 +14,7 @@ import {
 } from "../lib/delivery-tree";
 import { loadSuppliers } from "../lib/supplier-db";
 import { toast, toastInfo, toastWarn } from "../lib/toast";
+import MiddleEllipsis from "./MiddleEllipsis.vue";
 
 const tree = computed(() => store.staging?.tree);
 const mode = computed(() => store.staging?.mode);
@@ -174,7 +175,7 @@ const viaLabel = { name: "全称", alias: "别名", fuzzy: "模糊" };
                 @dragstart="onFileDragStart($event, f.key)"
               >
                 <span class="text-ink-soft">📄</span>
-                <span class="truncate" :title="f.relPath">{{ f.name }}</span>
+                <MiddleEllipsis :text="f.name" :title="f.relPath" />
                 <span v-if="f.dateGuess" class="chip bg-[#e0f2fe] text-[#0369a1] px-1.5" title="按文件名预填日期">{{ f.dateGuess }}</span>
                 <button
                   v-if="f.suggestGroupKey"

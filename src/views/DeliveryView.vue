@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import { store, actions } from "../store";
 import UploadZone from "../components/UploadZone.vue";
 import PartitionBar from "../components/PartitionBar.vue";
@@ -8,6 +8,7 @@ import ExportPanel from "../components/ExportPanel.vue";
 
 import DeliveryTree from "../components/DeliveryTree.vue";
 import ProblemDialog from "../components/ProblemDialog.vue";
+import MiddleEllipsis from "../components/MiddleEllipsis.vue";
 import { collectProblems } from "../store";
 
 const visibleFiles = computed(() =>
@@ -16,6 +17,11 @@ const visibleFiles = computed(() =>
     : store.files.filter((f) => f.partitionId === store.activePartitionId)
 );
 const problemCount = computed(() => collectProblems().total);
+const selectedFileId = ref("");
+const selectedFile = computed(() => visibleFiles.value.find(file => file.id === selectedFileId.value));
+watch(visibleFiles, files => {
+  if (!files.some(file => file.id === selectedFileId.value)) selectedFileId.value = files[0]?.id || "";
+}, { immediate: true });
 </script>
 
 <template>
@@ -40,11 +46,11 @@ const problemCount = computed(() => collectProblems().total);
       <span class="text-ink-soft" v-if="store.ocrMsg">{{ store.ocrMsg }}</span>
     </div>
 
-    <div class="flex flex-col gap-3">
-      <FileCard v-for="f in visibleFiles" :key="f.id" :file="f" />
-      <div v-if="!store.files.length" class="text-center text-ink-soft p-7.5 bg-panel border border-dashed border-line-strong rounded-card">还没有文件。先在上方上传 PDF 或图片。</div>
-      <div v-else-if="!visibleFiles.length" class="text-center text-ink-soft p-7.5 bg-panel border border-dashed border-line-strong rounded-card">该分区暂无文件。可在文件卡片上用“分区”下拉移动。</div>
+    <div v-if="visibleFiles.length && !store.staging" class="delivery-workspace">
+      <aside class="work-panel delivery-list"><div class="panel-heading"><div><h2>送货单列表 <span>（{{ visibleFiles.length }}）</span></h2><p>选择文件查看和核对</p></div></div><button v-for="f in visibleFiles" :key="f.id" class="delivery-list-item" :class="{ selected: selectedFileId === f.id }" :aria-pressed="selectedFileId === f.id" @click="selectedFileId = f.id"><MiddleEllipsis :text="f.company || f.name" /><small><MiddleEllipsis :text="f.name" /> · {{ f.ocrStatus === 'done' ? '已识别' : f.ocrStatus === 'error' ? '识别失败' : '待识别' }}</small></button></aside>
+      <FileCard v-if="selectedFile" :key="selectedFile.id" :file="selectedFile" />
     </div>
+    <div v-else-if="!store.staging" class="work-empty invoice-welcome">{{ store.files.length ? '该分区暂无文件。可在文件卡片上用“分区”下拉移动。' : '还没有文件。先在上方上传 PDF 或图片。' }}</div>
 
     <ExportPanel />
     <ProblemDialog />

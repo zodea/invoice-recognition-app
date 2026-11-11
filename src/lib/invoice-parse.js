@@ -5,6 +5,12 @@
 function pad2(n) {
   return String(n).padStart(2, "0");
 }
+function validDate(year, month, day) {
+  const y = Number(year), m = Number(month), d = Number(day);
+  if (!Number.isInteger(y) || y < 1900 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) return "";
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d ? `${y}-${pad2(m)}-${pad2(d)}` : "";
+}
 function toNumber(s) {
   if (s == null) return "";
   const n = Number(String(s).replace(/[,，\s¥￥]/g, ""));
@@ -47,6 +53,8 @@ const RADICAL_FIX = { "⻨": "麦", "⻝": "食", "⻆": "角", "⻔": "门", "�
 // 粗分单据大类：报销时混在一起的几种件。返回固定枚举，供 UI/Excel/重命名按类区分处理。
 export function classifyDocType(rawText) {
   const t = String(rawText || "");
+  const heading = t.split(/\n/).filter(line => line.trim()).slice(0, 6).join("").replace(/\s/g, "");
+  if (/医疗/.test(heading) && /票据|医保|医疗机构|就诊日期/.test(t)) return "医疗票据";
   // 先认行程单/货运凭证：它们文里也常出现“电子发票”字样（如“请以电子发票金额为准”），
   // 必须在“增值税发票”之前判断，否则会被误判成发票。
   if (/行程单/.test(t)) return "行程单";
@@ -69,6 +77,7 @@ export function parseInvoice(rawText) {
   // 发票类型
   const tMatch = text.match(/(电子发票|增值税电子专用发票|增值税电子普通发票|增值税专用发票|增值税普通发票|普通发票|专用发票|数电)/);
   if (tMatch) f.type = tMatch[1];
+  if (f.docType === "医疗票据") f.type = "医疗票据";
 
   // 专票/普票判定（分目录“发票类型”用）：很多票 type 抽成笼统“电子发票”，
   // 但括注/全称里有“专用发票/普通发票”，据此给出更准的专票/普票分类。
@@ -79,10 +88,15 @@ export function parseInvoice(rawText) {
   const num = text.match(/发\s*票\s*号\s*码[:：]?\s*([0-9]{8,25})/) ||
     text.match(/票\s*据\s*号\s*码[:：]?\s*([0-9]{8,25})/);
   if (num) f.number = num[1];
+  // 医疗票据 OCR 常将“票据”误读为“桑据/垂据/栗据/承接”。仅在医疗票据标题下容错。
+  if (!f.number && f.docType === "医疗票据") {
+    const receipt = text.match(/(?:^|\n)\s*(?:[桑垂栗景]据|承接)\s*号\s*码\s*[:：]\s*([0-9]{8,12})(?![0-9])/);
+    if (receipt) f.number = receipt[1];
+  }
   const code = text.match(/发\s*票\s*代\s*码[:：]?\s*([0-9]{10,12})/);
   if (code) f.code = code[1];
   // 没匹配到“发票号码”标签时，兜底找一串 20 位数字
-  if (!f.number) {
+  if (!f.number && f.docType !== "医疗票据") {
     const bare = text.match(/\b([0-9]{20})\b/);
     if (bare) f.number = bare[1];
   }
@@ -99,11 +113,17 @@ export function parseInvoice(rawText) {
   }
 
   // 开票日期
+  if (f.docType === "医疗票据") {
+    const receiptDate = text.match(/开[票系来]日期\s*[:：]?\s*([0-9]{4})[-/.]([0-9]{1,2})[-/.]([0-9]{1,2})/) ||
+      text.match(/就诊日期\s*[:：]?\s*([0-9]{4})([0-9]{2})([0-9]{2})/);
+    if (receiptDate) f.date = validDate(receiptDate[1], receiptDate[2], receiptDate[3]);
+    if (f.date) f.dateText = f.date;
+  }
   const d = text.match(/开票日期[:：]?\s*([0-9]{4})\s*年\s*([0-9]{1,2})\s*月\s*([0-9]{1,2})\s*日/) ||
     text.match(/([0-9]{4})\s*年\s*([0-9]{1,2})\s*月\s*([0-9]{1,2})\s*日/);
-  if (d) {
-    f.date = `${d[1]}-${pad2(+d[2])}-${pad2(+d[3])}`;
-    f.dateText = f.date;
+  if (!f.date && d) {
+    f.date = validDate(d[1], d[2], d[3]);
+    if (f.date) f.dateText = f.date;
   }
   if (!f.date) {
     const spacedDate = text.match(/([0-9](?:\s*[0-9]){3})\s*年\s*([0-9](?:\s*[0-9])?)\s*月\s*([0-9](?:\s*[0-9])?)\s*日/);
@@ -111,8 +131,8 @@ export function parseInvoice(rawText) {
       const y = normalizeMoneyText(spacedDate[1]);
       const mo = normalizeMoneyText(spacedDate[2]);
       const day = normalizeMoneyText(spacedDate[3]);
-      f.date = `${y}-${pad2(+mo)}-${pad2(+day)}`;
-      f.dateText = f.date;
+      f.date = validDate(y, mo, day);
+      if (f.date) f.dateText = f.date;
     }
   }
 
@@ -145,6 +165,17 @@ export function parseInvoice(rawText) {
     .filter(isName);
   if (nameTokens[0]) f.buyer = nameTokens[0];
   if (nameTokens[1]) f.seller = nameTokens[1];
+  // 有些数电票把两个名称标签单独放在一行，下一行才并排放买方和卖方。
+  // 只在明确的双标签及两个完整公司名称同时出现时拆分，避免把普通名称误分。
+  const pairedNames = text.match(/(?:^|\n)[^\S\n]*购[^\S\n]*名[^\S\n]*称[^\S\n]*[:：][^\S\n]*销[^\S\n]*名[^\S\n]*称[^\S\n]*[:：][^\S\n]*\n([^\n]+)/);
+  if (pairedNames) {
+    const pair = pairedNames[1].trim().match(/^(.+?(?:有限责任公司|股份有限公司|有限公司|集团公司|公司))\s+(.+?(?:有限责任公司|股份有限公司|有限公司|集团公司|公司))\s*$/);
+    if (pair) {
+      const buyer = dedupeDoubled(cleanName(pair[1]));
+      const seller = dedupeDoubled(cleanName(pair[2]));
+      if (isName(buyer) && isName(seller)) { f.buyer = buyer; f.seller = seller; }
+    }
+  }
   // 兜底：没有“名称：”标签时，用 购/销 两字切分（少数版式名称紧跟在购/销后）
   if (!f.buyer || !f.seller) {
     const gx = text.match(/购\s*(?:名\s*称\s*[:：]\s*)?(.+?)\s*销\s*(?:名\s*称\s*[:：]\s*)?(.+)/);
@@ -169,15 +200,26 @@ export function parseInvoice(rawText) {
       if (isName(name)) f.seller = name;
     }
   }
+  if (f.docType === "医疗票据" && !f.buyer) {
+    // “交”有时被识别成“支”，且冒号被识别成分号；整行限定为人名以免误取证件信息。
+    const payer = text.match(/(?:^|\n)[^\S\n]*(?:交款人|缴款人|支款人)[^\S\n]*[:：;；][^\S\n]*([\u4e00-\u9fff·]{2,12})[^\S\n]*(?=\n|$)/);
+    const name = payer && payer[1];
+    if (isName(name)) f.buyer = name;
+  }
 
   // 价税合计（小写）
+  // OCR 有时将千分位逗号识别为句点，如 1.934.19；只在医疗票据的“小写”处纠正。
+  if (f.docType === "医疗票据") {
+    const grouped = text.match(/小写[)）]?\s*[:：]?\s*[¥￥]?\s*(\d{1,3}(?:\.\d{3})+\.\d{2})(?![\d.])/);
+    if (grouped) f.total = toNumber(grouped[1].replace(/\.(?=\d{3}(?:\.|$))/g, ""));
+  }
   const total =
-    text.match(/价税合计[\s\S]{0,40}?[（(]?小写[）)]?\s*[¥￥]?\s*([0-9,]+\.[0-9]{2})/) ||
-    text.match(/[（(]小写[）)]\s*[¥￥]?\s*([0-9,]+\.[0-9]{2})/) ||
-    text.match(/价税合计[\s\S]{0,20}?[¥￥]\s*([0-9,]+\.[0-9]{2})/);
-  if (total) f.total = toNumber(total[1]);
+    text.match(/价税合计[\s\S]{0,40}?[（(]?小写[）)]?\s*[¥￥]?\s*([0-9,]+\.[0-9]{2})(?![\d.])/) ||
+    text.match(/[（(]小写[）)]\s*[¥￥]?\s*([0-9,]+\.[0-9]{2})(?![\d.])/) ||
+    text.match(/价税合计[\s\S]{0,20}?[¥￥]\s*([0-9,]+\.[0-9]{2})(?![\d.])/);
+  if (total && f.total === "") f.total = toNumber(total[1]);
   if (f.total === "") {
-    const m = text.match(/小写[)）]?\s*[:：]?\s*[¥￥]?\s*([0-9,]+\.[0-9]{2})/);
+    const m = text.match(/小写[)）]?\s*[:：]?\s*[¥￥]?\s*([0-9,]+\.[0-9]{2})(?![\d.])/);
     if (m) f.total = toNumber(m[1]);
   }
 
@@ -185,7 +227,7 @@ export function parseInvoice(rawText) {
   // 这里加“字符间含空格”的兜底（仅限金额/逗号/小数点，不跨行，避免误并相邻列）。
   const despace = (s) => s.replace(/[\s,]/g, "");
   if (f.total === "") {
-    const m = text.match(/小写[)）]?\s*[¥￥]\s*([0-9][0-9 ,]*\.[0-9 ]*[0-9])/);
+    const m = text.match(/小写[)）]?\s*[¥￥]\s*([0-9][0-9 ,]*\.[0-9 ]*[0-9])(?![\d.])/);
     if (m) f.total = toNumber(despace(m[1]));
   }
 
@@ -246,6 +288,9 @@ export function parseInvoice(rawText) {
     s = s.replace(/[\d¥￥%].*$/, "").trim();
     if (s && /[一-龥]/.test(s)) f.service = s;
   }
+  // 停车票可能将“车辆”和“停泊服务费”按坐标拆成两行，中间混入不动产权信息。
+  const parkingSplit = text.match(/\*\s*[一-龥][一-龥·]{0,23}\s*\*\s*车辆[^\n]*\n\s*(停泊|停放)服务费/);
+  if (parkingSplit) f.service = `车辆${parkingSplit[1]}服务费`;
   if (!f.service) f.service = f.category;
 
   // 非增值税发票但报销常混进来的两类凭证：

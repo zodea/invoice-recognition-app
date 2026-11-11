@@ -1,9 +1,12 @@
+import { allocationKind } from "./payment-records.js";
 // 历史发票台账（本地持久化）：跨批次按「发票号码」查重，避免同一张发票被重复报销/使用；
 // 并支持导入电子税务局导出的「已认证发票清单」标记认证状态，导出历史报表。
 //
 // 说明：中国增值税发票综合服务平台（认证/抵扣）需 CA 证书+企业实名登录，无对外公开 API，
 // 第三方程序无法直接联机查询。这里走“本地台账 + 导入官方清单”的稳妥方案。
+import { invoiceProblems } from "./invoice-review.js";
 import * as XLSX from "xlsx";
+import { inferExpenseTag } from "./invoice-tags.js";
 
 const LS_KEY = "invoiceLedger.v1";
 
@@ -57,7 +60,62 @@ export function deductionStatus(entry) {
 
 export function missingReimbursementFields(entry) {
   return [["reimburser", "报销人"], ["project", "工地"], ["purpose", "用途"]]
-    .filter(([key]) => !cellText(entry?.[key])).map(([, label]) => label);
+    .filter(([key]) => key === "project" ? ["指定工地", "待确认"].includes(allocationKind(entry)) && !cellText(entry?.project) : !cellText(entry?.[key])).map(([, label]) => label);
+}
+
+export function markReimbursedBatch(ledger, keys, date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date + "T00:00:00")) || new Date(date + "T00:00:00Z").toISOString().slice(0, 10) !== date) throw new Error("请选择有效的报销日期。");
+  const next = { ...(ledger || {}) };
+  let marked = 0, already = 0, missing = 0;
+  for (const key of new Set(keys || [])) {
+    const entry = next[key];
+    if (!entry) { missing++; continue; }
+    if (entry.reimbursement === "已报销") { already++; continue; }
+    next[key] = { ...entry, reimbursement: "已报销", reimbursementDate: date };
+    marked++;
+  }
+  return { ledger: next, marked, already, missing };
+}
+
+// 识别界面既可能有匹配的台账，也可能是尚未建档的发票。
+export function updateCurrentReimbursements(ledger, invoices, action, date = "") {
+  if (!["mark", "cancel"].includes(action)) throw new Error("无效操作。");
+  if (action === "mark") markReimbursedBatch({}, [], date);
+  const next = { ...(ledger || {}) };
+  const groups = new Map();
+  let skipped = 0, unchanged = 0, changed = 0;
+  for (const inv of invoices || []) {
+    const number = String(fields(inv).number || "").replace(/\s/g, "");
+    if (inv.status !== "done" || !/^\d{8,25}$/.test(number)) { skipped++; continue; }
+    const group = groups.get(number) || [];
+    group.push(inv); groups.set(number, group);
+  }
+  for (const [number, group] of groups) {
+    if (group.length !== 1) { skipped += group.length; continue; }
+    const inv = group[0];
+    const prev = next[number];
+    const status = historyStatus(next, inv);
+    if (status.needsReview || (!prev && number.length < 18)) { skipped++; continue; }
+    if (action === "cancel") {
+      if (!prev || prev.reimbursement !== "已报销") { unchanged++; continue; }
+      next[number] = { ...prev, reimbursement: "未核对", reimbursementDate: "" };
+    } else {
+      if (prev?.reimbursement === "已报销") { unchanged++; continue; }
+      const entry = prev || { ...entryFromInvoice(inv, date), verified: false, printed: false, batches: [] };
+      next[number] = { ...entry, key: number, number, expenseTag: entry.expenseTagSet ? entry.expenseTag : (entry.expenseTag || inferExpenseTag(inv)), reimbursement: "已报销", reimbursementDate: date };
+    }
+    changed++;
+  }
+  return { ledger: next, changed, unchanged, skipped };
+}
+
+export function setInvoiceExpenseTag(ledger, inv, tag) {
+  const number = String(fields(inv).number || "").replace(/\s/g, "");
+  if (inv.status !== "done" || !/^\d{8,25}$/.test(number)) return null;
+  const prev = (ledger || {})[number];
+  if (historyStatus(ledger, inv).needsReview || (!prev && number.length < 18)) return null;
+  const entry = prev || { ...entryFromInvoice(inv, ""), verified: false, printed: false, batches: [] };
+  return { ...(ledger || {}), [number]: { ...entry, key: number, number, expenseTag: tag, expenseTagSet: true } };
 }
 
 function dateText(value) {
@@ -223,6 +281,8 @@ export function redInvoiceStatus(entry) {
 
 // 把本批发票记入台账（标记“已用/已报销”），返回 { ledger, added, repeated }
 export function recordInvoices(ledger, invoices, batch = {}) {
+  const invalid = (invoices || []).find(inv => invoiceProblems(fields(inv)).length);
+  if (invalid) throw new Error("发票尚未通过复核：" + invoiceProblems(fields(invalid)).join("、"));
   const next = { ...(ledger || {}) };
   const batchName = batch.name || "";
   const batchDate = batch.date || new Date().toISOString().slice(0, 10);
@@ -263,6 +323,7 @@ export function markPrintedInvoices(ledger, invoices, batch = {}) {
     const entry = {
       ...(prev || {}),
       ...base,
+      ...(prev?.reviewedAt ? Object.fromEntries(["buyer","seller","date","type","amount","tax","total"].map(k=>[k,prev[k]])) : {}),
       verified: !!prev?.verified,
       verifiedAt: prev?.verifiedAt || "",
       printed: true,
@@ -335,6 +396,7 @@ function mergeInputEntries(ledger, imported) {
     const entry = {
       ...(prev || {}),
       ...populated,
+      ...(prev?.reviewedAt ? Object.fromEntries(["buyer","seller","date","type","amount","tax","total"].map(k=>[k,prev[k]])) : {}),
       officialSelection: item.officialSelection || prev?.officialSelection || "",
       verified: deductionStatus({ officialSelection: item.officialSelection || prev?.officialSelection, selectionTime: item.selectionTime || prev?.selectionTime, verified: item.officialSelection ? item.verified : !!prev?.verified }) === "已抵税",
       printed: !!prev?.printed,
@@ -461,6 +523,7 @@ export function ledgerStats(ledger) {
 export function buildHistoryReportBytes(ledger) {
   const wb = XLSX.utils.book_new();
   const header = ["发票号码", "开票日期", "销售方", "购买方", "不含税金额", "税率", "税额", "价税合计", "发票种类", "进项类型", "货物/劳务/服务", "发票状态", "抵税状态", "认证日期", "是否已打印", "打印日期", "使用批次数", "最近使用", "是否重复使用", "导入来源", "使用批次", "官方勾选状态", "报销状态", "工地", "支付方式", "标签", "有效抵扣税额", "票种标签", "勾选时间", "红字蓝字", "红冲标记", "报销人", "用途"];
+  header.push("付款账户 / 付款人", "报销日期", "费用标签", "报销期间", "费用归属", "复核时间");
   const rows = [header];
   const entries = Object.values(ledger || {}).sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   let total = 0, verifiedCount = 0, printedCount = 0, repeatCount = 0;
@@ -484,7 +547,7 @@ export function buildHistoryReportBytes(ledger) {
       (e.importSources || []).map((s) => s.name || s.date).filter(Boolean).join("；"),
       (e.batches || []).map((b) => b.name || b.date).filter(Boolean).join("；"),
       e.officialSelection || "", e.reimbursement || "未核对", e.project || "", e.payment || "", e.tags || "",
-      e.validTax === "" || e.validTax == null ? "" : Number(e.validTax), e.typeLabel || "", e.selectionTime || "", e.redBlue || "", redInvoiceStatus(e), e.reimburser || "", e.purpose || "",
+      e.validTax === "" || e.validTax == null ? "" : Number(e.validTax), e.typeLabel || "", e.selectionTime || "", e.redBlue || "", redInvoiceStatus(e), e.reimburser || "", e.purpose || "", e.payer || "", e.reimbursementDate || "", e.expenseTag || "", e.reimbursementPeriod || "", allocationKind(e), e.reviewedAt || "",
     ]);
   }
   rows.push([]);

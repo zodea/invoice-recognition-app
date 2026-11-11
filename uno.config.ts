@@ -9,7 +9,7 @@ export default defineConfig({
       panel: "#ffffff",
       line: { DEFAULT: "#e3e6ea", strong: "#c9ced6" },
       ink: { DEFAULT: "#1f2329", soft: "#5b6470" },
-      brand: { DEFAULT: "#2563eb", soft: "#e8f0fe", deep: "#1e3a8a" },
+      brand: { DEFAULT: "#1867c0", soft: "#e7f1fb", deep: "#1f5592" },
       danger: "#dc2626",
       ok: "#16a34a",
       warn: "#d97706",

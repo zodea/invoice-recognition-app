@@ -2,6 +2,7 @@ import { createApp } from "vue";
 import App from "./App.vue";
 import "virtual:uno.css";
 import "./styles.css";
+import "./expense-ui.css";
 // vxe-table：长表格固定表头/首列滚动（分供方列表、公司详情等）
 import VxeUI from "vxe-pc-ui";
 import "vxe-pc-ui/lib/style.css";

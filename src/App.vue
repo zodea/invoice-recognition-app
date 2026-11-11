@@ -1,8 +1,9 @@
 <script setup>
-import { defineAsyncComponent, ref } from "vue";
+import { defineAsyncComponent, ref, watch } from "vue";
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from "reka-ui";
+import { paymentStore } from "./lib/payment-store";
+import AppIcon from "./components/AppIcon.vue";
 import ToastHost from "./components/ToastHost.vue";
-import { appSettings, saveAppSettings } from "./lib/app-settings";
 
 // 按需懒加载：两视图分别代码分包，仅在激活时加载并挂载（不再同时渲染）。
 // 数据存于 store 单例（store.js / invoiceStore.js），切换 tab 卸载组件也不丢数据。
@@ -13,45 +14,41 @@ const SupplierView = defineAsyncComponent(() => import("./views/SupplierView.vue
 const PriceCompareView = defineAsyncComponent(() => import("./views/PriceCompareView.vue"));
 const SettingsDialog = defineAsyncComponent(() => import("./components/SettingsDialog.vue"));
 
+const ExpenseDirectoryView = defineAsyncComponent(() => import("./views/ExpenseDirectoryView.vue"));
+const PaymentRecordsView = defineAsyncComponent(() => import("./views/PaymentRecordsView.vue"));
 const settingsOpen = ref(false);
 
-// 悬停放大镜是全局统一开关（与"按张旋转"不同），固定在顶部。issue #12
-function toggleHoverZoom() {
-  appSettings.hoverZoom = !appSettings.hoverZoom;
-  saveAppSettings();
-}
-
+const ledgerBuyerCheck = ref('all');
+function inspectBuyerIssues() { ledgerBuyerCheck.value = 'issues'; view.value = 'ledger'; }
 const view = ref("invoice"); // 默认展示发票页
-const tabCls =
-  "border-none bg-white/12 text-white px-3.5 py-1.75 rounded-lg text-sm font-600 cursor-pointer transition-colors data-[state=active]:bg-white data-[state=active]:text-brand";
+watch(view, value => { if (value !== 'ledger') ledgerBuyerCheck.value = 'all'; });
+const tabCls = "app-nav-item";
 </script>
 
 <template>
-  <TabsRoot v-model="view" class="block min-h-full" :class="{ 'ledger-app': view === 'ledger' }">
-    <header class="sticky top-0 z-20 flex items-center gap-5 h-13.5 px-5.5 overflow-x-auto text-white bg-gradient-to-b from-brand-deep to-brand">
-      <div class="text-lg font-700 whitespace-nowrap flex-none">扫描件助手</div>
-      <TabsList class="flex gap-2 flex-none">
-        <TabsTrigger value="invoice" :class="tabCls">🧾 发票批量打印</TabsTrigger>
-        <TabsTrigger value="ledger" :class="tabCls">📋 历史进项台账</TabsTrigger>
-        <TabsTrigger value="delivery" :class="tabCls">📦 送货单整理</TabsTrigger>
-        <TabsTrigger value="supplier" :class="tabCls">🏢 分供方</TabsTrigger>
-        <TabsTrigger value="price" :class="tabCls">💰 单价对比</TabsTrigger>
+  <TabsRoot v-model="view" class="app-shell" :class="{ 'ledger-app': view === 'ledger' }">
+    <header class="app-sidebar">
+      <div class="app-brand"><span class="app-brand-mark" aria-hidden="true"><AppIcon name="invoice" :size="23" /></span><span>扫描件助手<small>发票与送货单</small></span></div>
+      <TabsList class="app-navigation" aria-label="功能导航">
+        <TabsTrigger value="invoice" :class="tabCls"><AppIcon name="invoice" /> 发票管理</TabsTrigger>
+        <TabsTrigger value="ledger" :class="tabCls"><AppIcon name="ledger" /> 历史进项台账</TabsTrigger>
+        <TabsTrigger value="expense-directory" :class="tabCls"><AppIcon name="building" />基础档案</TabsTrigger><TabsTrigger value="payments" :class="tabCls"><AppIcon name="payment" />付款凭证 <small v-if="paymentStore.rows.some(r=>!r.evidenceConfirmed&&!r.duplicateOf)">待补 {{ paymentStore.rows.filter(r=>!r.evidenceConfirmed&&!r.duplicateOf).length }}</small></TabsTrigger>
+        <TabsTrigger value="delivery" :class="tabCls"><AppIcon name="delivery" /> 送货单整理</TabsTrigger>
+        <TabsTrigger value="supplier" :class="tabCls"><AppIcon name="supplier" /> 分供方</TabsTrigger>
+        <TabsTrigger value="price" :class="tabCls"><AppIcon name="chart" /> 单价对比</TabsTrigger>
       </TabsList>
-      <button
-        class="ml-auto flex-none border-none px-3 py-1.75 rounded-lg text-sm font-600 cursor-pointer transition-colors"
-        :class="appSettings.hoverZoom ? 'bg-white text-brand' : 'bg-white/12 text-white hover:bg-white/24'"
-        :title="appSettings.hoverZoom ? '悬停放大镜：开（统一对所有预览生效，点击关闭）' : '悬停放大镜：关（点击开启）'"
-        @click="toggleHoverZoom"
-      >🔍 放大镜{{ appSettings.hoverZoom ? "开" : "关" }}</button>
-      <button class="ml-2 flex-none border-none bg-white/12 text-white px-3 py-1.75 rounded-lg text-sm font-600 cursor-pointer hover:bg-white/24" title="云识别等设置" @click="settingsOpen = true">⚙ 设置</button>
+      <div class="app-sidebar-bottom">
+      <button class="app-nav-item" title="云识别等设置" @click="settingsOpen = true"><AppIcon name="settings" /> 设置</button>
+      </div>
     </header>
 
-    <main class="max-w-[1480px] mx-auto p-4" :class="{ 'ledger-main': view === 'ledger' }">
+    <main class="app-main" :class="{ 'ledger-main': view === 'ledger' }">
       <!-- 不加 force-mount：reka 仅渲染当前激活的视图，切走即卸载，实现按需加载 -->
       <TabsContent value="invoice" class="outline-none">
         <InvoiceView />
       </TabsContent>
-      <TabsContent value="ledger" class="outline-none ledger-tab"><InvoiceLedgerView /></TabsContent>
+      <TabsContent value="ledger" class="outline-none ledger-tab"><InvoiceLedgerView :initial-buyer-check="ledgerBuyerCheck" /></TabsContent>
+      <TabsContent value="expense-directory"><ExpenseDirectoryView @inspect-buyers="inspectBuyerIssues" /></TabsContent><TabsContent value="payments"><PaymentRecordsView /></TabsContent>
       <TabsContent value="delivery" class="outline-none">
         <DeliveryView />
       </TabsContent>
@@ -69,8 +66,7 @@ const tabCls =
 </template>
 
 <style scoped>
-.ledger-app { display: flex; flex-direction: column; height: 100vh; min-height: 0; overflow: hidden; }
-.ledger-app > header { flex: none; }
-.ledger-main { width: 100%; flex: 1; min-height: 0; overflow: hidden; }
+.ledger-app { height: 100vh; min-height: 0; overflow: hidden; }
+.ledger-main { min-height: 0; overflow: hidden; }
 .ledger-tab { height: 100%; min-height: 0; }
 </style>
