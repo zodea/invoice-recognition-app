@@ -25,7 +25,7 @@ async function run(mode, operation) {
 }
 
 export const getLedgerAttachment = (key) => run("readonly", store => store.get(key));
-export const listLedgerAttachmentKeys = () => run("readonly", store => store.getAllKeys());
+export const listLedgerAttachmentKeys = async () => (await run("readonly", store => store.getAll())).filter(item => item.blob).map(item => item.key);
 export async function deleteUnusedLedgerAttachments(keys, isReferenced) {
   if (!keys.length) return;
   const db = await openDb();
@@ -43,7 +43,35 @@ export async function deleteUnusedLedgerAttachments(keys, isReferenced) {
 }
 export function saveLedgerAttachment(key, file) {
   if (!key || !file) throw new Error("缺少发票号码或原件");
-  return run("readwrite", store => store.put({ key, name: file.name || "发票原件", blob: file, savedAt: new Date().toISOString() }));
+  return updateAttachment(key, previous => ({ ...previous, key, name: file.name || "发票原件", blob: file, savedAt: new Date().toISOString() }));
+}
+
+async function updateAttachment(key, change) {
+  const db = await openDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite'), store = tx.objectStore(STORE);
+      let result, failure;
+      tx.oncomplete = () => resolve(result);
+      tx.onerror = () => reject(failure || tx.error);
+      tx.onabort = () => reject(failure || tx.error || new Error('原件保存中断'));
+      const request = store.get(key);
+      request.onsuccess = () => {
+        try { result = change(request.result || { key }); store.put(result); }
+        catch (error) { failure = error; tx.abort(); }
+      };
+    });
+  } finally { db.close(); }
+}
+
+// 行程单随主发票原件一起存储、恢复和清理，不单独建立金额记录。
+export function appendInvoiceSupplement(key, file, metadata) {
+  if (!key || !file || !metadata.hash) throw new Error('缺少主发票、附件或内容标识');
+  return updateAttachment(key, previous => {
+    const supplements = previous.supplements || [];
+    if (supplements.some(item => item.hash === metadata.hash)) return previous;
+    return { ...previous, supplements: [...supplements, { ...metadata, name: file.name || '行程单附件', blob: file, linkedAt: new Date().toISOString() }] };
+  });
 }
 
 // 在同一个事务中检查并写入，自动同步不能替换用户已关联的原件。
@@ -54,11 +82,11 @@ export async function saveLedgerAttachmentIfMissing(key, file) {
     return await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, "readwrite");
       const store = tx.objectStore(STORE);
-      const get = store.getKey(key);
+      const get = store.get(key);
       let saved = false;
       get.onsuccess = () => {
-        if (get.result !== undefined) return;
-        store.add({ key, name: file.name || "发票原件", blob: file, savedAt: new Date().toISOString() });
+        if (get.result?.blob) return;
+        store.put({ ...(get.result || {}), key, name: file.name || "发票原件", blob: file, savedAt: new Date().toISOString() });
         saved = true;
       };
       tx.oncomplete = () => resolve(saved);

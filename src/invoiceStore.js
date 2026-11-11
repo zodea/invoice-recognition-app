@@ -1,3 +1,7 @@
+import { intakeDecision, intakeFingerprint, canEnterLedger, planRecognizedInvoice, receiptType } from './lib/invoice-intake.js';
+import { transferReceipt, receiptHash } from './lib/receipt-transfer.js';
+import { paymentStore, savePayments } from './lib/payment-store.js';
+import { saveLedgerAttachment, saveLedgerAttachmentIfMissing, appendInvoiceSupplement } from './lib/ledger-attachments.js';
 import { directory } from './lib/expense-directory.js';
 import { planTrashPurge, persistTrashPurge, readTrashCleanupQueue, cleanupPurgedAttachments } from './lib/ledger-trash-purge.js';
 import { deleteUnusedLedgerAttachments } from './lib/ledger-attachments.js';
@@ -145,6 +149,7 @@ export const invoiceStore = reactive({
   ledger: loadLedger(), // 历史发票台账（跨批次查重 + 认证状态），本地持久化
   ledgerTrash: loadLedgerTrash(),
   purgingTrash: false,
+  savingIntake: false,
   attachmentSync: null,
   attachmentVersion: 0,
 });
@@ -152,7 +157,7 @@ export const invoiceStore = reactive({
 let matchQueue = Promise.resolve();
 function syncMatchedAttachments() {
   matchQueue = matchQueue.catch(() => {}).then(async () => {
-    const result = await syncLedgerMatches(invoiceStore.ledger, invoiceStore.invoices);
+    const result = await syncLedgerMatches(invoiceStore.ledger, invoiceStore.invoices.filter(inv => canEnterLedger(inv, directory.buyers, invoiceStore.ledger)));
     invoiceStore.attachmentSync = result;
     invoiceStore.attachmentVersion++;
     return result;
@@ -418,12 +423,9 @@ export const invoiceActions = {
       }
       applyFilenameFallback(inv);
       inv.status = "done";
-      const suggestedTag = inferExpenseTag(inv);
-      const previousTagEntry = historyStatus(invoiceStore.ledger, inv).entry;
-      if (suggestedTag && !previousTagEntry?.expenseTag && !previousTagEntry?.expenseTagSet) {
-        const next = setInvoiceExpenseTag(invoiceStore.ledger, inv, suggestedTag);
-        if (next) { saveLedger(next); invoiceStore.ledger = next; }
-      }
+      // 自动分类只更新本批草稿，不借助标签写入台账。
+      if (!inv.expenseTagSet) inv.expenseTag = inferExpenseTag(inv);
+      if (!canEnterLedger(inv, directory.buyers, invoiceStore.ledger)) inv.include = false;
       // 批量识别时跳过逐张去重（O(n²)，整批结束后统一跑一次即可），大幅提速
       if (skipDedupe) {
         invoiceStore.msg = "识别完成，请核对。";
@@ -456,6 +458,68 @@ export const invoiceActions = {
       const matched = await syncMatchedAttachments();
       invoiceStore.msg = `本批识别结束${unfinished ? `，${unfinished} 张未识别成功` : ""}${duplicateCount ? `，已自动移除 ${duplicateCount} 张本批重复` : ""}${reused ? `，⚠ ${reused} 张有历史勾选或使用记录` : ""}；匹配台账 ${matched.matched} 张，新增原件 ${matched.saved} 张${matched.needsReview ? `，${matched.needsReview} 张需人工核对` : ""}${matched.failed ? `，${matched.failed} 张原件保存失败` : ""}。`;
     } finally { invoiceStore.busy = false; }
+  },
+
+  intakeDecision(inv) { return intakeDecision(inv, directory.buyers, invoiceStore.ledger); },
+  async saveRecognizedInvoices(invoices = invoiceStore.invoices) {
+    if (invoiceStore.savingIntake) throw new Error('正在保存，请稍候');
+    invoiceStore.savingIntake = true;
+    let saved = 0, failed = 0;
+    const errors = [];
+    try {
+      for (const inv of [...invoices]) {
+        if (inv.removed || intakeDecision(inv, directory.buyers, invoiceStore.ledger).state !== 'ready') continue;
+        try {
+          if (!inv.blob) throw new Error('缺少原件');
+          const before = intakeFingerprint(inv);
+          const plan = planRecognizedInvoice(invoiceStore.ledger, inv, directory.buyers);
+          await saveLedgerAttachmentIfMissing(plan.key, inv.blob);
+          if (inv.removed || before !== intakeFingerprint(inv)) throw new Error('保存期间票面有变化，请重新保存');
+          const latest = planRecognizedInvoice(invoiceStore.ledger, inv, directory.buyers);
+          saveLedger(latest.ledger); invoiceStore.ledger = latest.ledger;
+          inv.savedFingerprint = before; saved++;
+        } catch (error) { failed++; errors.push(inv.name+'：'+error.message); }
+      }
+      refreshHistory(); invoiceStore.attachmentVersion++;
+      return { saved, failed, errors, pending: invoiceStore.invoices.filter(inv => ['review','receipt','unrecognized','ready'].includes(intakeDecision(inv,directory.buyers,invoiceStore.ledger).state)).length };
+    } finally { invoiceStore.savingIntake = false; }
+  },
+  async transferOtherReceipt(inv) {
+    if (invoiceStore.savingIntake) throw new Error('正在保存，请稍候');
+    if (intakeDecision(inv, directory.buyers, invoiceStore.ledger).state !== 'receipt') throw new Error('请先确认标记为其他票据');
+    if (inv.fields?.number && invoiceStore.ledger[String(inv.fields.number).replace(/\s/g,'')]) throw new Error('同号码已存在于历史台账，请先核对并移入回收站，再转存为其他票据，避免重复计费。');
+    invoiceStore.savingIntake = true;
+    try {
+      const result = await transferReceipt(inv, { getRows: () => paymentStore.rows, saveRows: savePayments, saveAttachment: saveLedgerAttachment });
+      inv.paymentId = result.row.id; inv.include = false;
+      return result;
+    } finally { invoiceStore.savingIntake = false; }
+  },
+  async linkTripAttachment({ file, fields, ledgerKey, paymentId, invoice }) {
+    if (invoiceStore.savingIntake) throw new Error('正在保存，请稍候');
+    if (receiptType(fields) !== '行程单') throw new Error('此入口仅关联行程单');
+    if (!invoiceStore.ledger[ledgerKey] || receiptType(invoiceStore.ledger[ledgerKey])) throw new Error('请选择有效的主发票');
+    if (!file) throw new Error('缺少行程单原件');
+    const payment = paymentId ? paymentStore.rows.find(row => row.id === paymentId) : null;
+    if (paymentId && !payment) throw new Error('付款记录不存在');
+    if (payment?.evidenceConfirmed || payment?.reimbursement === '已报销') throw new Error('该行程单已确认费用或已报销，请先在付款凭证取消确认与报销，避免改变已核对金额');
+    invoiceStore.savingIntake = true;
+    try {
+      const hash = await receiptHash(file);
+      const linked = Object.values(invoiceStore.ledger).find(entry => entry.supplementHashes?.includes(hash));
+      if (linked && linked.key !== ledgerKey) throw new Error('此行程单已关联发票 '+linked.number+'，不能重复关联');
+      const existingPayment = payment || paymentStore.rows.find(row => row.sourceKind === 'receipt' && row.evidenceHash === hash);
+      if (existingPayment?.evidenceConfirmed || existingPayment?.reimbursement === '已报销') throw new Error('这份行程单已有已核对的付款记录，请先取消确认与报销');
+      await appendInvoiceSupplement(ledgerKey, file, { hash, type: '行程单', date: fields.date || '', total: fields.total, sourcePaymentId: existingPayment?.id || '' });
+      // 已在付款凭证中的行程单继续可见，但关联后不再独立计费。
+      if (existingPayment) savePayments(paymentStore.rows.map(row => row.id === existingPayment.id ? { ...row, linkedLedgerKey: ledgerKey, evidenceConfirmed: false } : row));
+      const current = invoiceStore.ledger[ledgerKey];
+      if (!current) throw new Error('主发票已被删除，请恢复后重试');
+      const ledger = { ...invoiceStore.ledger, [ledgerKey]: { ...current, supplementHashes: [...new Set([...(current.supplementHashes || []), hash])] } };
+      saveLedger(ledger); invoiceStore.ledger = ledger;
+      if (invoice) { invoice.linkedLedgerKey = ledgerKey; invoice.include = false; }
+      invoiceStore.attachmentVersion++;
+    } finally { invoiceStore.savingIntake = false; }
   },
 
   // —— 历史台账 / 认证查重 ——
@@ -567,6 +631,7 @@ export const invoiceActions = {
     return result;
   },
   updateCurrentReimbursements(invoices, action, date) {
+    if (action === "mark") assertLedgerEligible(invoices);
     if (action === "mark") { const bad = invoices.find(inv => invoiceProblems(inv.fields).length); if (bad) throw new Error("请先复核完整票面：" + invoiceProblems(bad.fields).join("、")); }
     const result = updateCurrentReimbursements(invoiceStore.ledger, invoices, action, date);
     saveLedger(result.ledger);
@@ -580,11 +645,12 @@ export const invoiceActions = {
     return result;
   },
   setInvoiceExpenseTag(inv, tag) {
+    inv.expenseTag = tag; inv.expenseTagSet = true;
+    // 未保存的票据仅修改草稿，其他票据不能通过标签操作进入进项台账。
+    if (!canEnterLedger(inv, directory.buyers, invoiceStore.ledger) || !inv.history?.entry) return { ok: true };
     const next = setInvoiceExpenseTag(invoiceStore.ledger, inv, tag);
-    if (!next) return { ok: false, message: "请先识别并核对发票号码；旧版短号码需要匹配发票代码。" };
-    saveLedger(next);
-    invoiceStore.ledger = next;
-    refreshHistory();
+    if (!next) return { ok: false, message: '台账信息不一致，请先核对。' };
+    saveLedger(next); invoiceStore.ledger = next; refreshHistory();
     return { ok: true };
   },
   clearLedger() {
@@ -593,6 +659,7 @@ export const invoiceActions = {
   },
   recordToLedger(name) {
     const list = orderedForPrint().map((x) => x.inv).filter((inv) => inv.status === "done");
+    assertLedgerEligible(list);
     const { ledger, added, repeated } = recordInvoices(invoiceStore.ledger, list, { name: name || "报销批次" });
     invoiceStore.ledger = ledger;
     saveLedger(ledger);
@@ -605,6 +672,7 @@ export const invoiceActions = {
     const list = orderedForPrint()
       .map((x) => x.inv)
       .filter((inv) => inv.status === "done" && (!idSet || idSet.has(inv.id)));
+    assertLedgerEligible(list);
     const { ledger, added, updated, printed } = markPrintedInvoices(invoiceStore.ledger, list, { name: name || "打印批次" });
     invoiceStore.ledger = ledger;
     saveLedger(ledger);
@@ -629,6 +697,11 @@ export const invoiceActions = {
     return syncMatchedAttachments();
   },
 };
+
+export function assertLedgerEligible(invoices) {
+  const bad = invoices.find(inv => !canEnterLedger(inv, directory.buyers, invoiceStore.ledger));
+  if (bad) throw new Error(intakeDecision(bad, directory.buyers, invoiceStore.ledger).reason);
+}
 
 export function invoiceSummary() {
   let amount = 0, tax = 0, total = 0, n = 0;

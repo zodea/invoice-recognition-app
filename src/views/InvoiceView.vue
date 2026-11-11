@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, DialogTrigger } from "reka-ui";
 import { invoiceStore, invoiceActions, sortedInvoices, buyerOptions, docTypeOptions, selectInvoice } from "../invoiceStore";
+import InvoiceIntakeReview from '../components/InvoiceIntakeReview.vue';
 import InvoiceBuyerCheck from '../components/InvoiceBuyerCheck.vue';
 import { useBuyerCheck } from '../composables/useBuyerCheck.js';
 import { matchesBuyerCheck, buyerCheckLabels } from '../lib/invoice-buyer-check.js';
@@ -16,6 +17,16 @@ import { inferExpenseTag } from "../lib/invoice-tags";
 import { toast, toastInfo } from "../lib/toast";
 import { filesFromDrop, dragHasSupported } from "../lib/upload";
 
+const intakeFilter = ref('pending');
+const intakeCounts = computed(() => invoiceStore.invoices.reduce((counts, inv) => { const state = invoiceActions.intakeDecision(inv).state; counts[state] = (counts[state] || 0) + 1; return counts; }, {}));
+const intakePending = computed(() => ['unrecognized','ready','review','receipt'].reduce((sum,key)=>sum+(intakeCounts.value[key]||0),0));
+async function saveMatched() {
+  try {
+    const result = await invoiceActions.saveRecognizedInvoices();
+    toastInfo('已保存 '+result.saved+' 张；留下 '+result.pending+' 张待处理。'+(result.failed?'保存失败 '+result.failed+' 张：'+result.errors.join('；'):''));
+    intakeFilter.value = 'pending';
+  } catch(error) { toastInfo('保存失败：'+error.message); }
+}
 const search = ref("");
 const startDate = ref("");
 const endDate = ref("");
@@ -29,15 +40,20 @@ const reimbursementSelection = ref([]);
 const buyerCheckFilter = ref('all');
 const { checker: buyerChecker, configured: buyersConfigured, counts: buyerCounts } = useBuyerCheck(() => invoiceStore.invoices.map(inv => inv.fields));
 function scanBuyers() {
-  search.value = ''; startDate.value = ''; endDate.value = '';
+  intakeFilter.value = 'all'; search.value = ''; startDate.value = ''; endDate.value = '';
   reimbursementFilter.value = 'all'; expenseTagFilter.value = 'all';
   invoiceStore.buyerFilter = '全部'; invoiceStore.docTypeFilter = '全部';
   buyerCheckFilter.value = 'issues';
 }
 const sorted = computed(() => sortedInvoices().filter(({ inv }) => {
+  const state = invoiceActions.intakeDecision(inv).state;
+  if (intakeFilter.value === 'pending' && ['saved','payment-saved','linked'].includes(state)) return false;
+  if (intakeFilter.value === 'review' && state !== 'review') return false;
+  if (intakeFilter.value === 'receipt' && state !== 'receipt') return false;
+  if (intakeFilter.value === 'saved' && !['saved','payment-saved','linked'].includes(state)) return false;
   if (!matchesBuyerCheck(buyerChecker.value(inv.fields), buyerCheckFilter.value)) return false;
   const entry = inv.history?.entry;
-  const tag = entry?.expenseTagSet ? entry.expenseTag : (entry?.expenseTag || inferExpenseTag(inv));
+  const tag = inv.expenseTagSet ? inv.expenseTag : entry?.expenseTagSet ? entry.expenseTag : (inv.expenseTag || entry?.expenseTag || inferExpenseTag(inv));
   const query = search.value.trim().toLowerCase();
   const matches = !query || [inv.name, inv.fields.number, inv.fields.seller, inv.fields.buyer, inv.fields.type].some(value => String(value || "").toLowerCase().includes(query));
   const date = String(inv.fields.date || "").slice(0, 10);
@@ -144,12 +160,18 @@ function invertSelect() {
       <InvoiceReimbursementToolbar v-model:status="reimbursementFilter" v-model:tag="expenseTagFilter" :selected-count="selectedInvoices.length" :visible-count="sorted.length" @select-all="reimbursementSelection = sorted.map(item => item.inv.id)" @clear="reimbursementSelection = []" @mark="updateReimbursements('mark', $event)" @cancel="updateReimbursements('cancel')" />
     </details>
     <div v-if="invoiceStore.invoices.length" class="work-actions"><span><b>{{ invoiceStore.invoices.length }}</b> 张发票<span v-if="unrecognizedCount"> · {{ unrecognizedCount }} 张未识别</span><span v-if="duplicateCount"> · {{ duplicateCount }} 张重复</span><span v-if="reusedIncludedCount"> · {{ reusedIncludedCount }} 张有历史记录</span></span><button class="btn" :disabled="invoiceStore.busy || !unrecognizedCount" @click="invoiceActions.recognizeAll">{{ invoiceStore.busy ? '识别中…' : '全部识别' }}</button><button class="btn" :disabled="invoiceStore.busy || invoiceStore.invoices.length < 2" @click="dedupe">批量移除重复</button><button class="btn" :disabled="!reusedIncludedCount" @click="excludeReused">排除历史记录</button><button class="btn-ghost" @click="invoiceActions.clearAll">清空</button><span v-if="invoiceStore.msg" class="work-message" role="status">{{ invoiceStore.msg }}</span></div>
+    <div v-if="invoiceStore.invoices.length" class="intake-toolbar">
+      <label>处理进度<select v-model="intakeFilter" class="field-input"><option value="pending">待处理（{{ intakePending }}）</option><option value="review">待二次确认（{{ intakeCounts.review || 0 }}）</option><option value="receipt">其他票据（{{ intakeCounts.receipt || 0 }}）</option><option value="saved">已保存 / 已关联</option><option value="all">本批全部</option></select></label>
+      <button class="btn-primary" :disabled="invoiceStore.busy || invoiceStore.savingIntake || !intakeCounts.ready" @click="saveMatched">保存已匹配发票（{{ intakeCounts.ready || 0 }}）</button><span>未匹配的单独留下，其他票据转到付款凭证。</span>
+    </div>
     <div v-if="invoiceStore.invoices.length" class="invoice-columns">
       <InvoiceList :items="sorted" :active-id="activeItem?.inv.id" @select-all="selectAll" @select-none="selectNone" @invert="invertSelect" />
       <div class="invoice-middle"><InvoiceDocumentPreview :invoice="activeItem?.inv" /><DialogRoot v-model:open="printPreviewOpen"><DialogTrigger as-child><button class="print-layout-trigger" type="button"><strong>打印排版预览</strong><span>查看每页打印效果 ↗</span></button></DialogTrigger><DialogPortal><DialogOverlay class="print-layout-overlay" /><DialogContent class="print-layout-modal"><header class="print-layout-header"><div><DialogTitle class="print-layout-title">打印排版预览</DialogTitle><DialogDescription class="print-layout-description">双击票面放大，可拖动、缩放和旋转；打印设置在主页面底部。</DialogDescription></div><DialogClose class="btn" aria-label="关闭打印排版预览">关闭</DialogClose></header><div class="print-layout-content"><InvoicePreview /></div></DialogContent></DialogPortal></DialogRoot></div>
-      <section class="work-panel invoice-detail"><div class="panel-heading"><div><h2>发票详情 <span>（可编辑核对）</span></h2><p>选择发票后可修改识别结果</p></div></div><p v-if="activeItem && ['missing','unmatched'].includes(buyerChecker(activeItem.inv.fields))" class="finance-notice">{{ buyerCheckLabels[buyerChecker(activeItem.inv.fields)] }}，请对照原件核对。</p><InvoiceRow v-if="activeItem" :key="activeItem.inv.id" :item="activeItem" :reimbursement-selected="reimbursementSelection.includes(activeItem.inv.id)" @select-reimbursement="selectReimbursement" /><div v-else class="work-empty">请选择一张发票</div></section>
+      <section class="work-panel invoice-detail"><div class="panel-heading"><div><h2>发票详情 <span>（可编辑核对）</span></h2><p>选择发票后可修改识别结果</p></div></div><InvoiceIntakeReview v-if="activeItem" :key="activeItem.inv.id" :invoice="activeItem.inv" /><InvoiceRow v-if="activeItem" :key="activeItem.inv.id" :item="activeItem" :reimbursement-selected="reimbursementSelection.includes(activeItem.inv.id)" @select-reimbursement="selectReimbursement" /><div v-else class="work-empty">请选择一张发票</div></section>
     </div>
     <div v-else class="work-empty invoice-welcome"><strong>还没有发票</strong><span>将 PDF、图片或文件夹拖入窗口，或使用上方按钮选择。</span></div>
     <InvoicePrintPanel />
   </div>
 </template>
+
+<style scoped>.intake-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;padding:7px 10px;background:#fff;border:1px solid #dfe5ed;border-radius:6px}.intake-toolbar label{display:flex;align-items:center;gap:7px}.intake-toolbar select{width:190px;height:30px;font-size:12px}.intake-toolbar button{min-height:30px;font-size:12px;padding:5px 9px}.intake-toolbar>span{color:#64748b}</style>

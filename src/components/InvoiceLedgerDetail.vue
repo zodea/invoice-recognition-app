@@ -18,6 +18,7 @@ const emit = defineEmits(["close", "attachment-change"]);
 watch(() => props.entry.key, () => { editing.value = props.editInitially; }, { immediate: true });
 const fileInput = ref(null);
 const attachment = ref(null);
+const attachmentBundle = ref(null), selectedAttachment = ref('');
 const images = ref([]);
 const message = ref("");
 const formMessage = ref("");
@@ -42,18 +43,21 @@ async function loadAttachment() {
   try {
     const found = await getLedgerAttachment(props.entry.key);
     if (current !== generation) return;
-    attachment.value = found || null;
-    if (!found) return;
+    attachmentBundle.value = found || null;
+    const source = selectedAttachment.value ? found?.supplements?.find(item=>item.hash===selectedAttachment.value) : found?.blob ? found : null;
+    attachment.value = source || null;
+    if (!source?.blob) return;
     message.value = "正在生成预览…";
-    const result = /\.pdf$/i.test(found.name) || found.blob.type === "application/pdf"
-      ? (await renderPdfPages(found.blob, { maxPages: 20, scale: 2 })).filter(Boolean)
-      : [URL.createObjectURL(found.blob)];
+    const result = /\.pdf$/i.test(source.name) || source.blob.type === "application/pdf"
+      ? (await renderPdfPages(source.blob, { maxPages: 20, scale: 2 })).filter(Boolean)
+      : [URL.createObjectURL(source.blob)];
     if (current !== generation) { result.forEach(url => URL.revokeObjectURL(url)); return; }
     images.value = result;
     message.value = result.length ? "" : "无法生成预览，请检查原件。";
   } catch (err) { if (current === generation) message.value = `原件读取失败：${err.message || err}`; }
 }
-watch([() => props.entry.key, () => props.version], loadAttachment, { immediate: true });
+watch(() => props.entry.key, () => { selectedAttachment.value=''; attachmentBundle.value=null; });
+watch([() => props.entry.key, () => props.version, selectedAttachment], loadAttachment, { immediate: true });
 watch(() => props.entry.key, () => { formMessage.value = ""; zoom.value = 100; });
 onBeforeUnmount(() => { generation++; clearImages(); });
 async function attach(event) {
@@ -81,6 +85,7 @@ function update(key, event) {
     <div class="comparison-body">
       <section class="preview-pane" aria-label="发票原件预览">
         <div class="preview-toolbar"><div class="preview-title"><strong>发票原件</strong><span>{{ attachment?.name || '尚未关联原件' }}</span></div><div class="preview-actions"><button class="btn" :disabled="zoom <= 75" aria-label="缩小发票" @click="zoom = Math.max(75, zoom - 25)">−</button><span>{{ zoom }}%</span><button class="btn" :disabled="zoom >= 200" aria-label="放大发票" @click="zoom = Math.min(200, zoom + 25)">＋</button><button class="btn" @click="fileInput?.click()">{{ attachment ? '更换原件' : '关联原件' }}</button><input ref="fileInput" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.bmp" class="hidden" @change="attach" /></div></div>
+        <div v-if="attachmentBundle?.supplements?.length" class="attachment-selector"><label>查看原件 / 附件 <select v-model="selectedAttachment" class="field-input"><option value="">发票原件{{ attachmentBundle.blob ? '' : '（尚未关联）' }}</option><option v-for="file in attachmentBundle.supplements" :key="file.hash" :value="file.hash">行程单 · {{ file.name }}</option></select></label><small>行程单仅作附件，不重复计费。</small></div>
         <div class="preview-scroll" tabindex="0" aria-label="发票原件，可滚动查看">
           <div v-if="!attachment && !message" class="preview-empty"><strong>还没有关联发票原件</strong><p>识别发票后可自动匹配，也可以手动选择 PDF 或图片。</p><button class="btn" @click="fileInput?.click()">关联发票原件</button></div>
           <p v-if="message" class="preview-note" role="status">{{ message }}</p>
@@ -122,4 +127,5 @@ function update(key, event) {
 <style scoped>
 .detail-pane{width:100%;height:100%;display:flex;flex-direction:column;min-height:0;background:#fff}.detail-heading{flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid #dfe5ed}.detail-heading strong{font-size:14px;overflow-wrap:anywhere}.detail-heading .btn{flex:none}.detail-eyebrow{font-size:11px;color:#64748b;margin-bottom:3px}.comparison-body{display:flex;flex:1;min-height:0;min-width:0}.preview-pane{flex:1;min-width:0;display:flex;flex-direction:column;background:#f1f4f8}.preview-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;background:#fff;border-bottom:1px solid #e3e9f0}.preview-title{display:flex;flex-direction:column;min-width:0;gap:2px}.preview-title strong{font-size:13px}.preview-title span{font-size:11px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.preview-actions{display:flex;align-items:center;gap:5px;flex:none;font-size:12px}.preview-scroll{flex:1;min-height:0;overflow:auto;padding:20px}.preview-page{margin:0 auto 16px;min-width:75%;background:white;border:1px solid #dce3eb;box-shadow:0 2px 10px rgba(15,23,42,.08)}.preview-page img{display:block;width:100%;height:auto}.preview-empty{display:grid;justify-items:center;align-content:center;min-height:250px;color:#475569;text-align:center}.preview-empty p,.preview-note,.preview-foot,.section-note{font-size:12px;color:#64748b;line-height:1.6}.preview-foot{flex:none;padding:7px 16px;background:#fff;border-top:1px solid #e3e9f0}.detail-scroll{flex:none;width:min(520px,42%);min-width:0;overflow:auto;padding:20px 22px;border-left:1px solid #e3e9f0}.detail-scroll h3{font-size:14px;margin:22px 0 10px}.detail-status{display:flex;gap:6px;flex-wrap:wrap;font-size:11px}.detail-status span{padding:4px 7px;background:#f1f5f9;border-radius:4px;color:#475569}.detail-status .deducted{background:#edf9f1;color:#166534}.detail-status .red-tag{background:#fef2f2;color:#b91c1c}.detail-grid,.detail-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:0;font-size:12px}.detail-grid .wide,.detail-fields .wide{grid-column:span 2}.detail-grid>div,.detail-fields label{min-width:0}.detail-grid dt,.detail-fields label{color:#64748b}.detail-grid dd{margin:4px 0 0;color:#172033;overflow-wrap:anywhere}.detail-fields label{display:grid;gap:5px}.detail-fields input,.detail-fields select{width:100%;min-width:0}.detail-lines{overflow-x:auto}.detail-lines table{border-collapse:collapse;width:max-content;min-width:100%;font-size:11px}.detail-lines th,.detail-lines td{text-align:left;padding:8px;border-bottom:1px solid #edf1f5;vertical-align:top;white-space:nowrap}.detail-lines td:first-child{white-space:normal;min-width:140px;max-width:220px;overflow-wrap:anywhere}.detail-lines small{display:block;color:#64748b}.detail-total{text-align:right;padding:10px 8px;font-size:12px}.detail-total strong{margin-left:8px}.form-notice{padding:8px;background:#fffbeb;color:#92400e;font-size:12px;border-radius:5px}.section-note{margin:8px 0}.preview-actions .btn{padding:5px 8px}
 @media(max-width:900px){.detail-scroll{width:44%}.preview-toolbar{align-items:flex-start;flex-wrap:wrap}.preview-actions{flex-wrap:wrap}}
+.attachment-selector{padding:8px 16px;background:#fff;border-bottom:1px solid #dfe5ed;font-size:12px}.attachment-selector label{display:flex;align-items:center;gap:8px}.attachment-selector select{flex:1;min-width:0;font-size:12px}.attachment-selector small{display:block;margin-top:4px;color:#64748b}
 </style>

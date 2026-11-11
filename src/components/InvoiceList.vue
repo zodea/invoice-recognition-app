@@ -1,5 +1,5 @@
 <script setup>
-import { selectInvoice } from "../invoiceStore";
+import { selectInvoice, invoiceActions } from "../invoiceStore";
 import MiddleEllipsis from "./MiddleEllipsis.vue";
 
 defineProps({ items: { type: Array, required: true }, activeId: String });
@@ -23,6 +23,7 @@ function setIncluded(inv, checked) {
         <span class="invoice-list-top"><strong>{{ item.inv.fields.type || item.inv.fields.docType || '发票' }}</strong><span class="invoice-status" :class="{ done: item.inv.history?.entry?.reimbursement === '已报销', warn: item.needsReview }">{{ item.inv.history?.entry?.reimbursement === '已报销' ? '已报销' : item.needsReview ? '待核对' : item.inv.history?.entry?.reimbursement || '未核对' }}</span></span>
         <span class="invoice-list-name"><MiddleEllipsis :text="item.inv.fields.seller || item.inv.name" /></span>
         <span class="invoice-list-meta"><span>{{ item.inv.fields.date || '日期待核对' }}</span><b>{{ item.inv.fields.total ? `¥${item.inv.fields.total}` : '金额待核对' }}</b></span>
+        <span class="invoice-list-warning">{{ invoiceActions.intakeDecision(item.inv).label }}</span>
         <span v-if="item.inv.duplicateReason" class="invoice-list-warning">重复发票</span>
       </button>
     </div>

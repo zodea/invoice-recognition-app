@@ -110,7 +110,7 @@ const tagBase = "chip flex-none px-1.75 py-0.5 border";
       <label class="field-label">价税合计<input class="field-input" v-model="item.inv.fields.total" inputmode="decimal" /></label>
       <label class="field-label">税点<input class="field-input" v-model="item.inv.fields.rate" placeholder="如 13%（混票留空）" /></label>
       <label class="field-label">类型<input class="field-input" v-model="item.inv.fields.type" placeholder="未识别（留空）" /></label>
-      <label class="field-label">费用标签<select class="field-input" :value="item.inv.history?.entry?.expenseTagSet ? item.inv.history.entry.expenseTag : (item.inv.history?.entry?.expenseTag || inferExpenseTag(item.inv))" @change.stop="changeTag(item.inv, $event)"><option value="">未分类</option><option v-for="tag in EXPENSE_TAGS" :key="tag" :value="tag">{{ tag }}</option></select></label>
+      <label class="field-label">费用标签<select class="field-input" :value="item.inv.expenseTagSet ? item.inv.expenseTag : item.inv.history?.entry?.expenseTagSet ? item.inv.history.entry.expenseTag : (item.inv.expenseTag || item.inv.history?.entry?.expenseTag || inferExpenseTag(item.inv))" @change.stop="changeTag(item.inv, $event)"><option value="">未分类</option><option v-for="tag in EXPENSE_TAGS" :key="tag" :value="tag">{{ tag }}</option></select></label>
       <label class="field-label col-span-full">票面备注<input class="field-input" v-model="item.inv.fields.remark" placeholder="发票备注栏内容" /></label>
     </div>
   </article>

@@ -32,7 +32,7 @@ const tabCls = "app-nav-item";
       <TabsList class="app-navigation" aria-label="功能导航">
         <TabsTrigger value="invoice" :class="tabCls"><AppIcon name="invoice" /> 发票管理</TabsTrigger>
         <TabsTrigger value="ledger" :class="tabCls"><AppIcon name="ledger" /> 历史进项台账</TabsTrigger>
-        <TabsTrigger value="expense-directory" :class="tabCls"><AppIcon name="building" />基础档案</TabsTrigger><TabsTrigger value="payments" :class="tabCls"><AppIcon name="payment" />付款凭证 <small v-if="paymentStore.rows.some(r=>!r.evidenceConfirmed&&!r.duplicateOf)">待补 {{ paymentStore.rows.filter(r=>!r.evidenceConfirmed&&!r.duplicateOf).length }}</small></TabsTrigger>
+        <TabsTrigger value="expense-directory" :class="tabCls"><AppIcon name="building" />基础档案</TabsTrigger><TabsTrigger value="payments" :class="tabCls"><AppIcon name="payment" />付款凭证 <small v-if="paymentStore.rows.some(r=>!r.evidenceConfirmed&&!r.duplicateOf&&!r.linkedLedgerKey)">待补 {{ paymentStore.rows.filter(r=>!r.evidenceConfirmed&&!r.duplicateOf&&!r.linkedLedgerKey).length }}</small></TabsTrigger>
         <TabsTrigger value="delivery" :class="tabCls"><AppIcon name="delivery" /> 送货单整理</TabsTrigger>
         <TabsTrigger value="supplier" :class="tabCls"><AppIcon name="supplier" /> 分供方</TabsTrigger>
         <TabsTrigger value="price" :class="tabCls"><AppIcon name="chart" /> 单价对比</TabsTrigger>

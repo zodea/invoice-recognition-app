@@ -149,6 +149,7 @@ async function printNow() {
 }
 
 function confirmPrinted() {
+  if (!checkComplete()) return;
   const stamp = new Date().toISOString().slice(0, 10);
   const result = invoiceActions.markPrinted(pendingPrintedIds.value, `打印_${stamp}`);
   pendingPrintedIds.value = [];
@@ -177,6 +178,8 @@ async function saveWithDialog(bytes, name, mime, okMsg, dlMsg) {
 }
 
 function checkComplete() {
+ const blocked = included.value.filter(inv=>!['ready','saved'].includes(invoiceActions.intakeDecision(inv).state));
+ if(blocked.length){toastWarn('有 '+blocked.length+' 张票据尚未确认入账去向：'+invoiceActions.intakeDecision(blocked[0]).reason);return false;}
  const bad=included.value.filter(inv=>invoiceProblems(inv.fields).length);
  if(!bad.length)return true;
  toastWarn('有 '+bad.length+' 张票据未通过复核，不能保存：'+invoiceProblems(bad[0].fields).join('、')); return false;
