@@ -726,7 +726,6 @@ const lwb = await PDFDocument.load(layoutBytes);
 ok("排版纸张是A4宽", Math.round(lwb.getPage(0).getWidth()) === 595);
 ok("4源页@2每页=2张A4", lwb.getPageCount() === 2);
 
-console.log(`\n全部通过：${pass} 项 ✓`);
 
 const selectionRows = [["发票号码", "开票日期*", "是否勾选*"], ["25442000000000009999", "2025-12-30", "否"]];
 const prior = { "25442000000000009999": { key: "25442000000000009999", reimbursement: "已报销", project: "项目甲", payment: "公账支付", tags: "材料" } };
@@ -737,3 +736,5 @@ const knownSelection = { ...prior, "25442000000000009999": { ...prior["254420000
 const noSelectionRows = [["发票号码", "开票日期"], ["25442000000000009999", "2025-12-30"]];
 const afterFullList = importInputInvoiceRows(knownSelection, noSelectionRows).ledger["25442000000000009999"];
 ok("无勾选列的全量清单保留已有勾选状态", afterFullList.officialSelection === "已勾选" && afterFullList.verified && afterFullList.project === "项目甲");
+
+console.log(`\n全部通过：${pass} 项 ✓`);

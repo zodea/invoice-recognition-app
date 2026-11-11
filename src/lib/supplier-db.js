@@ -3,7 +3,7 @@
 // 供送货单子文件夹简称（大板东 / 兆鑫建 材 / 智道(1)）对应到公司全称。issue #6
 import * as XLSX from "xlsx";
 import { reactive } from "vue";
-import { IMPORT_FIELDS, SUPPLIER_TYPES, supplierMissingFields } from "./supplier-schema.js";
+import { IMPORT_FIELDS, supplierMissingFields } from "./supplier-schema.js";
 
 const STORAGE_KEY = "supplierDb.v1";
 

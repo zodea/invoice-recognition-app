@@ -10,16 +10,14 @@
 // 该库还有一个坑：模型加载失败时 init() 的 Promise 永远不落定（fetch 异常被吞），
 // UI 会卡死在"识别中…"。这里所有外部调用都包超时，超时即报可读错误并允许重试。
 
+import { ocrTextRegions } from './recognition-regions.js';
+
 let ocrMod = null;
 let initPromise = null;
 let initialized = false;
 
 const INIT_TIMEOUT_MS = 90000; // 本地模型加载通常 <5s；留余量给低配机器首次编译 WebGL
 const RECOGNIZE_TIMEOUT_MS = 90000; // 单页识别上限（大图慢机兜底）
-
-export function ocrReady() {
-  return initialized;
-}
 
 function withTimeout(promise, ms, message) {
   let timer;
@@ -39,10 +37,8 @@ async function loadLib() {
 }
 
 function modelBase() {
-  const base = (import.meta.env && import.meta.env.BASE_URL) || "/";
-  // paddlejs 的 modelPath 需要绝对 URL；本地路径拼上当前页面源
-  const origin = typeof location !== "undefined" ? location.origin : "";
-  return `${origin}${base}ocr-models`;
+  const base = import.meta.env?.BASE_URL || '/';
+  return new URL(`${base}ocr-models`, location.href).href;
 }
 
 export function initOcr(onProgress) {
@@ -86,7 +82,7 @@ function extractLines(res) {
 }
 
 // 识别一张页图（dataUrl/objectURL），返回文本行数组。
-export async function recognizeDataUrl(dataUrl, onProgress) {
+async function recognizeDataUrl(dataUrl, onProgress, onRegions) {
   await initOcr(onProgress);
   const img = await loadImage(dataUrl);
   const res = await withTimeout(
@@ -94,18 +90,19 @@ export async function recognizeDataUrl(dataUrl, onProgress) {
     RECOGNIZE_TIMEOUT_MS,
     "单页识别超时（图片过大或显卡过慢）。可压缩/重扫该页后重试。"
   );
+  if (onRegions) onRegions(ocrTextRegions(res, img.naturalWidth, img.naturalHeight));
   return extractLines(res).filter((s) => s && s.trim());
 }
 
 // 识别多页，合并所有文本行。单页失败不拖垮整份：记录页号继续，最后统一抛出汇总错误
 // （若所有页都失败）或附加警告（部分失败时仍返回已识别文本，并在 warnings 里说明）。
-export async function recognizePages(pages, onProgress) {
+export async function recognizePages(pages, onProgress, { onPageRegions } = {}) {
   const all = [];
   const failed = [];
   for (let i = 0; i < pages.length; i++) {
     if (onProgress) onProgress(`识别第 ${i + 1}/${pages.length} 页…`);
     try {
-      const lines = await recognizeDataUrl(pages[i].dataUrl);
+      const lines = await recognizeDataUrl(pages[i].dataUrl, undefined, onPageRegions ? regions => onPageRegions(regions.map(region => ({ ...region, page: pages[i].pageIndex ?? i }))) : undefined);
       all.push(...lines);
     } catch (e) {
       failed.push({ page: i + 1, reason: String((e && e.message) || e) });

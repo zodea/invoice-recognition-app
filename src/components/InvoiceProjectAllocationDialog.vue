@@ -1,4 +1,5 @@
 <script setup>
+import { formatMoney as money } from "../lib/format.js";
 import { computed, ref, shallowRef, watch } from 'vue';
 import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
 import SearchSelect from './SearchSelect.vue';
@@ -27,7 +28,6 @@ watch(() => props.entry.key, () => {
 const state = computed(() => projectAllocationState(props.entry, rows.value));
 const options = computed(() => [...new Set([...directory.projects, props.entry.project, ...(props.entry.projectAllocations || []).map(row => row.project)].filter(Boolean))]);
 const canSave = computed(() => mode.value === 'single' ? !!project.value : !state.value.errors.length);
-const money = value => value == null || value === '' ? '—' : Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function percentage(row) {
   const total = moneyCents(props.entry.total), cents = moneyCents(row.total);
   return total && cents !== null ? `${(cents / total * 100).toFixed(2)}%` : '—';

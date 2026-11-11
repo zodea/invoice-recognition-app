@@ -1,15 +1,11 @@
 // PDF / 图片处理。
 //
 // 关键设计：扫描仪（Sharp 等）输出的是“图片型 PDF”，每页就是一张内嵌 JPEG。
-// 我们直接把这些 JPEG 抽出来用于预览 + OCR（无损、原图），不依赖 pdf.js 渲染
-// （pdf.js 的 worker 渲染在 Vite 里会卡死，而且对扫描件来说抽图更直接）。
-// 电子发票那种“文字型 PDF”没有内嵌图，预览/识别走 pdftext.js 抽文字。
+// 直接抽出原始 JPEG，供送货单预览及识别使用，也作为发票整页渲染失败时的兜底。
+// 发票正常预览和整页 OCR 使用 pdftext.js，以保留页面布局和一致的框线坐标。
 // 导出 / 批量打印用 pdf-lib 把原件页/图片重新封装、合并、排版。
 import { PDFDocument } from "pdf-lib";
-
-export function isPdf(file) {
-  return (file.type || "") === "application/pdf" || /\.pdf$/i.test(file.name || "");
-}
+import { isPdf } from './file-utils.js';
 
 function blobToDataUrl(blob) {
   return new Promise((resolve, reject) => {

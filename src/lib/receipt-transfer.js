@@ -1,7 +1,4 @@
-export async function receiptHash(file) {
-  const bytes = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
-  return Array.from(new Uint8Array(bytes), value => value.toString(16).padStart(2,'0')).join('');
-}
+import { fileHash } from './file-utils.js';
 export function buildReceiptPayment(inv, hash) {
   const f = inv.fields;
   return {
@@ -14,7 +11,7 @@ export function buildReceiptPayment(inv, hash) {
   };
 }
 // 原件保存成功后才发布付款记录。失败时识别队列中的原票继续保留，可重试。
-export async function transferReceipt(inv, { getRows, saveRows, saveAttachment, hashFile = receiptHash }) {
+export async function transferReceipt(inv, { getRows, saveRows, saveAttachment, hashFile = fileHash }) {
   if (!inv.blob) throw new Error('缺少票据原件，不能转存。');
   const hash = await hashFile(inv.blob), row = buildReceiptPayment(inv, hash);
   const existing = getRows().find(item => item.id === row.id || item.evidenceHash === hash);

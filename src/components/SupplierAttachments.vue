@@ -1,7 +1,7 @@
 <script setup>
 import { supplierAttachmentGroups } from '../lib/supplier-schema.js';
 import { getLedgerAttachment } from '../lib/ledger-attachments.js';
-import { downloadBytes } from '../lib/invoice-layout.js';
+import { downloadBytes } from "../lib/file-utils.js";
 import { toastWarn, toastError } from '../lib/toast.js';
 const props=defineProps({type:String,modelValue:{type:Array,default:()=>[]}});
 const emit=defineEmits(['update:modelValue']);

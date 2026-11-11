@@ -14,7 +14,6 @@ export function toast(message, opts = {}) {
   return id;
 }
 
-export const toastSuccess = (m, o) => toast(m, { type: "success", ...o });
 export const toastError = (m, o) => toast(m, { type: "error", duration: 6000, ...o });
 export const toastInfo = (m, o) => toast(m, { type: "info", ...o });
 export const toastWarn = (m, o) => toast(m, { type: "warn", duration: 5200, ...o });

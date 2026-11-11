@@ -1,10 +1,10 @@
+import { extractText } from "./lib/pdf-text.mjs";
 // 发票批量整理：识别全部发票 -> 与文件名“真值”核对差异 -> 重命名输出 PDF
 //   (公司：yyyy-mm-dd=金额元.pdf) -> 生成「最早~最晚」日期区间的 Excel 统计。
 // 运行：node scripts/invoice-batch.mjs
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 import { parseInvoice } from "../src/lib/invoice-parse.js";
 import { parseInvoiceFilename } from "../src/lib/invoice-filename.js";
 import * as XLSX from "xlsx";
@@ -34,36 +34,7 @@ function prepareRenameDir(dir) {
 
 const renameDir = prepareRenameDir(preferredRenameDir);
 
-const cmapsDir = path.join(root, "node_modules", "pdfjs-dist", "cmaps");
-class NodeCMapReaderFactory {
-  constructor({ baseUrl } = {}) { this.baseUrl = baseUrl || cmapsDir; }
-  async fetch({ name }) {
-    return { cMapData: new Uint8Array(fs.readFileSync(path.join(this.baseUrl, name + ".bcmap"))), compressionType: 1 };
-  }
-}
-function groupIntoLines(items, yTol = 3) {
-  const arr = items.filter((it) => it.str != null)
-    .map((it) => ({ str: it.str, x: it.transform[4], y: it.transform[5] }))
-    .sort((a, b) => b.y - a.y || a.x - b.x);
-  const lines = [];
-  for (const it of arr) {
-    let line = lines.find((l) => Math.abs(l.y - it.y) <= yTol);
-    if (!line) { line = { y: it.y, parts: [] }; lines.push(line); }
-    line.parts.push(it);
-  }
-  return lines.map((l) => l.parts.sort((a, b) => a.x - b.x).map((p) => p.str).join(" ").replace(/\s+/g, " ").trim());
-}
-async function extractText(file) {
-  const data = new Uint8Array(fs.readFileSync(file));
-  const pdf = await pdfjs.getDocument({ data, useSystemFonts: true, isEvalSupported: false, verbosity: 0, cMapUrl: cmapsDir, cMapPacked: true, CMapReaderFactory: NodeCMapReaderFactory }).promise;
-  const out = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    out.push(...groupIntoLines((await page.getTextContent()).items));
-  }
-  await pdf.destroy();
-  return out.join("\n");
-}
+
 
 // 递归找所有 pdf（跳过输出目录）
 function walk(dir) {

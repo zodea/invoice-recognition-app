@@ -11,7 +11,8 @@ import {
   RadioGroupRoot,
 } from "reka-ui";
 import { invoiceStore, invoiceActions, invoiceSummary, orderedForPrint } from "../invoiceStore";
-import { buildPrintLayout, openForPrint, downloadBytes } from "../lib/invoice-layout";
+import { buildPrintLayout, openForPrint } from "../lib/invoice-layout";
+import { downloadBytes } from "../lib/file-utils.js";
 import { buildInvoiceWorkbookBytes } from "../lib/invoice-excel";
 import { buildReimburseWorkbookBytes, reimburseWorkbookName } from "../lib/invoice-reimburse";
 import {

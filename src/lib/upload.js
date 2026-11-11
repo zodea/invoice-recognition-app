@@ -1,5 +1,4 @@
 // 上传相关：可识别类型判断、拖拽（含文件夹递归）取文件、拖拽时的禁用判断。issue #3
-export const SUPPORTED_EXTS = ["pdf", "png", "jpg", "jpeg", "bmp", "webp", "gif", "tif", "tiff"];
 export const SUPPORTED_RE = /\.(pdf|png|jpe?g|bmp|webp|gif|tiff?)$/i;
 export const SUPPORTED_HINT = "可识别：PDF、图片（PNG / JPG / JPEG / BMP / WEBP / GIF / TIFF）。也可以直接拖入文件夹。";
 

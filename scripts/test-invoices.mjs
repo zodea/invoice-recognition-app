@@ -1,9 +1,9 @@
+import { extractText } from "./lib/pdf-text.mjs";
 // 用真实发票（发票测试/）端到端验证：抽文字 -> parseInvoice -> 排版 -> Excel。
 // 运行：node scripts/test-invoices.mjs
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 import { parseInvoice } from "../src/lib/invoice-parse.js";
 import { applyInvoiceFilenameFallback } from "../src/lib/invoice-filename.js";
 import { buildPrintLayout } from "../src/lib/invoice-layout.js";
@@ -15,54 +15,8 @@ const dir = path.join(root, "发票测试");
 const outDir = path.join(root, "发票测试_输出");
 fs.mkdirSync(outDir, { recursive: true });
 
-// 复制 pdftext.js 的按行分组逻辑（Node 里不经 Vite，故内联）
-function groupIntoLines(items, yTol = 3) {
-  const arr = items
-    .filter((it) => it.str != null)
-    .map((it) => ({ str: it.str, x: it.transform[4], y: it.transform[5] }));
-  const sorted = arr.sort((a, b) => b.y - a.y || a.x - b.x);
-  const lines = [];
-  for (const it of sorted) {
-    let line = lines.find((l) => Math.abs(l.y - it.y) <= yTol);
-    if (!line) { line = { y: it.y, parts: [] }; lines.push(line); }
-    line.parts.push(it);
-  }
-  return lines.map((l) => l.parts.sort((a, b) => a.x - b.x).map((p) => p.str).join(" ").replace(/\s+/g, " ").trim());
-}
 
-const cmapsDir = path.join(root, "node_modules", "pdfjs-dist", "cmaps");
-// Node 里给 pdf.js 提供从磁盘读 CMap 的工厂（浏览器用默认 HTTP fetch），
-// 否则 CID 字体发票（如比音勒芬）抽不到文字。
-class NodeCMapReaderFactory {
-  constructor({ baseUrl } = {}) {
-    this.baseUrl = baseUrl || cmapsDir;
-  }
-  async fetch({ name }) {
-    const data = new Uint8Array(fs.readFileSync(path.join(this.baseUrl, name + ".bcmap")));
-    return { cMapData: data, compressionType: 1 };
-  }
-}
 
-async function extractText(file) {
-  const data = new Uint8Array(fs.readFileSync(file));
-  const pdf = await pdfjs.getDocument({
-    data,
-    useSystemFonts: true,
-    isEvalSupported: false,
-    verbosity: 0,
-    cMapUrl: cmapsDir,
-    cMapPacked: true,
-    CMapReaderFactory: NodeCMapReaderFactory,
-  }).promise;
-  const out = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    out.push(...groupIntoLines(content.items));
-  }
-  await pdf.destroy();
-  return out.join("\n");
-}
 
 const files = fs.readdirSync(dir).filter((n) => n.toLowerCase().endsWith(".pdf")).sort();
 const invoices = [];

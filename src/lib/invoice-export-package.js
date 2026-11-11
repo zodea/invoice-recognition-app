@@ -1,4 +1,8 @@
 import { standaloneDocumentType } from "./document-kind.js";
+import { isTauri as canUseTauriExport, invokeTauri } from './platform.js';
+import { bytesToBase64 } from './file-utils.js';
+
+export { canUseTauriExport };
 const ILLEGAL_FILE_CHARS = /[\x00-\x1f\\/:*?"<>|]/g;
 
 function valueOrFallback(value, fallback) {
@@ -179,14 +183,6 @@ export async function writeInvoiceExportPackage(invoices, rootHandle, { excelByt
   return result;
 }
 
-export function canUseTauriExport() {
-  return typeof window !== "undefined" && Boolean(window.__TAURI_INTERNALS__ || window.__TAURI__);
-}
-
-export function canChooseSaveDir() {
-  return canUseTauriExport() || (typeof window !== "undefined" && typeof window.showDirectoryPicker === "function");
-}
-
 // 让用户选目录后把单个文件（PDF / Excel）写进去，与“整理导出”一致的保存体验。
 // 返回 { saved } / { canceled } / { fallbackDownload }（调用方在不支持选目录时回退浏览器下载）。
 export async function saveBytesToChosenDir(bytes, fileName) {
@@ -197,33 +193,17 @@ export async function saveBytesToChosenDir(bytes, fileName) {
     return { saved };
   }
   if (typeof window !== "undefined" && typeof window.showDirectoryPicker === "function") {
-    const dir = await window.showDirectoryPicker({ mode: "readwrite" });
+    let dir;
+    try {
+      dir = await window.showDirectoryPicker({ mode: "readwrite" });
+    } catch (error) {
+      if (error?.name === 'AbortError') return { canceled: true };
+      throw error;
+    }
     const saved = await writeBytes(dir, fileName, bytes);
     return { saved };
   }
   return { fallbackDownload: true };
-}
-
-function toUint8Array(bytes) {
-  if (bytes instanceof Uint8Array) return bytes;
-  if (bytes instanceof ArrayBuffer) return new Uint8Array(bytes);
-  if (ArrayBuffer.isView(bytes)) return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  return new Uint8Array(bytes || []);
-}
-
-function bytesToBase64(bytes) {
-  const u8 = toUint8Array(bytes);
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let i = 0; i < u8.length; i += chunkSize) {
-    binary += String.fromCharCode(...u8.subarray(i, i + chunkSize));
-  }
-  return btoa(binary);
-}
-
-async function invokeTauri(command, args) {
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke(command, args);
 }
 
 async function writeTauriFile(root, parts, fileName, bytes) {

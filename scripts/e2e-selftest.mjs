@@ -1,31 +1,16 @@
+import { extractText } from "./lib/pdf-text.mjs";
 // 端到端自测：用真实发票 PDF，跑“与 UI 完全相同”的识别+整理逻辑（复用 src/lib 真模块），
 // 校验我修过的疑难版式与整理导出命名/分目录/去重。运行：node scripts/e2e-selftest.mjs
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 import { parseInvoice, classifyDocType, isProbablyInvoiceText } from "../src/lib/invoice-parse.js";
 import { applyInvoiceFilenameFallback } from "../src/lib/invoice-filename.js";
 import { markInvoiceDuplicates } from "../src/lib/invoice-dedupe.js";
 import { invoiceExportFileName, exportParentFolderName, invoiceFolderParts } from "../src/lib/invoice-export-package.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const cmapsDir = path.join(root, "node_modules", "pdfjs-dist", "cmaps");
-class CMap { constructor({ baseUrl } = {}) { this.baseUrl = baseUrl || cmapsDir; } async fetch({ name }) { return { cMapData: new Uint8Array(fs.readFileSync(path.join(this.baseUrl, name + ".bcmap"))), compressionType: 1 }; } }
-function lines(items, t = 3) {
-  const a = items.filter((i) => i.str != null).map((i) => ({ s: i.str, x: i.transform[4], y: i.transform[5] })).sort((p, q) => q.y - p.y || p.x - q.x);
-  const L = [];
-  for (const it of a) { let l = L.find((x) => Math.abs(x.y - it.y) <= t); if (!l) { l = { y: it.y, p: [] }; L.push(l); } l.p.push(it); }
-  return L.map((l) => l.p.sort((a, b) => a.x - b.x).map((p) => p.s).join(" ").replace(/\s+/g, " ").trim());
-}
-async function extractText(file) {
-  const data = new Uint8Array(fs.readFileSync(file));
-  const pdf = await pdfjs.getDocument({ data, useSystemFonts: true, isEvalSupported: false, verbosity: 0, cMapUrl: cmapsDir, cMapPacked: true, CMapReaderFactory: CMap }).promise;
-  const out = [];
-  for (let i = 1; i <= pdf.numPages; i++) { const pg = await pdf.getPage(i); out.push(...lines((await pg.getTextContent()).items)); }
-  await pdf.destroy();
-  return out.join("\n");
-}
+
 
 // 复刻 invoiceStore.recognizeOne 的字段填充顺序：parseInvoice 先填，文件名再兜底
 function applyParsed(fields, parsed) {

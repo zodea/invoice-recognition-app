@@ -3,8 +3,10 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { invoiceActions } from "../invoiceStore";
 import { createPreviewPan } from "../lib/preview-pan";
 import MiddleEllipsis from "./MiddleEllipsis.vue";
+import DocumentImage from './DocumentImage.vue';
+import RecognitionOverlay from './RecognitionOverlay.vue';
 
-const props = defineProps({ invoice: { type: Object, default: null } });
+const props = defineProps({ invoice: { type: Object, default: null }, showRegions: Boolean });
 const page = ref(0);
 const zoom = ref(1);
 const viewport = ref(null);
@@ -27,9 +29,16 @@ onBeforeUnmount(pan.cancel);
       </div>
     </div>
     <div ref="viewport" class="document-canvas" :class="{ 'can-pan': pages[page], dragging }" tabindex="0" aria-label="票面预览，按住拖动平移，使用工具栏缩放" @pointerdown="pan.down" @pointermove="pan.move" @pointerup="pan.up" @pointercancel="pan.up" @lostpointercapture="pan.up" @wheel="onWheel">
-      <img v-if="pages[page]" :src="pages[page]" :style="{ width: `${zoom * 100}%` }" :alt="`发票预览：${invoice.name}，第 ${page + 1} 页`" draggable="false" @dragstart.prevent />
+      <div v-if="pages[page]" class="document-page" :style="{ width: `${zoom * 100}%` }">
+        <DocumentImage :file="invoice.blob" :name="invoice.name" :src="pages[page]" :page-number="page + 1" :rotation="invoice.rotation" style="width: 100%" :alt="`发票预览：${invoice.name}，第 ${page + 1} 页`" draggable="false" @dragstart.prevent />
+        <RecognitionOverlay v-if="showRegions" :fields="invoice.fields" :regions="invoice.recognitionRegions" :page="page" :rotation="invoice.rotation" />
+      </div>
       <div v-else class="work-empty">{{ invoice?.rendering || invoice?.previewStatus === 'running' || invoice?.previewStatus === 'queued' ? '正在加载票面…' : invoice ? '暂无票面预览' : '请选择发票' }}</div>
     </div>
     <div v-if="pages.length > 1" class="document-pages"><button class="btn" :disabled="page === 0" @click="page--">上一页</button><span>{{ page + 1 }} / {{ pages.length }}</span><button class="btn" :disabled="page >= pages.length - 1" @click="page++">下一页</button></div>
   </section>
 </template>
+
+<style scoped>
+.document-page { position: relative; flex: none; margin: auto; }
+</style>

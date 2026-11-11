@@ -13,7 +13,8 @@ import {
 } from "reka-ui";
 import { invoiceStore, invoiceActions, printUnits, selectInvoice } from "../invoiceStore";
 import { A4_RATIO, perPageCount, planSlots } from "../lib/print-layout";
-import { renderPdfPages } from "../lib/pdftext";
+import DocumentImage from "./DocumentImage.vue";
+import { createPreviewPan } from "../lib/preview-pan.js";
 
 const units = computed(() => printUnits());
 const slots = computed(() => planSlots(invoiceStore.perPage));
@@ -31,13 +32,12 @@ function slotStyle(slot) {
 /* ---------- 左栏内放大：复用已渲染图秒开 + 指针拖动平移 + 后台缓存高清 + 左右旋 ---------- */
 const zoomUnit = ref(null);
 const zoomLevel = ref(1); // 1=适应栏宽；>1 放大并可平移
-const hiRes = ref({}); // 高清缓存 key=`${invId}:${page}:${rotation}`
 const viewport = ref(null);
 
 const zoomSrc = computed(() => {
   const u = zoomUnit.value;
   if (!u) return null;
-  return hiRes.value[`${u.invId}:${u.page}:${u.inv.rotation}`] || u.inv.renderedPages?.[u.page] || u.image;
+  return u.inv.renderedPages?.[u.page] || u.image;
 });
 const zoomWidth = computed(() => `${Math.round(zoomLevel.value * 100)}%`);
 // reka Slider 用数组；映射到 zoomLevel(100~400 -> 1~4)
@@ -46,65 +46,30 @@ const zoomPct = computed({
   set: (v) => { zoomLevel.value = (v?.[0] ?? 100) / 100; },
 });
 
-async function loadHiRes(u) {
-  if (!u || !u.inv.isTextPdf || !u.inv.blob) return;
-  const key = `${u.invId}:${u.page}:${u.inv.rotation}`;
-  if (hiRes.value[key]) return;
-  try {
-    const hp = await renderPdfPages(u.inv.blob, { scale: 3, rotation: u.inv.rotation });
-    const hi = hp[u.page] || hp[0];
-    if (hi) hiRes.value = { ...hiRes.value, [key]: hi };
-  } catch (e) {
-    /* 保留普通预览图 */
-  }
-}
-async function enterZoom(unit) {
+function enterZoom(unit) {
+  pan.cancel();
   selectInvoice(unit.invId);
   zoomUnit.value = unit;
   zoomLevel.value = 1;
-  await loadHiRes(unit);
 }
 async function rotateZoom(dir) {
   const u = zoomUnit.value;
   if (!u) return;
   await invoiceActions.rotateInvoice(u.inv, dir);
-  await loadHiRes(u);
 }
 function rotateSlot(unit, dir) {
   selectInvoice(unit.invId);
   invoiceActions.rotateInvoice(unit.inv, dir);
 }
 function exitZoom() {
+  pan.cancel();
   zoomUnit.value = null;
 }
-onUnmounted(() => {
-  for (const u of Object.values(hiRes.value)) if (typeof u === "string" && u.startsWith("blob:")) URL.revokeObjectURL(u);
-});
 
-// 指针拖动平移（window 级监听，dragging 用 ref 驱动光标）
+// 与原件预览共用指针捕获，退出或卸载时释放拖动状态。
 const dragging = ref(false);
-let lastX = 0;
-let lastY = 0;
-function onMove(e) {
-  if (!dragging.value || !viewport.value) return;
-  viewport.value.scrollLeft -= e.clientX - lastX;
-  viewport.value.scrollTop -= e.clientY - lastY;
-  lastX = e.clientX;
-  lastY = e.clientY;
-}
-function onUp() {
-  dragging.value = false;
-  window.removeEventListener("pointermove", onMove);
-  window.removeEventListener("pointerup", onUp);
-}
-function onDown(e) {
-  if (!viewport.value) return;
-  dragging.value = true;
-  lastX = e.clientX;
-  lastY = e.clientY;
-  window.addEventListener("pointermove", onMove);
-  window.addEventListener("pointerup", onUp);
-}
+const pan = createPreviewPan(() => viewport.value, value => { dragging.value = value; });
+onUnmounted(pan.cancel);
 function setZoom(delta) {
   zoomLevel.value = Math.min(4, Math.max(1, Math.round((zoomLevel.value + delta) * 100) / 100));
 }
@@ -169,11 +134,19 @@ const menuItemCls = "flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cu
         ref="viewport"
         class="relative h-[64vh] overflow-auto rounded-card border border-line bg-[#eef1f5] touch-none"
         :class="zoomLevel > 1 ? (dragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'"
-        @pointerdown="onDown"
+        @pointerdown="pan.down"
+        @pointermove="pan.move"
+        @pointerup="pan.up"
+        @pointercancel="pan.up"
+        @lostpointercapture="pan.up"
         @wheel="onWheel"
       >
-        <img
+        <DocumentImage
           v-if="zoomSrc"
+          :file="zoomUnit.inv.blob"
+          :name="zoomUnit.inv.name"
+          :page-number="zoomUnit.page + 1"
+          :rotation="zoomUnit.inv.rotation"
           :src="zoomSrc"
           :style="{ width: zoomWidth }"
           class="block max-w-none select-none mx-auto bg-white"

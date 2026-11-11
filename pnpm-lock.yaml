@@ -11,9 +11,6 @@ importers:
       '@paddlejs-models/ocr':
         specifier: ^1.2.4
         version: 1.2.4
-      '@paddleocr/api-sdk':
-        specifier: ^0.2.3
-        version: 0.2.3
       '@tauri-apps/api':
         specifier: ^2.11.0
         version: 2.11.0
@@ -35,9 +32,6 @@ importers:
       vxe-table:
         specifier: ^4.19.13
         version: 4.23.12
-      xe-utils:
-        specifier: ^4.0.8
-        version: 4.1.4
       xlsx:
         specifier: ^0.18.5
         version: 0.18.5
@@ -461,10 +455,6 @@ packages:
 
   '@paddlejs/paddlejs-core@2.2.0':
     resolution: {integrity: sha512-P3rPkF9fFHtq8uSte5gA7fJQwBNl9Ytsvj6aTcfQSsirnBO/HxMNu0gJyh7+lItvEtF92PR15eI0eOwJYfZDhQ==}
-
-  '@paddleocr/api-sdk@0.2.3':
-    resolution: {integrity: sha512-kCwSqJBtJaATGEIgo6QpxZyZlstOT14dodi6kV1tpg0ZIdJyuT37sEfqtIUkC4a6H03YE1f5ZWC1D5Ti9obR4A==}
-    engines: {node: '>=18'}
 
   '@pdf-lib/standard-fonts@1.0.0':
     resolution: {integrity: sha512-hU30BK9IUN/su0Mn9VdlVKsWBS6GyhVfqjwl1FjZN4TxP6cCw0jP2w7V3Hf5uX7M0AZJ16vey9yE0ny7Sa59ZA==}
@@ -1424,8 +1414,6 @@ snapshots:
   '@paddlejs/paddlejs-backend-webgl@1.2.9': {}
 
   '@paddlejs/paddlejs-core@2.2.0': {}
-
-  '@paddleocr/api-sdk@0.2.3': {}
 
   '@pdf-lib/standard-fonts@1.0.0':
     dependencies:

@@ -3,10 +3,7 @@
 // 与左侧预览共用同一套槽位，保证导出 PDF 与预览一致。
 import { PDFDocument, degrees } from "pdf-lib";
 import { A4, planSlots, perPageCount } from "./print-layout.js";
-
-function isPdfFile(inv) {
-  return (inv.blob.type || "") === "application/pdf" || /\.pdf$/i.test(inv.name || "");
-}
+import { isPdf } from './file-utils.js';
 
 // 把一个尺寸 (w,h) 的页/图，按顺时针 rot 度旋转后等比放进槽位 s，居中。
 // pdf-lib 的 rotate 为逆时针正，故用 degrees(-rot)；x/y 为旋转后让可见框左下角落在居中位置。
@@ -42,7 +39,7 @@ export async function buildPrintLayout(invoices, { perPage = 2, margin = 18, gap
     const rot = (((inv.rotation || 0) % 360) + 360) % 360;
     try {
       const bytes = new Uint8Array(await inv.blob.arrayBuffer());
-      if (isPdfFile(inv)) {
+      if (isPdf(inv)) {
         const src = await PDFDocument.load(bytes);
         const eps = await out.embedPdf(src, src.getPageIndices());
         for (const ep of eps) drawables.push({ w: ep.width, h: ep.height, type: "page", ep, rot });
@@ -74,7 +71,7 @@ export async function buildPrintLayout(invoices, { perPage = 2, margin = 18, gap
   return out.save();
 }
 
-export function pdfBlobUrl(bytes) {
+function pdfBlobUrl(bytes) {
   return URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
 }
 
@@ -115,15 +112,4 @@ export function openForPrint(bytes) {
     window.open(url, "_blank");
     cleanup(null);
   }
-}
-
-export function downloadBytes(bytes, name, mime = "application/pdf") {
-  const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 8000);
 }

@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+# 统一由 pnpm-lock.yaml 锁定依赖；npm 只用于运行现有脚本。
+/package-lock.json
 
 # Frontend build output
 dist/
@@ -29,6 +31,7 @@ public/发票测试/
 *.xlsm
 
 # Temporary/self-test artifacts
+/.tmp/
 scripts/_*.xlsx
 scripts/vl-out/
 *.log

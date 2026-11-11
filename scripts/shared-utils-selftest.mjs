@@ -1,0 +1,91 @@
+import assert from 'node:assert/strict';
+import { bytesToBase64, downloadBytes, fileHash, isPdf } from '../src/lib/file-utils.js';
+import { formatMoney } from '../src/lib/format.js';
+import { groupPdfTextLines } from '../src/lib/pdf-lines.js';
+import { pdfRenderScale } from '../src/lib/pdf-preview.js';
+import { isTauri } from '../src/lib/platform.js';
+import { saveBytesToChosenDir } from '../src/lib/invoice-export-package.js';
+import { paymentStore, pendingPaymentCount, needsPaymentEvidence } from '../src/lib/payment-store.js';
+
+const bytes = Uint8Array.from([99, 0, 128, 255, 42]);
+assert.equal(bytesToBase64(bytes.subarray(1, 4)), 'AID/');
+assert.equal(bytesToBase64(new DataView(bytes.buffer, 1, 3)), 'AID/');
+assert.equal(bytesToBase64(bytes.buffer), Buffer.from(bytes).toString('base64'));
+const large = Uint8Array.from({ length: 100000 }, (_, i) => i % 256);
+assert.equal(bytesToBase64(large), Buffer.from(large).toString('base64'));
+assert.equal(bytesToBase64(new Uint8Array()), '');
+assert.equal(await fileHash(new Blob(['abc'])), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+assert.ok(isPdf({ name: '票据.PDF' }));
+assert.ok(isPdf({ name: '无扩展名', blob: new Blob([], { type: 'application/pdf' }) }));
+assert.ok(isPdf(new Blob([], { type: 'application/pdf' })));
+assert.equal(isPdf({ name: '图片.png' }), false);
+assert.equal(isPdf(null), false);
+assert.equal(formatMoney(0), '0.00');
+assert.equal(formatMoney('1234.5'), '1,234.50');
+assert.equal(formatMoney(-45.67), '-45.67');
+for (const value of ['', null, undefined, '无效', NaN, Infinity]) assert.equal(formatMoney(value), '—');
+
+const item = (str, x, y) => ({ str, transform: [1, 0, 0, 1, x, y] });
+const input = [item('金额', 30, 80), item('公司', 0, 102), {}, item('测试', 30, 100), item('  合计 ', 0, 80)];
+const before = structuredClone(input);
+assert.deepEqual(groupPdfTextLines(input), [{ y: 102, text: '公司 测试' }, { y: 80, text: '合计 金额' }]);
+assert.deepEqual(input, before, '排序不得改写 PDF 原始内容');
+assert.equal(groupPdfTextLines(input, 1).length, 3);
+assert.deepEqual(groupPdfTextLines([]), []);
+assert.equal(pdfRenderScale(600, 800), 2);
+assert.equal(pdfRenderScale(600, 800, { targetWidth: 2400 }), 4, '放大后应重新生成足够宽的页图');
+const cappedScale = pdfRenderScale(600, 800, { targetWidth: 12000 });
+assert.ok(600 * 800 * cappedScale ** 2 <= 16000001, '高清画布限制在 1600 万像素');
+assert.ok(10000 * pdfRenderScale(10000, 10, { targetWidth: 20000 }) <= 8192, '超长图限制单边尺寸');
+
+paymentStore.rows = [{}, { evidenceConfirmed: true }, { duplicateOf: 'other' }, { linkedLedgerKey: 'invoice' }];
+assert.equal(pendingPaymentCount.value, 1);
+paymentStore.rows[0].evidenceConfirmed = true;
+assert.equal(pendingPaymentCount.value, 0, '补齐凭证后导航统计立即更新');
+paymentStore.rows.push({ evidenceConfirmed: false });
+assert.equal(pendingPaymentCount.value, 1);
+assert.equal(needsPaymentEvidence({ linkedLedgerKey: 'invoice' }), false);
+
+const originalWindow = globalThis.window;
+const originalDocument = globalThis.document;
+const originalTimeout = globalThis.setTimeout;
+const originalCreateURL = URL.createObjectURL;
+const originalRevokeURL = URL.revokeObjectURL;
+try {
+  delete globalThis.window;
+  assert.equal(isTauri(), false);
+  assert.deepEqual(await saveBytesToChosenDir(bytes, '测试.pdf'), { fallbackDownload: true });
+  globalThis.window = { __TAURI_INTERNALS__: {} };
+  assert.equal(isTauri(), true);
+  globalThis.window = { __TAURI__: {} };
+  assert.equal(isTauri(), true);
+  globalThis.window = { showDirectoryPicker: async () => { throw new DOMException('取消', 'AbortError'); } };
+  assert.deepEqual(await saveBytesToChosenDir(bytes, '测试.pdf'), { canceled: true }, '取消目录选择不能触发下载');
+  window.showDirectoryPicker = async () => { throw new Error('权限不足'); };
+  await assert.rejects(saveBytesToChosenDir(bytes, '测试.pdf'), /权限不足/);
+
+  const downloads = [], released = [], timers = [];
+  let clicks = 0, removed = 0, failClick = false;
+  URL.createObjectURL = blob => { downloads.push(blob); return `blob:test-${downloads.length}`; };
+  URL.revokeObjectURL = url => released.push(url);
+  globalThis.setTimeout = callback => { timers.push(callback); return timers.length; };
+  const anchor = { remove() { removed++; }, click() { clicks++; if (failClick) throw new Error('下载失败'); } };
+  globalThis.document = { createElement: () => anchor, body: { appendChild() {} } };
+  downloadBytes(bytes.subarray(1, 4), '附件.pdf');
+  assert.equal(anchor.download, '附件.pdf');
+  assert.equal(downloads[0].type, 'application/pdf');
+  assert.deepEqual(new Uint8Array(await downloads[0].arrayBuffer()), bytes.subarray(1, 4));
+  failClick = true;
+  assert.throws(() => downloadBytes(bytes, '失败.pdf'), /下载失败/);
+  assert.equal(clicks, 2);
+  assert.equal(removed, 2, '失败也移除临时下载元素');
+  timers.forEach(callback => callback());
+  assert.deepEqual(released, ['blob:test-1', 'blob:test-2']);
+} finally {
+  if (originalWindow === undefined) delete globalThis.window; else globalThis.window = originalWindow;
+  if (originalDocument === undefined) delete globalThis.document; else globalThis.document = originalDocument;
+  globalThis.setTimeout = originalTimeout;
+  URL.createObjectURL = originalCreateURL;
+  URL.revokeObjectURL = originalRevokeURL;
+}
+console.log('共用文件操作、金额显示、PDF 文字排序、付款统计、取消导出及下载资源释放检查通过');

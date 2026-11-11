@@ -1,4 +1,6 @@
 <script setup>
+import { formatMoney as money } from "../lib/format.js";
+import DocumentImage from './DocumentImage.vue';
 import InvoiceProjectAllocationDialog from './InvoiceProjectAllocationDialog.vue';
 import { isMultiProject, projectNames, projectExpenseRows, projectAllocationState } from '../lib/invoice-allocation.js';
 import SearchSelect from "./SearchSelect.vue";
@@ -29,7 +31,6 @@ const zoom = ref(100);
 let generation = 0;
 const isPdf = computed(() => /\.pdf$/i.test(attachment.value?.name || "") || attachment.value?.blob?.type === "application/pdf");
 const missing = computed(() => missingReimbursementFields(props.entry));
-const money = value => value === "" || value == null ? "—" : Number(value).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const detailTotals = computed(() => {
   const lines = props.entry.details || [];
   const sum = key => {
@@ -52,11 +53,11 @@ async function loadAttachment() {
     if (!source?.blob) return;
     message.value = "正在生成预览…";
     const result = /\.pdf$/i.test(source.name) || source.blob.type === "application/pdf"
-      ? (await renderPdfPages(source.blob, { maxPages: 20, scale: 2 })).filter(Boolean)
+      ? await renderPdfPages(source.blob, { maxPages: 20, scale: 2 })
       : [URL.createObjectURL(source.blob)];
     if (current !== generation) { result.forEach(url => URL.revokeObjectURL(url)); return; }
     images.value = result;
-    message.value = result.length ? "" : "无法生成预览，请检查原件。";
+    message.value = result.some(Boolean) ? "" : "无法生成预览，请检查原件。";
   } catch (err) { if (current === generation) message.value = `原件读取失败：${err.message || err}`; }
 }
 watch(() => props.entry.key, () => { selectedAttachment.value=''; attachmentBundle.value=null; });
@@ -92,7 +93,7 @@ function update(key, event) {
         <div class="preview-scroll" tabindex="0" aria-label="发票原件，可滚动查看">
           <div v-if="!attachment && !message" class="preview-empty"><strong>还没有关联发票原件</strong><p>识别发票后可自动匹配，也可以手动选择 PDF 或图片。</p><button class="btn" @click="fileInput?.click()">关联发票原件</button></div>
           <p v-if="message" class="preview-note" role="status">{{ message }}</p>
-          <div v-for="(url, index) in images" :key="url" class="preview-page" :style="{ width: `${zoom}%` }"><img :src="url" :alt="`发票原件第 ${index + 1} 页`" /></div>
+          <div v-for="(url, index) in images" :key="index" class="preview-page" :style="{ width: `${zoom}%` }"><DocumentImage :file="attachment?.blob" :name="attachment?.name" :src="url" :page-number="index + 1" :alt="`发票原件第 ${index + 1} 页`" /></div>
           <p v-if="isPdf && images.length === 20" class="preview-note">预览最多显示前 20 页。</p>
         </div>
 

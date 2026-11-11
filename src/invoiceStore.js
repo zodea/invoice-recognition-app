@@ -1,5 +1,6 @@
 import { intakeDecision, intakeFingerprint, canEnterLedger, planRecognizedInvoice, receiptType } from './lib/invoice-intake.js';
-import { transferReceipt, receiptHash } from './lib/receipt-transfer.js';
+import { transferReceipt } from './lib/receipt-transfer.js';
+import { fileHash, isPdf } from './lib/file-utils.js';
 import { paymentStore, savePayments } from './lib/payment-store.js';
 import { saveLedgerAttachment, saveLedgerAttachmentIfMissing, appendInvoiceSupplement } from './lib/ledger-attachments.js';
 import { withProjectAllocation, isMultiProject, projectAllocationState } from './lib/invoice-allocation.js';
@@ -11,7 +12,7 @@ import { normalizeBuyerName } from './lib/invoice-buyer-check.js';
 import { invoiceProblems } from "./lib/invoice-review.js";
 import { reactive } from "vue";
 import { PDFDocument } from "pdf-lib";
-import { renderFileToPages, isPdf } from "./lib/pdf";
+import { renderFileToPages } from "./lib/pdf";
 import { extractPdfText, renderPdfPages, rotateImageUrl, imgNaturalSize } from "./lib/pdftext";
 import { recognizePages } from "./lib/ocr";
 import { parseInvoice, isProbablyInvoiceText } from "./lib/invoice-parse";
@@ -23,7 +24,6 @@ import { loadLedger, saveLedger, recordInvoices, markVerified, parseVerifiedNumb
 import { importExpenseWorkbook } from "./lib/expense-import";
 import { markReimbursedBatch, updateCurrentReimbursements, setInvoiceExpenseTag } from "./lib/invoice-ledger";
 import { inferExpenseTag } from "./lib/invoice-tags";
-import { perPageCount } from "./lib/print-layout.js";
 import { syncLedgerMatches } from "./lib/ledger-matching.js";
 
 let seq = 0;
@@ -45,7 +45,7 @@ function revokeInvoiceUrls(inv) {
 const previewRenderQueue = [];
 let previewRenderRunning = false;
 // 预览页图只用于屏幕显示（导出走原文件），按批量大小自适应分辨率：
-// 量大时调小，显著降低光栅化耗时与内存，肉眼预览仍清晰。
+// 批量缩略图保持轻量；DocumentImage 按实际显示尺寸单独生成当前页的高清预览。
 function adaptivePreviewScale() {
   const n = invoiceStore.invoices.length;
   if (n > 80) return 1.0;
@@ -60,12 +60,12 @@ function revokeRenderedPages(inv) {
     if (typeof u === "string" && u.startsWith("blob:") && !keep.has(u)) URL.revokeObjectURL(u);
   }
 }
-// 按给定旋转角生成预览页图：电子票走 pdf.js 渲染；图片/扫描件用 canvas 旋转内嵌整页图。
+// PDF 统一渲染原页面，保证高清预览与识别框使用相同的页面坐标；图片保留原始像素。
 async function produceRenderedPages(inv, rotation) {
-  if (inv.kind === "image" || !inv.isTextPdf) {
+  if (inv.kind === "image") {
     return await Promise.all(inv.pages.map((p) => rotateImageUrl(p.dataUrl, rotation)));
   }
-  return await renderPdfPages(inv.blob, { scale: adaptivePreviewScale(), rotation });
+  return await renderPdfPages(inv.blob, { scale: adaptivePreviewScale(), rotation, maxPages: inv.isTextPdf ? 10 : 60 });
 }
 // 取首页宽高（图片/扫描件用已知页尺寸；电子票用首张渲染图尺寸）。
 async function firstPageSize(inv) {
@@ -120,22 +120,14 @@ async function processPreviewQueue() {
   }
 }
 
-// 文字层不可用时，取“整页图像”喂给 OCR：
-//   电子/字体加密票 → 渲染整页（scale 2，OCR 友好清晰度，加密票渲染后视觉正常）；
-//   真扫描件 → 直接用内嵌的整页 JPEG（原始分辨率）。
+// 文字层不可用时，以独立的无损整页图识别；不读取屏幕缩略图。
 async function pageImagesForOcr(inv) {
-  if (inv.isTextPdf) {
-    try {
-      const imgs = (await renderPdfPages(inv.blob, { scale: 2 })).filter(Boolean);
-      if (imgs.length) return imgs;
-    } catch (e) { /* 渲染失败再退到内嵌图 */ }
-  }
-  if (inv.pages && inv.pages.length) return inv.pages.map((p) => p.dataUrl).filter(Boolean);
   try {
-    return (await renderPdfPages(inv.blob, { scale: 2 })).filter(Boolean);
-  } catch (e) {
-    return [];
-  }
+    const images = await renderPdfPages(inv.blob, { scale: 3, maxPages: inv.isTextPdf ? 10 : 60 });
+    const pages = images.map((dataUrl, pageIndex) => ({ dataUrl, pageIndex })).filter(page => page.dataUrl);
+    if (pages.length) return { pages, owned: true };
+  } catch { /* 整页渲染失败时回退原始扫描图 */ }
+  return { pages: inv.pages || [], owned: false };
 }
 
 export const invoiceStore = reactive({
@@ -204,6 +196,7 @@ export const invoiceActions = {
         blob: file,
         kind: /\.pdf$/i.test(file.name) ? "pdf" : "image",
         pages: [],
+        recognitionRegions: [],
         renderedPages: [], // 左侧打印预览用的真实页图（异步填充）
         previewStatus: "idle",
         rotation: 0, // 顺时针旋转角度 0/90/180/270，预览与打印一致
@@ -246,6 +239,7 @@ export const invoiceActions = {
                 if (isProbablyInvoiceText(t)) {
                   textPdf = true;
                   inv.rawText = t; // 文字层可用：直接解析
+                  inv.recognitionRegions = tr.regions;
                 } else if (meaningful >= 40) {
                   // 有实质文字层但被字体加密成乱码（如某些电子发票）：仍按电子票处理，
                   // 预览渲染整页、识别时走“整页 OCR”兜底（不存乱码 rawText）。
@@ -258,6 +252,7 @@ export const invoiceActions = {
             }
             if (textPdf) {
               inv.isTextPdf = true;
+              for (const page of inv.pages) if (page.dataUrl?.startsWith('blob:')) URL.revokeObjectURL(page.dataUrl);
               inv.pages = []; // 丢弃误抽的二维码/印章碎片
               if (probedNumPages) {
                 inv.pageCount = probedNumPages;
@@ -270,7 +265,7 @@ export const invoiceActions = {
                 }
               }
             } else {
-              inv.pageCount = r.pages.length || 1; // 扫描型：每张内嵌 JPEG 即一页
+              inv.pageCount = probedNumPages || r.pages.length || 1;
             }
           } else {
             inv.pageCount = r.pages.length || 1;
@@ -384,6 +379,7 @@ export const invoiceActions = {
           try {
             const r = await extractPdfText(inv.blob);
             text = r.text || "";
+            inv.recognitionRegions = r.regions;
           } catch (e) {
             text = "";
           }
@@ -398,11 +394,19 @@ export const invoiceActions = {
           // 加密票虽抽不到文字，但渲染出来视觉正常，OCR 能读出真实文字。
           let ocrText = "";
           try {
-            const imgs = await pageImagesForOcr(inv);
-            if (imgs.length) {
-              invoiceStore.msg = inv.textGarbled ? "字体加密，转图像 OCR 识别…" : "OCR 识别扫描发票…";
-              const lines = await recognizePages(imgs.map((d) => ({ dataUrl: d })), (m) => (invoiceStore.msg = m));
-              ocrText = lines.join("\n");
+            const input = await pageImagesForOcr(inv);
+            inv.recognitionRegions = [];
+            try {
+              if (input.pages.length) {
+                invoiceStore.msg = inv.textGarbled ? "字体加密，转图像 OCR 识别…" : "OCR 识别扫描发票…";
+                const lines = await recognizePages(input.pages, m => { invoiceStore.msg = m; }, {
+                  // 原始内嵌图可能只是页面裁片，无法确认整页位置时不画框。
+                  onPageRegions: input.owned ? regions => { inv.recognitionRegions.push(...regions); } : undefined,
+                });
+                ocrText = lines.join("\n");
+              }
+            } finally {
+              if (input.owned) for (const page of input.pages) URL.revokeObjectURL(page.dataUrl);
             }
           } catch (e) {
             // OCR 不可用（如无法联网下载模型/无 WebGL）→ 不让整张失败，下面用文件名兜底
@@ -417,7 +421,10 @@ export const invoiceActions = {
         }
       } else {
         invoiceStore.msg = "OCR 识别发票图片…";
-        const lines = await recognizePages(inv.pages, (m) => (invoiceStore.msg = m));
+        inv.recognitionRegions = [];
+        const lines = await recognizePages(inv.pages, (m) => (invoiceStore.msg = m), {
+          onPageRegions: regions => { inv.recognitionRegions.push(...regions); },
+        });
         inv.rawText = lines.join("\n");
         applyParsed(inv.fields, parseInvoice(inv.rawText), inv.rawText);
         if (inv.fields.docType === "医疗票据") inv.systemNote = inv.systemNote || "医疗票据 OCR 识别，请重点核对";
@@ -506,7 +513,7 @@ export const invoiceActions = {
     if (payment?.evidenceConfirmed || payment?.reimbursement === '已报销') throw new Error('该行程单已确认费用或已报销，请先在付款凭证取消确认与报销，避免改变已核对金额');
     invoiceStore.savingIntake = true;
     try {
-      const hash = await receiptHash(file);
+      const hash = await fileHash(file);
       const linked = Object.values(invoiceStore.ledger).find(entry => entry.supplementHashes?.includes(hash));
       if (linked && linked.key !== ledgerKey) throw new Error('此行程单已关联发票 '+linked.number+'，不能重复关联');
       const existingPayment = payment || paymentStore.rows.find(row => row.sourceKind === 'receipt' && row.evidenceHash === hash);
@@ -823,8 +830,4 @@ export function printUnits() {
 
 export function selectInvoice(id) {
   invoiceStore.selectedId = id;
-}
-
-export function perPageSlots() {
-  return perPageCount(invoiceStore.perPage);
 }

@@ -13,7 +13,7 @@ import {
   importHistoryWorkbookItems,
   exportPriceCompareWorkbookBytes,
 } from "../lib/price-compare";
-import { downloadBytes } from "../lib/invoice-layout";
+import { downloadBytes } from "../lib/file-utils.js";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 

@@ -1,4 +1,5 @@
 <script setup>
+import { formatMoney as money } from "../lib/format.js";
 import InvoiceProjectAllocationDialog from './InvoiceProjectAllocationDialog.vue';
 import { directory } from '../lib/expense-directory.js';
 import { allocationKind } from '../lib/payment-records.js';
@@ -123,7 +124,6 @@ function restoreEntries(ids) {
 }
 watch(filtered, rows => {const visible=new Set(rows.map(e=>e.key));checkedKeys.value=checkedKeys.value.filter(k=>visible.has(k));});
 watch(pageCount, count => {page.value=Math.min(page.value,count);});
-const money = n => n === "" || n == null ? "—" : Number(n).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function setSort(key) { if (sortKey.value === key) sortDir.value = sortDir.value === "asc" ? "desc" : "asc"; else { sortKey.value = key; sortDir.value = "desc"; } }
 function sortIcon(key) { return sortKey.value === key ? (sortDir.value === "asc" ? "↑" : "↓") : "↕"; }
 function resetFilters() { projectFilter.value = ''; buyerCheckFilter.value = 'all'; query.value = ""; startDate.value = ""; endDate.value = ""; selection.value = "all"; reimbursement.value = "all"; redFilter.value = "all"; attachmentFilter.value = "all"; }

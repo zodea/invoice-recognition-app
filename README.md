@@ -26,7 +26,7 @@
 ## 本地开发
 
 ```powershell
-npm install
+pnpm install --frozen-lockfile
 npm run dev
 ```
 
@@ -38,9 +38,25 @@ npm run build
 npm run tauri:build
 ```
 
+依赖统一使用 `pnpm-lock.yaml`，不再维护第二份 npm 锁定文件。`npm test` 仍是默认测试入口，自动发现 `scripts/*-selftest.mjs` 和 `scripts/selftest.mjs`，每组在独立进程运行；包含台账回归以及共用文件操作、PDF 资源释放检查。开发和测试建议使用 Node.js 24（PDF 模拟测试使用 Node.js 22.15 起提供的模块加载钩子）。
+
+`scripts/e2e-selftest.mjs`、`scripts/test-invoices.mjs`、`scripts/invoice-batch.mjs` 和云识别批测需要本机票据或识别服务，按需手动执行，不包含在默认离线自测中。
+
+## 共用代码与维护
+
+- `src/lib/file-utils.js`：下载、PDF 类型判断、文件指纹及二进制编码；附件和普通导出无需依赖打印排版模块。
+- `src/lib/platform.js`：统一桌面端检测与原生命令调用。
+- `src/lib/pdf-lines.js`：应用与 Node 验证脚本共用 PDF 文字排序，Node 脚本通过 `scripts/lib/pdf-text.mjs` 共用中文字体映射和资源回收；`pdftext.js` 负责抽取和预览，并在成功、失败及超时时释放资源。
+- `src/lib/format.js`：台账、付款和工地分配的金额显示。
+- 费用候选及付款待补数量共用响应式缓存；大型表格及样式在进入分供方或单价对比时加载。
+- `DocumentImage.vue` 共用高清预览：按屏幕像素密度和放大后的显示宽度重新渲染当前 PDF 页，使用无损 PNG；只处理可见区域，离开后释放高清缓存。单页最多 1600 万像素，最长边最多 8192 像素。图片保留原始尺寸，旋转不再进行 JPEG 二次压缩。
+- 发票识别完成后，右侧“显示识别区域”按钮可按需开启关键字段框线，默认关闭，切换发票时关闭。框线复用 PDF 文字位置或本地 OCR 返回坐标，跟随翻页、放大和旋转，悬停可看字段及识别文本。开启不会重新识别；找不到对应原文的补录字段不猜位置。位置数据保留在当前识别批次中。
+- 发票电子 PDF 优先直接抽取文字；需要 OCR 的 PDF 使用独立的 3 倍无损整页图，识别完释放临时页图，不使用低清缩略图作为识别输入。图片识别读取原图。本地轻量模型和字段提取仍可能出错，画框用于人工对照，不代表自动验真。
+- 临时构建、验证缓存放在项目 `.tmp/` 内，任务结束移入系统回收站。正式导出仍使用 `outputs/`，发布预览仍使用 `release-output/`。
+
 ## 隐私说明
 
-真实发票样本、测试输出、依赖目录和构建产物不会提交到 GitHub。`public/cmaps` 和 `public/pdf.worker.min.mjs` 由 `npm install` 后的 `postinstall` 脚本从依赖复制生成。
+真实发票样本、测试输出、依赖目录和构建产物不会提交到 GitHub。`public/cmaps` 和 `public/pdf.worker.min.mjs` 由 `pnpm install` 后的 `postinstall` 脚本从依赖复制生成。
 
 ## 0.3.8 复核与费用管理
 

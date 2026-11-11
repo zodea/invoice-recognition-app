@@ -3,13 +3,7 @@ import App from "./App.vue";
 import "virtual:uno.css";
 import "./styles.css";
 import "./expense-ui.css";
-// vxe-table：长表格固定表头/首列滚动（分供方列表、公司详情等）
-import VxeUI from "vxe-pc-ui";
-import "vxe-pc-ui/lib/style.css";
-import VxeUITable from "vxe-table";
-import "vxe-table/lib/style.css";
-
-createApp(App).use(VxeUI).use(VxeUITable).mount("#app");
+createApp(App).mount("#app");
 
 // 仅开发期：暴露 store/actions 给浏览器自测脚本（生产/Tauri 构建 import.meta.env.DEV=false 不包含）
 if (import.meta.env.DEV) {

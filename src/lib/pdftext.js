@@ -1,48 +1,53 @@
 // 电子发票多是“文字型 PDF”，直接抽文字最准（不经过 OCR）。
-// pdf.js 的 getDocument / getTextContent 在本环境是正常的（只有 page.render 会卡死），
-// 所以这里只用文字抽取，不做渲染。worker 用 public/ 下的静态文件。
+// 同时提供按需高清渲染；worker 和中文字体映射使用本地静态文件。
 import * as pdfjsLib from "pdfjs-dist";
+import { groupPdfTextLines } from './pdf-lines.js';
+import { pdfRenderScale } from './pdf-preview.js';
+import { pdfTextRegions } from './recognition-regions.js';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.min.mjs`;
+const baseUrl = import.meta.env?.BASE_URL || '/';
+pdfjsLib.GlobalWorkerOptions.workerSrc = `${baseUrl}pdf.worker.min.mjs`;
 
-// 返回 { text, pages:[{ lines:[{str,x,y}] }] }。text 是整份拼接后的纯文本。
+// 返回纯文本、分行结果及归一化文字坐标，区域开关直接复用坐标。
 export async function extractPdfText(file, { maxPages = 10 } = {}) {
   const buf = new Uint8Array(await file.arrayBuffer());
   // cMapUrl/cMapPacked：CID 字体的电子发票需要 cmap 才能抽出中文（cmaps 放在 public/）。
   const pdf = await pdfjsLib.getDocument({
     data: buf,
-    cMapUrl: `${import.meta.env.BASE_URL}cmaps/`,
+    cMapUrl: `${baseUrl}cmaps/`,
     cMapPacked: true,
   }).promise;
-  const pages = [];
-  const all = [];
-  const numPages = pdf.numPages; // 真实页数（供调用方复用，省一次 pdf-lib 解析）
-  const n = Math.min(numPages, maxPages);
-  for (let i = 1; i <= n; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    // 按 y 分行（同一行的 item y 接近），再按 x 排序拼接
-    const items = content.items
-      .filter((it) => it.str != null)
-      .map((it) => ({ str: it.str, x: it.transform[4], y: it.transform[5] }));
-    const lines = groupIntoLines(items);
-    pages.push({ lines });
-    all.push(lines.map((l) => l.text).join("\n"));
-    page.cleanup();
+  try {
+    const pages = [];
+    const all = [];
+    const regions = [];
+    const numPages = pdf.numPages; // 供调用方复用，省一次 pdf-lib 解析
+    for (let i = 1; i <= Math.min(numPages, maxPages); i++) {
+      const page = await pdf.getPage(i);
+      try {
+        const content = await page.getTextContent();
+        const lines = groupPdfTextLines(content.items);
+        regions.push(...pdfTextRegions(content, page.getViewport({ scale: 1, rotation: 0 }), i - 1));
+        pages.push({ lines });
+        all.push(lines.map(line => line.text).join('\n'));
+      } finally {
+        page.cleanup();
+      }
+    }
+    return { text: all.join('\n'), pages, numPages, regions };
+  } finally {
+    await pdf.destroy();
   }
-  await pdf.destroy();
-  return { text: all.join("\n"), pages, numPages };
 }
 
 // 把 PDF 每页渲染成图片 dataURL，用于左侧"打印排版"预览——效果与导出的打印 PDF 一致。
 // 历史上本环境对"合成 PNG-PDF"的 render 会卡死，但真实电子发票可正常渲染；这里每页加
 // 超时兜底（卡住则 cancel 该页并占位），失败页返回 null，调用方据此回退到信息卡片。
-// 注意：这些页图只用于左侧屏幕预览，导出打印 PDF 走 embedPdf(原文件)，与本函数无关，
-// 所以 scale 可按批量大小自适应调小以提速/省内存，不影响最终打印清晰度。
+// 批量预览、高清查看和 OCR 分别传入所需分辨率；导出打印 PDF 仍使用原文件。
 // canvas → 对象 URL（比 toDataURL 的 base64 编码更快、内存更省）。失败回退 null。
-function canvasToObjectURL(canvas, quality) {
+function canvasToObjectURL(canvas) {
   return new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob ? URL.createObjectURL(blob) : null), "image/jpeg", quality);
+    canvas.toBlob((blob) => resolve(blob ? URL.createObjectURL(blob) : null), 'image/png');
   });
 }
 
@@ -77,61 +82,50 @@ export async function rotateImageUrl(url, deg = 0) {
   ctx.rotate((r * Math.PI) / 180);
   ctx.drawImage(img, -w / 2, -h / 2);
   return await new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob ? URL.createObjectURL(blob) : url), "image/jpeg", 0.9);
+    canvas.toBlob((blob) => resolve(blob ? URL.createObjectURL(blob) : url), 'image/png');
   });
 }
 
-export async function renderPdfPages(file, { scale = 1.5, maxPages = 10, timeoutMs = 12000, quality = 0.82, rotation = 0 } = {}) {
+export async function renderPdfPages(file, { scale = 2, firstPage = 1, maxPages = 10, timeoutMs = 12000, rotation = 0, targetWidth = 0, maxPixels = 16000000 } = {}) {
   const buf = new Uint8Array(await file.arrayBuffer());
   const pdf = await pdfjsLib.getDocument({
     data: buf,
-    cMapUrl: `${import.meta.env.BASE_URL}cmaps/`,
+    cMapUrl: `${baseUrl}cmaps/`,
     cMapPacked: true,
   }).promise;
   const out = [];
-  const n = Math.min(pdf.numPages, maxPages);
-  for (let i = 1; i <= n; i++) {
-    try {
-      const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale, rotation }); // rotation 顺时针，叠加在页面固有旋转上
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.ceil(viewport.width);
-      canvas.height = Math.ceil(viewport.height);
-      const task = page.render({ canvasContext: canvas.getContext("2d"), viewport });
-      let timer;
-      await Promise.race([
-        task.promise,
-        new Promise((_, rej) => {
-          timer = setTimeout(() => {
-            try { task.cancel(); } catch (e) { /* ignore */ }
-            rej(new Error("render timeout"));
-          }, timeoutMs);
-        }),
-      ]);
-      clearTimeout(timer);
-      out.push(await canvasToObjectURL(canvas, quality));
-      page.cleanup();
-    } catch (e) {
-      out.push(null);
+  try {
+    const start = Math.max(1, Math.floor(firstPage));
+    for (let i = start; i <= Math.min(pdf.numPages, start + maxPages - 1); i++) {
+      let page, canvas, timer;
+      try {
+        page = await pdf.getPage(i);
+        const base = page.getViewport({ scale: 1, rotation });
+        const viewport = page.getViewport({ scale: pdfRenderScale(base.width, base.height, { scale, targetWidth, maxPixels }), rotation });
+        canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        const task = page.render({ canvasContext: canvas.getContext('2d'), viewport });
+        await Promise.race([
+          task.promise,
+          new Promise((_, reject) => {
+            timer = setTimeout(() => {
+              try { task.cancel(); } catch { /* 已结束的渲染无需取消 */ }
+              reject(new Error('render timeout'));
+            }, timeoutMs);
+          }),
+        ]);
+        out.push(await canvasToObjectURL(canvas));
+      } catch {
+        out.push(null);
+      } finally {
+        clearTimeout(timer);
+        page?.cleanup();
+        if (canvas) { canvas.width = 0; canvas.height = 0; }
+      }
     }
+    return out;
+  } finally {
+    await pdf.destroy();
   }
-  await pdf.destroy();
-  return out;
-}
-
-function groupIntoLines(items, yTol = 3) {
-  const sorted = items.slice().sort((a, b) => b.y - a.y || a.x - b.x);
-  const lines = [];
-  for (const it of sorted) {
-    let line = lines.find((l) => Math.abs(l.y - it.y) <= yTol);
-    if (!line) {
-      line = { y: it.y, parts: [] };
-      lines.push(line);
-    }
-    line.parts.push(it);
-  }
-  return lines.map((l) => ({
-    y: l.y,
-    text: l.parts.sort((a, b) => a.x - b.x).map((p) => p.str).join(" ").replace(/\s+/g, " ").trim(),
-  }));
 }

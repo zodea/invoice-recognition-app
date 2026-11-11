@@ -13,7 +13,7 @@ import {
 } from "../lib/supplier-db";
 import { openExternal } from "../lib/open-external";
 import MiddleEllipsis from "../components/MiddleEllipsis.vue";
-import { downloadBytes } from "../lib/invoice-layout";
+import { downloadBytes } from "../lib/file-utils.js";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 import SupplierDetail from "../components/SupplierDetail.vue";

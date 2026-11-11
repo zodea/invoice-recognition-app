@@ -286,8 +286,13 @@ export const actions = {
       for (const deg of [90, 270]) {
         store.ocrMsg = `没识别到文字，旋转${deg}°重试…`;
         const rotated = [];
-        for (const p of f.pages) rotated.push({ dataUrl: await rotateImageUrl(p.dataUrl, deg) });
-        lines = await recognizePages(rotated, (m) => (store.ocrMsg = m));
+        try {
+          for (const p of f.pages) rotated.push({ dataUrl: await rotateImageUrl(p.dataUrl, deg) });
+          lines = await recognizePages(rotated, (m) => (store.ocrMsg = m));
+        } finally {
+          const sources = new Set(f.pages.map(page => page.dataUrl));
+          for (const page of rotated) if (page.dataUrl?.startsWith('blob:') && !sources.has(page.dataUrl)) URL.revokeObjectURL(page.dataUrl);
+        }
         if (lines.length) break;
       }
     }
@@ -362,7 +367,4 @@ export const actions = {
 export function partitionName(id) {
   const p = store.partitions.find((x) => x.id === id);
   return p ? p.name : "(已删除)";
-}
-export function filesIn(partitionId) {
-  return store.files.filter((f) => f.partitionId === partitionId);
 }

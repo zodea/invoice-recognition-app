@@ -293,13 +293,6 @@ export function demoteSiteToGroup(tree, siteKey, targetSiteKey) {
   return true;
 }
 
-export function setGroupCompany(tree, groupKey, company) {
-  const hit = findGroup(tree, groupKey);
-  if (!hit) return false;
-  hit.group.company = String(company || "").trim();
-  return true;
-}
-
 export function addGroup(tree, siteKey, name) {
   const site = tree.sites.find((s) => s.key === siteKey);
   if (!site) return null;

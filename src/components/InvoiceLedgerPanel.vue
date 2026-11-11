@@ -8,7 +8,7 @@ const expenseImportOpen = ref(false);
 import { invoiceStore, invoiceActions } from "../invoiceStore";
 import { buildCurrentInputInvoiceReportBytes, buildHistoryReportBytes, currentInputReportName, historyReportName, ledgerStats } from "../lib/invoice-ledger";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
-import { downloadBytes } from "../lib/invoice-layout";
+import { downloadBytes } from "../lib/file-utils.js";
 import ExpenseImportReview from "./ExpenseImportReview.vue";
 import InvoiceReconciliation from "./InvoiceReconciliation.vue";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";

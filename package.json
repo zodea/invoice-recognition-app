@@ -10,12 +10,11 @@
     "preview": "vite preview --port 4173",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "test": "node scripts/selftest.mjs && node scripts/reimbursement-selftest.mjs && node scripts/preview-pan-selftest.mjs && node scripts/invoice-company-selftest.mjs && node scripts/expense-review-selftest.mjs && node scripts/export-document-folders-selftest.mjs && node scripts/invoice-type-tags-selftest.mjs && node scripts/expense-options-selftest.mjs && node scripts/invoice-buyer-check-selftest.mjs && node scripts/deletion-selftest.mjs && node scripts/trash-purge-selftest.mjs && node scripts/intake-selftest.mjs && node scripts/supplier-selftest.mjs && node scripts/invoice-allocation-selftest.mjs",
+    "test": "node scripts/run-selftests.mjs",
     "postinstall": "node scripts/copy-pdf-worker.mjs"
   },
   "dependencies": {
     "@paddlejs-models/ocr": "^1.2.4",
-    "@paddleocr/api-sdk": "^0.2.3",
     "@tauri-apps/api": "^2.11.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.0.0",
@@ -23,7 +22,6 @@
     "vue": "^3.5.13",
     "vxe-pc-ui": "^4.14.35",
     "vxe-table": "^4.19.13",
-    "xe-utils": "^4.0.8",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
@@ -31,5 +29,6 @@
     "@vitejs/plugin-vue": "^5.0.0",
     "unocss": "^66.7.0",
     "vite": "^5.4.0"
-  }
+  },
+  "packageManager": "pnpm@10.26.0"
 }

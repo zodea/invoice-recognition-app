@@ -1,17 +1,25 @@
 <script setup>
-import { defineAsyncComponent, ref, watch } from "vue";
+import { defineAsyncComponent, getCurrentInstance, ref, watch } from "vue";
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from "reka-ui";
-import { paymentStore } from "./lib/payment-store";
+import { pendingPaymentCount } from "./lib/payment-store";
 import AppIcon from "./components/AppIcon.vue";
 import ToastHost from "./components/ToastHost.vue";
 
-// 按需懒加载：两视图分别代码分包，仅在激活时加载并挂载（不再同时渲染）。
+// 各功能视图按需加载，仅在激活时挂载。
 // 数据存于 store 单例（store.js / invoiceStore.js），切换 tab 卸载组件也不丢数据。
 const DeliveryView = defineAsyncComponent(() => import("./views/DeliveryView.vue"));
 const InvoiceView = defineAsyncComponent(() => import("./views/InvoiceView.vue"));
 const InvoiceLedgerView = defineAsyncComponent(() => import("./views/InvoiceLedgerView.vue"));
-const SupplierView = defineAsyncComponent(() => import("./views/SupplierView.vue"));
-const PriceCompareView = defineAsyncComponent(() => import("./views/PriceCompareView.vue"));
+const app = getCurrentInstance().appContext.app;
+function tableView(loadView) {
+  return defineAsyncComponent(async () => {
+    const { installTableUi } = await import('./lib/table-ui.js');
+    installTableUi(app);
+    return loadView();
+  });
+}
+const SupplierView = tableView(() => import("./views/SupplierView.vue"));
+const PriceCompareView = tableView(() => import("./views/PriceCompareView.vue"));
 const SettingsDialog = defineAsyncComponent(() => import("./components/SettingsDialog.vue"));
 
 const ExpenseDirectoryView = defineAsyncComponent(() => import("./views/ExpenseDirectoryView.vue"));
@@ -32,7 +40,7 @@ const tabCls = "app-nav-item";
       <TabsList class="app-navigation" aria-label="功能导航">
         <TabsTrigger value="invoice" :class="tabCls"><AppIcon name="invoice" /> 发票管理</TabsTrigger>
         <TabsTrigger value="ledger" :class="tabCls"><AppIcon name="ledger" /> 历史进项台账</TabsTrigger>
-        <TabsTrigger value="expense-directory" :class="tabCls"><AppIcon name="building" />基础档案</TabsTrigger><TabsTrigger value="payments" :class="tabCls"><AppIcon name="payment" />付款凭证 <small v-if="paymentStore.rows.some(r=>!r.evidenceConfirmed&&!r.duplicateOf&&!r.linkedLedgerKey)">待补 {{ paymentStore.rows.filter(r=>!r.evidenceConfirmed&&!r.duplicateOf&&!r.linkedLedgerKey).length }}</small></TabsTrigger>
+        <TabsTrigger value="expense-directory" :class="tabCls"><AppIcon name="building" />基础档案</TabsTrigger><TabsTrigger value="payments" :class="tabCls"><AppIcon name="payment" />付款凭证 <small v-if="pendingPaymentCount">待补 {{ pendingPaymentCount }}</small></TabsTrigger>
         <TabsTrigger value="delivery" :class="tabCls"><AppIcon name="delivery" /> 送货单整理</TabsTrigger>
         <TabsTrigger value="supplier" :class="tabCls"><AppIcon name="supplier" /> 分供方</TabsTrigger>
         <TabsTrigger value="price" :class="tabCls"><AppIcon name="chart" /> 单价对比</TabsTrigger>

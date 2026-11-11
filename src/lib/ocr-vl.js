@@ -10,6 +10,8 @@
 // CORS：该 API 不带跨域头。浏览器开发期走 vite 代理 /vl-api（见 vite.config.js）；
 // 打包桌面端走 Rust 侧请求（lib.rs vl_* 命令）。
 import { appSettings, vlConfigured } from "./app-settings.js";
+import { isTauri, invokeTauri as tauriInvoke } from './platform.js';
+import { bytesToBase64 } from './file-utils.js';
 
 const JOBS_PATH = "/api/v2/ocr/jobs";
 const SUBMIT_TIMEOUT_MS = 60000;
@@ -17,10 +19,6 @@ const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_MS = 300000; // VL 高峰期会排队，放宽到 5 分钟
 
 export { vlConfigured };
-
-function isTauri() {
-  return typeof window !== "undefined" && Boolean(window.__TAURI_INTERNALS__ || window.__TAURI__);
-}
 
 // 用户可能把完整 jobs 地址或裸域名贴进设置，这里归一出 API 基址（origin）。
 export function vlApiOrigin() {
@@ -39,23 +37,6 @@ function browserBase() {
 function authHeaders() {
   // 官方示例使用小写 bearer；服务端当前也兼容 Bearer，这里贴近示例。
   return { Authorization: `bearer ${appSettings.vlToken.trim()}` };
-}
-
-async function tauriInvoke(cmd, args) {
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke(cmd, args);
-}
-
-async function blobToBase64(blob) {
-  const fr = new FileReader();
-  return await new Promise((resolve, reject) => {
-    fr.onload = () => {
-      const s = String(fr.result);
-      resolve(s.slice(s.indexOf("base64,") + 7));
-    };
-    fr.onerror = reject;
-    fr.readAsDataURL(blob);
-  });
 }
 
 export function unwrapVlEnvelope(json) {
@@ -131,7 +112,7 @@ async function submitJob(blob, filename) {
       model: "PaddleOCR-VL-1.6",
       optionalPayload: JSON.stringify(VL_OPTIONS),
       fileName: filename,
-      fileBase64: await blobToBase64(blob),
+      fileBase64: bytesToBase64(await blob.arrayBuffer()),
     });
     return unwrapVlEnvelope(JSON.parse(json));
   }

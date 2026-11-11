@@ -1,6 +1,7 @@
 // 导出编排（CONTEXT「公司文件夹」）：选文件夹 → 工地目录 → 每公司一个子文件夹 →
 // 合并 PDF（公司-日期范围-送货单N张.pdf）或单件（日期-原名.pdf）；
 // 工地根目录放「工地名-送货单整理汇总.xlsx」。
+import { downloadBytes } from "./file-utils.js";
 import { buildPdfFromFiles } from "./pdf.js";
 import { buildWorkbookBytes } from "./excel.js";
 import { archiveBaseName, sanitize } from "./naming.js";
@@ -107,18 +108,6 @@ export async function exportToDirectory({ partitions, files }, log) {
 }
 
 // 回退方案（Firefox 等不支持目录选择）：逐个触发下载，文件名带分区前缀。
-function downloadBlob(name, bytes, mime) {
-  const blob = new Blob([bytes], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
-}
-
 export async function exportByDownload({ partitions, files }, log) {
   let total = 0;
   for (const part of partitions) {
@@ -137,14 +126,14 @@ export async function exportByDownload({ partitions, files }, log) {
           finalName = `${name.slice(0, dot)}(${i++})${name.slice(dot)}`;
         }
         used.add(`${companyDir}/${finalName}`);
-        downloadBlob(`${prefix}${companyDir}__${finalName}`, bytes, "application/pdf");
+        downloadBytes(bytes, `${prefix}${companyDir}__${finalName}`, "application/pdf");
         if (log) log(`  下载：${prefix}${companyDir}__${finalName}`);
         return finalName;
       },
       null
     );
     const xlsx = buildWorkbookBytes(pfiles);
-    downloadBlob(`${prefix}${sanitize(part.name) || "工地"}-送货单整理汇总.xlsx`, xlsx, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    downloadBytes(xlsx, `${prefix}${sanitize(part.name) || "工地"}-送货单整理汇总.xlsx`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     total += pfiles.length;
   }
   return { ok: true, files: total, mode: "download" };

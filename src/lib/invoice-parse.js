@@ -176,6 +176,13 @@ export function parseInvoice(rawText) {
       if (isName(buyer) && isName(seller)) { f.buyer = buyer; f.seller = seller; }
     }
   }
+  // 完整标签优先于单字兜底，避免“购买方：甲公司”被截成“方：甲公司”。
+  for (const [key, label] of [['buyer', '购买方|买方|付款方'], ['seller', '销售方|卖方|收款方']]) {
+    if (f[key]) continue;
+    const tagged = text.match(new RegExp(`(?:^|\\n)[^\\S\\n]*(?:${label})[^\\S\\n]*(?:名称[^\\S\\n]*)?[:：][^\\S\\n]*([^\\n]+)`));
+    const name = tagged && dedupeDoubled(tagged[1].replace(/\s+/g, ''));
+    if (isName(name)) f[key] = name;
+  }
   // 兜底：没有“名称：”标签时，用 购/销 两字切分（少数版式名称紧跟在购/销后）
   if (!f.buyer || !f.seller) {
     const gx = text.match(/购\s*(?:名\s*称\s*[:：]\s*)?(.+?)\s*销\s*(?:名\s*称\s*[:：]\s*)?(.+)/);
