@@ -55,10 +55,10 @@ const RADICAL_FIX = { "⻨": "麦", "⻝": "食", "⻆": "角", "⻔": "门", "�
 export function classifyDocType(rawText) {
   const t = String(rawText || "");
   const heading = t.split(/\n/).filter(line => line.trim()).slice(0, 6).join("").replace(/\s/g, "");
-  if (/医疗/.test(heading) && /票据|医保|医疗机构|就诊日期/.test(t)) return "医疗票据";
+  if ((/医疗/.test(heading) && /票据|医保|医疗机构|就诊日期/.test(t)) || (/医疗机构类型/.test(t) && /票据代码/.test(t) && /票据号码/.test(t))) return "医疗票据";
   // A formal invoice's own fields outrank its service/category wording.
   if (/发\s*票\s*号\s*码/.test(t) && /价\s*税\s*合\s*计/.test(t)) return "增值税发票";
-  if (/支付成功|转账成功|交易成功|转账详情/.test(t.replace(/\s/g, ''))) return "付款凭证";
+  if (/支付成功|转账成功|交易成功|转账详情|已存入零钱|对方已收钱|转账[一—-]?(?:来自|转给)/.test(t.replace(/\s/g, ''))) return "付款凭证";
   // 先认行程单/货运凭证：它们文里也常出现“电子发票”字样（如“请以电子发票金额为准”），
   // 必须在“增值税发票”之前判断，否则会被误判成发票。
   if (/行程单/.test(t)) return "行程单";
@@ -76,6 +76,7 @@ export function parseInvoice(rawText) {
   for (const label of ['价税合计', '小写', '大写', '开票日期']) {
     text = text.replace(new RegExp(label.split('').join('[ \\t]*'), 'g'), label);
   }
+  text = text.replace(/([（(])[ \t]*(小写|大写)[ \t]*([）)])/g, '$1$2$3');
   const f = { code: "", number: "", date: "", dateText: "", buyer: "", seller: "", amount: "", tax: "", total: "", rate: "", type: "", taxKind: "", docType: "", remark: "", service: "", category: "" };
 
   // 单据大类（发票 / 行程单 / 货物运输凭证 / 未识别），按原始文本判定一次
@@ -126,7 +127,7 @@ export function parseInvoice(rawText) {
 
   // 开票日期
   if (f.docType === "医疗票据") {
-    const receiptDate = text.match(/开[票系来]日期\s*[:：]?\s*([0-9]{4})[-/.]([0-9]{1,2})[-/.]([0-9]{1,2})/) ||
+    const receiptDate = text.match(/开[票系来]日期\s*[:：]?\s*([0-9]{4})\s*[-/.一—]\s*([0-9]{1,2})\s*[-/.一—]\s*([0-9]{1,2})/) ||
       text.match(/就诊日期\s*[:：]?\s*([0-9]{4})([0-9]{2})([0-9]{2})/);
     if (receiptDate) f.date = validDate(receiptDate[1], receiptDate[2], receiptDate[3]);
     if (f.date) f.dateText = f.date;
@@ -140,6 +141,11 @@ export function parseInvoice(rawText) {
   if (!f.date) {
     const labeledDate = text.match(/开票日期[:：]?\s*(20[0-9]{2})[-/.]([0-9]{1,2})[-/.]([0-9]{1,2})/);
     if (labeledDate) f.date = validDate(labeledDate[1], labeledDate[2], labeledDate[3]);
+    if (f.date) f.dateText = f.date;
+  }
+  if (!f.date) {
+    const displaced = text.match(/(?:^|\n)[^\n\d]*(20\d{2})[^\S\n]+(\d{1,2})[^\S\n]*月[^\S\n]*(\d{1,2})[^\S\n]*\n[^\n]*开票日期[:：][^\n]*年[^\n]*日/);
+    if (displaced) f.date = validDate(displaced[1], displaced[2], displaced[3]);
     if (f.date) f.dateText = f.date;
   }
   if (!f.date) {
@@ -241,6 +247,10 @@ export function parseInvoice(rawText) {
   // 价税合计（小写）
   // OCR 有时将千分位逗号识别为句点，如 1.934.19；只在医疗票据的“小写”处纠正。
   if (f.docType === "医疗票据") {
+    // Only an explicit 小写 field permits decimal-comma repair; validate grouping first.
+    const separated = text.match(/小写[ \t]*[)）]?[ \t]*[:：]?[ \t]*[¥￥]?[ \t\n]*([0-9][0-9 \t,.]*[,.][ \t]*[0-9][ \t]*[0-9])(?![\d.,])/);
+    const numeric = separated?.[1].replace(/[ \t]/g, '');
+    if (numeric && /^\d{1,9}(?:[,.]\d{3})*[,.]\d{2}$/.test(numeric)) f.total = Number(numeric.slice(0, -3).replace(/[,.]/g, '') + '.' + numeric.slice(-2));
     const grouped = text.match(/小写[)）]?\s*[:：]?\s*[¥￥]?\s*(\d{1,3}(?:\.\d{3})+\.\d{2})(?![\d.])/);
     if (grouped) f.total = toNumber(grouped[1].replace(/\.(?=\d{3}(?:\.|$))/g, ""));
   }

@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx/xlsx.mjs';
 export function paymentDate(v) {
  if(v instanceof Date)return [v.getFullYear(),String(v.getMonth()+1).padStart(2,'0'),String(v.getDate()).padStart(2,'0')].join('-');
  if(typeof v==='number'){const d=XLSX.SSF.parse_date_code(v);return d ? [d.y,String(d.m).padStart(2,'0'),String(d.d).padStart(2,'0')].join('-') : '';}
@@ -6,14 +6,18 @@ export function paymentDate(v) {
 }
 export function parsePaymentWorkbook(bytes,source='',options={}) {
  const w=XLSX.read(bytes,{type:'array',cellDates:true}), out=[];
- for(const sheet of w.SheetNames){const rows=XLSX.utils.sheet_to_json(w.Sheets[sheet],{header:1,defval:''});const hi=rows.findIndex(r=>(r.includes('下单日期')&&r.includes('收款名称'))||(r.includes('日期')&&r.includes('名字')&&r.includes('金额')));if(hi<0)continue;
+ for(const sheet of w.SheetNames){const ws=w.Sheets[sheet];const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});const hi=rows.findIndex(r=>((r.includes('下单日期')||r.includes('日期'))&&r.includes('收款名称'))||(r.includes('日期')&&(r.includes('名字')||r.includes('姓名'))&&r.includes('金额')));if(hi<0)continue;
  const h=rows[hi];const get=(r,...keys)=>{const i=keys.map(k=>h.indexOf(k)).find(i=>i>=0);return i==null?'':r[i];};let current=null;
- rows.slice(hi+1).forEach((r,i)=>{const date=paymentDate(get(r,'下单日期','日期'));const seller=String(get(r,'收款名称','名字','职位')).trim();const purpose=String(get(r,'材料或费用名称'));const line={purpose,unit:get(r,'单位'),quantity:get(r,'数量'),unitPrice:get(r,'单价'),lineAmount:get(r,'金额（元）','金额')};
+ const firstRow=XLSX.utils.decode_range(ws['!ref']||'A1').s.r;
+ rows.slice(hi+1).forEach((r,i)=>{const sourceRow=firstRow+hi+i+2;const date=paymentDate(get(r,'下单日期','日期'));const seller=String(get(r,'收款名称','名字','姓名')).trim();const purpose=String(get(r,'材料或费用名称','用途'));const line={purpose,unit:get(r,'单位'),quantity:get(r,'数量'),unitPrice:get(r,'单价'),lineAmount:get(r,'金额（元）','金额')};
  if(!date&&!seller){if(current&&purpose){current.purpose+=' / '+purpose;current.lines.push(line);}return;}
  const raw=get(r,'实付合计','合计');const amount=raw!==''?raw:get(r,'金额（元）','金额');
  if((!date&&!seller)||/^(合计|总计|小计|收款名称|名字)$/.test(seller))return;
  const validAmount=amount!==''&&Number.isFinite(Number(amount));if(!validAmount&&!options.includeInvalid)return;
- current={id:source+'|'+sheet+'|'+(hi+i+2),source:source+' / '+sheet+' / 行'+(hi+i+2),date,seller,total:validAmount?Number(amount):'',payer:String(get(r,'付款名称')),project:String(get(r,'使用项目')),purpose,lines:[line],team:String(get(r,'使用班组/单位')),deliveryNumber:String(get(r,'送货单编号')),buyer:'',refund:get(r,'退回金额'),note:String(get(r,'备注')),reimbursement:'未核对',evidenceHash:'',evidenceConfirmed:false};out.push(current);
+ let payer=String(get(r,'付款名称'));const payerColumn=h.indexOf('付款名称');
+ if(!payer&&payerColumn>=0){const merge=(ws['!merges']||[]).find(m=>m.s.c===payerColumn&&m.e.c===payerColumn&&m.s.r<=sourceRow-1&&m.e.r>=sourceRow-1);if(merge)payer=String(ws[XLSX.utils.encode_cell(merge.s)]?.v||'');}
+ if(!payer&&payerColumn<0&&h[0]==='日期'&&!h[1]&&h[2]==='收款名称'&&/^(建行|建设银行|工行|工商银行|农行|农业银行|中行|中国银行|交行|交通银行|招行|招商银行|现金|个人|私人)$/.test(String(r[1]||'').trim()))payer=String(r[1]).trim();
+ current={id:source+'|'+sheet+'|'+sourceRow,source:source+' / '+sheet+' / 行'+sourceRow,date,seller,total:validAmount?Number(amount):'',payer,project:String(get(r,'使用项目')),purpose,lines:[line],team:String(get(r,'使用班组/单位')),deliveryNumber:String(get(r,'送货单编号')),buyer:'',refund:get(r,'退回金额'),note:String(get(r,'备注')),reimbursement:'未核对',evidenceHash:'',evidenceConfirmed:false};out.push(current);
  });}return out;
 }
 export function paymentDuplicate(a,b){return !!a.evidenceHash&&a.evidenceHash===b.evidenceHash&&a.date===b.date&&Math.round(Number(a.total)*100)===Math.round(Number(b.total)*100);}

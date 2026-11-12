@@ -1,6 +1,7 @@
 import { fileHash } from './file-utils.js';
 export function buildReceiptPayment(inv, hash) {
   const f = inv.fields;
+  if (f.direction === 'income') throw new Error('原件为收款或退款入账，不能作为付款支出；请核对对应收款或退款业务。');
   return {
     id: 'receipt:'+hash, source: '票据识别 / '+inv.name, sourceKind: 'receipt', receiptType: f.docType || f.type || '其他票据',
     date: f.date || '', seller: f.seller || '', buyer: f.buyer || '', total: f.total === '' || f.total == null ? '' : Number(f.total),

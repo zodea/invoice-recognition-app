@@ -3,7 +3,7 @@ export function parsePaymentEvidence(rawText) {
   const text = String(rawText || '').normalize('NFKC');
   const lines = text.split(/\n+/).map(line => line.replace(/\s+/g, '').replace(/·/g, '.')).filter(Boolean);
   const amounts = lines.flatMap(line => {
-    const match = line.match(/^(?:[-一—−¥￥]|支出|付款金额[:：]?|转账金额[:：]?)?(\d{1,9}\.\d{2})(?:元)?$/);
+    const match = line.match(/^(?:支出|付款金额[:：]?|转账金额[:：]?)?[-一—−+]?[¥￥]?(\d{1,9}\.\d{2})(?:元)?$/);
     return match ? [Number(match[1])] : [];
   });
   const totals = [...new Set(amounts)];
@@ -23,9 +23,20 @@ export function parsePaymentEvidence(rawText) {
     }
   }
   if (!seller) {
-    const title = lines.slice(0, 10).map(line => line.match(/^(?:扫二维码付款[一—-]?给|转账给|付款给)(.+)$/)).find(Boolean);
+    const title = lines.map(line => line.match(/^(?:扫二维码付款[一—-]?给|转账[一—-]?转给|转账给|付款给)(.+)$/)).find(Boolean);
     if (title) seller = title[1];
   }
+  if (!seller && lines.some(line => /^商户全称[:：]?$/.test(line))) {
+    // Some OCR engines read the complete label column before reading the values.
+    // Only accept one distinct commercial name, excluding payment/clearing institutions.
+    const merchants = [...new Set(lines.filter(line =>
+      /(?:公司|商行|经营部|加油站|餐厅|饭店|门市|店)(?:\([^)]*\))?$/.test(line) &&
+      !/银行|财付通|网联|银联|清算|收单机构|银通支付|支付科技/.test(line)
+    ))];
+    if (merchants.length === 1) seller = merchants[0];
+  }
+  const income = lines.some(line => /^\+\d/.test(line) || /转账[一—-]?来自|已存入零钱|收款成功/.test(line));
+  const counterparty = lines.map(line => line.match(/转账[一—-]?来自(.+)/)?.[1]).find(Boolean) || '';
   const uniqueDates = [...new Set(dates)];
-  return { date: uniqueDates.length === 1 ? uniqueDates[0] : '', seller, total: totals.length === 1 ? totals[0] : '' };
+  return { date: uniqueDates.length === 1 ? uniqueDates[0] : '', seller: income ? '' : seller, total: totals.length === 1 ? totals[0] : '', direction: income ? 'income' : 'expense', counterparty };
 }

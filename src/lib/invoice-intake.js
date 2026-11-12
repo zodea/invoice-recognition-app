@@ -13,6 +13,7 @@ export function intakeDecision(inv, buyers, ledger = {}) {
   if (inv.linkedLedgerKey) return { state: 'linked', label: '已关联主发票', reason: '作为附件保留，不重复计入费用。' };
   if (inv.paymentId) return { state: 'payment-saved', label: '已转付款凭证', reason: '请到付款凭证核对原件和费用归属。' };
   if (inv.status !== 'done') return { state: 'unrecognized', label: '待识别', reason: '请先完成识别。' };
+  if (inv.fields?.direction === 'income') return { state: 'review', label: '收款记录待核对', reason: '原件为收款或退款入账，不能作为付款支出，请核对对应业务。' };
   if (inv.otherReceiptConfirmed || receiptType(inv.fields)) return { state: 'receipt', label: '其他票据', reason: '保存到付款凭证，不进入历史进项台账。' };
   const match = createBuyerChecker(buyers)(inv.fields);
   if (match !== 'matched') return { state: 'review', label: '需要核对', reason: buyerCheckLabels[match]+'，请核对购买方或标记为其他票据。' };
