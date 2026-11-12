@@ -1,3 +1,4 @@
+import { parsePaymentEvidence } from './payment-evidence.js';
 // 从发票文本（电子发票抽到的文字，或扫描件 OCR 的文字）里尽力抽取关键字段。
 // 中国增值税发票/数电票字段：发票号码、开票日期、购/销方、金额、税额、价税合计。
 // 识别不可能 100% 准，最终以人工核对为准。
@@ -55,6 +56,9 @@ export function classifyDocType(rawText) {
   const t = String(rawText || "");
   const heading = t.split(/\n/).filter(line => line.trim()).slice(0, 6).join("").replace(/\s/g, "");
   if (/医疗/.test(heading) && /票据|医保|医疗机构|就诊日期/.test(t)) return "医疗票据";
+  // A formal invoice's own fields outrank its service/category wording.
+  if (/发\s*票\s*号\s*码/.test(t) && /价\s*税\s*合\s*计/.test(t)) return "增值税发票";
+  if (/支付成功|转账成功|交易成功|转账详情/.test(t.replace(/\s/g, ''))) return "付款凭证";
   // 先认行程单/货运凭证：它们文里也常出现“电子发票”字样（如“请以电子发票金额为准”），
   // 必须在“增值税发票”之前判断，否则会被误判成发票。
   if (/行程单/.test(t)) return "行程单";
@@ -69,10 +73,18 @@ export function parseInvoice(rawText) {
   let text = String(rawText || "").normalize("NFKC");
   for (const [k, v] of Object.entries(RADICAL_FIX)) if (text.includes(k)) text = text.split(k).join(v);
   text = text.replace(/[ \t]+/g, " ");
+  for (const label of ['价税合计', '小写', '大写', '开票日期']) {
+    text = text.replace(new RegExp(label.split('').join('[ \\t]*'), 'g'), label);
+  }
   const f = { code: "", number: "", date: "", dateText: "", buyer: "", seller: "", amount: "", tax: "", total: "", rate: "", type: "", taxKind: "", docType: "", remark: "", service: "", category: "" };
 
   // 单据大类（发票 / 行程单 / 货物运输凭证 / 未识别），按原始文本判定一次
   f.docType = classifyDocType(rawText);
+  if (f.docType === '付款凭证') {
+    Object.assign(f, parsePaymentEvidence(text), { type: '付款凭证' });
+    f.dateText = f.date;
+    return f;
+  }
 
   // 发票类型
   const tMatch = text.match(/(电子发票|增值税电子专用发票|增值税电子普通发票|增值税专用发票|增值税普通发票|普通发票|专用发票|数电)/);
@@ -126,6 +138,11 @@ export function parseInvoice(rawText) {
     if (f.date) f.dateText = f.date;
   }
   if (!f.date) {
+    const labeledDate = text.match(/开票日期[:：]?\s*(20[0-9]{2})[-/.]([0-9]{1,2})[-/.]([0-9]{1,2})/);
+    if (labeledDate) f.date = validDate(labeledDate[1], labeledDate[2], labeledDate[3]);
+    if (f.date) f.dateText = f.date;
+  }
+  if (!f.date) {
     const spacedDate = text.match(/([0-9](?:\s*[0-9]){3})\s*年\s*([0-9](?:\s*[0-9])?)\s*月\s*([0-9](?:\s*[0-9])?)\s*日/);
     if (spacedDate) {
       const y = normalizeMoneyText(spacedDate[1]);
@@ -165,6 +182,13 @@ export function parseInvoice(rawText) {
     .filter(isName);
   if (nameTokens[0]) f.buyer = nameTokens[0];
   if (nameTokens[1]) f.seller = nameTokens[1];
+  // OCR reading order can put the right-hand seller column first. Explicit role labels win.
+  // “钅肖” is the observed split-radical OCR form of 销, only accepted next to 名称.
+  for (const [key, role] of [['buyer', '购|购买方(?:信息)?'], ['seller', '销|销售方(?:信息)?|钅肖']]) {
+    const match = text.match(new RegExp(`(?:^|\\n)[^\\S\\n]*(?:${role})[^\\S\\n]*名\\s*称\\s*[:：][^\\S\\n]*([^\\n]*?)(?=名\\s*称\\s*[:：]|统一社会|纳税人|\\n|$)`));
+    const name = match && dedupeDoubled(cleanName(match[1]));
+    if (isName(name)) f[key] = name;
+  }
   // 有些数电票把两个名称标签单独放在一行，下一行才并排放买方和卖方。
   // 只在明确的双标签及两个完整公司名称同时出现时拆分，避免把普通名称误分。
   const pairedNames = text.match(/(?:^|\n)[^\S\n]*购[^\S\n]*名[^\S\n]*称[^\S\n]*[:：][^\S\n]*销[^\S\n]*名[^\S\n]*称[^\S\n]*[:：][^\S\n]*\n([^\n]+)/);
@@ -304,7 +328,7 @@ export function parseInvoice(rawText) {
   //   ① 网约车行程单（曹操/滴滴/优行/如约）：「合计X元」+「申请日期/行程时间」。
   //   ② 货拉拉等货物运输电子收款凭证：「费用合计(大写)…(小写)：¥X」+「申请日期」，购买方=托运人。
   // 销售方/承运人多为个人或在另开发票上，难可靠取得，留空由调用方按文件名/目录补。
-  if (/行程单|货物运输|货拉拉|收款凭证/.test(text)) {
+  if (['行程单', '货物运输凭证'].includes(f.docType)) {
     if (!f.type || f.type === "电子发票") f.type = /行程单/.test(text) ? "行程单" : "货物运输凭证";
     if (f.total === "") {
       const m =
@@ -341,5 +365,5 @@ export function isProbablyInvoiceText(text) {
   // 先去掉字符间空格再判：有的混淆票把每个字拆开成“电 子 发 票”，连写关键词会匹配不到，
   // 导致被误当扫描件走 OCR、丢失本可抽到的买卖方。去空格后这类票也能正确进入文字解析。
   const t = String(text || "").replace(/[ \t]+/g, "");
-  return /发票|价税合计|开票日期|税额|行程单|货物运输|货拉拉|收款凭证|托运人/.test(t);
+  return /发票|价税合计|开票日期|税额|行程单|货物运输|货拉拉|收款凭证|托运人|支付成功|转账成功|交易成功|转账详情/.test(t);
 }

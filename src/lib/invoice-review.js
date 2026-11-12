@@ -4,7 +4,7 @@ export function invoiceProblems(f = {}) {
   const standaloneType = standaloneDocumentType(f);
   for (const [key,label] of [["number","发票号码"],["date","开票日期"],["buyer","购买方"],["seller","销售方"],["type","票种"]]) {
     if (standaloneType && key === "buyer") continue;
-    if (standaloneType === "行程单" && key === "number") continue;
+    if (['行程单', '付款凭证'].includes(standaloneType) && key === "number") continue;
     if (!String(f[key] || (key === "type" ? f.taxKind || f.docType : "") || "").trim()) errors.push('缺少'+label);
   }
   if (standaloneType !== "行程单" && f.number && !/^\d{8,25}$/.test(f.number)) errors.push("发票号码格式不正确");

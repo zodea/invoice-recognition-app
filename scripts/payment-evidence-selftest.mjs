@@ -1,0 +1,26 @@
+import assert from 'node:assert/strict';
+import { parseInvoice, classifyDocType } from '../src/lib/invoice-parse.js';
+
+const freightInvoice = '电子发票（增值税专用发票） 发票号码：26990000000000000001\n货物运输服务\n开票日期：2026年06月01日\n名称：测试购买公司 名称：测试运输有限公司\n合计 ¥100.00 ¥9.00\n价税合计（大写）壹佰零玖元（小写）¥109.00';
+assert.equal(classifyDocType(freightInvoice), '增值税发票', '运输业务的正式发票不能被货物运输关键字降为收款凭证');
+assert.equal(parseInvoice(freightInvoice).total, 109);
+assert.equal(parseInvoice(freightInvoice.replace('价税合计（大写）', '价 税 合 计 （ 大 写 ）').replace('（小写）', '（ 小 写 ）')).total, 109, '逐字定位的合计标签仍取含税额');
+const payment = '17 : 16\n扫二维码付款一给测试商户\n一 136 · 00\n当前状态\n支付成功\n收款方备注\n二维码收款\n支付方式\n零钱\n转账时间\n2026 年 7 月 4 日 18 : 57 : 19\n交易单号\n10001071012026070400071222319120';
+const fields = parseInvoice(payment);
+assert.equal(fields.docType, '付款凭证');
+assert.equal(fields.date, '2026-07-04');
+assert.equal(fields.total, 136);
+assert.equal(fields.seller, '测试商户');
+assert.equal(fields.number, '', '交易单号不能冒充发票号码');
+assert.equal(fields.buyer, '', '支付方式或收款人不能冒充购买方');
+const carrier = parseInvoice('货拉拉\n一 63 · 69\n支付成功\n支付时间\n2026 年 11 月 1 日 11 : 46 : 58\n商户全称\n测试货运有限公司');
+assert.equal(carrier.docType, '付款凭证');
+assert.equal(carrier.total, 63.69);
+assert.equal(carrier.seller, '测试货运有限公司');
+assert.equal(classifyDocType('滴滴出行—行程单\n实际报销金额请以电子发票金额为准。'), '行程单');
+assert.equal(classifyDocType('货物运输电子货票收款凭证\n费用合计：58.62'), '货物运输凭证');
+assert.equal(parseInvoice('微信支付\n支付成功\n交易单号\n4200002927202611171533498819').total, '', '不从长交易号猜金额');
+const reversed = parseInvoice('电子发票\n发票号码：26990000000000000002\n开票日期：2026年06月01日\n钅肖名称：测试销售有限公司\n购名称：测试购买有限公司\n价税合计（小写）¥67.75');
+assert.equal(reversed.buyer, '测试购买有限公司', 'OCR输出销售方在前时按购销标签识别');
+assert.equal(reversed.seller, '测试销售有限公司');
+console.log('运输发票分类、付款截图金额日期收款方、交易单号隔离测试通过');
