@@ -36,5 +36,3 @@ const applied=await page.evaluate(()=>JSON.parse(localStorage.getItem('invoiceLe
 await page.getByRole('tab',{name:/送货单/}).click();await page.getByLabel('搜索项目').fill('测试工地甲');assert.equal(await page.getByRole('button',{name:'选择项目 测试工地甲',exact:true}).count(),1);await page.getByRole('button',{name:'收起项目列表',exact:true}).click();assert.equal(await page.getByRole('button',{name:'展开项目列表',exact:true}).count(),1);
 assert.deepEqual(errors,[]);console.log('BROWSER PASS: assignment preview/apply without financial changes, explicit save, no-cost automatic supplements, amount filter, direct attachment preview, searchable/collapsible projects; no page errors');
 } finally { await browser.close(); }
-
-
