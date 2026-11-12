@@ -1,6 +1,6 @@
 <script setup>
 import { computed, reactive, ref } from "vue";
-import { invoiceStore } from "../invoiceStore";
+import { invoiceStore } from "../invoiceStore.js";
 import {
   supplierStore,
   saveSuppliers,

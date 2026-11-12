@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import {reviewAssignmentImport,applyAssignmentReview,persistAssignmentImport,buildAssignmentTemplate,parseAssignmentWorkbook} from '../src/lib/expense-assignment-import.js';
+const invoice={key:'26990000000000000001',number:'26990000000000000001',date:'2026-11-01',total:106,buyer:'测试公司',seller:'测试厂家',project:'旧工地',reimbursement:'已报销',verified:true,printed:true};
+const source={invoices:[{id:'invoice|2',number:invoice.number,date:invoice.date,total:106,buyer:'测试公司',seller:'测试厂家',allocation:'指定工地',project:'新工地',owner:'测试人',note:'用户确认'}],payments:[],allocations:[]};
+const dir={projects:['旧工地','新工地'],buyers:['测试公司'],allocations:['公司开支']};const ledger={[invoice.key]:invoice};
+const review=reviewAssignmentImport(source,ledger,[],dir);assert.equal(review[0].canApply,true);assert.equal(ledger[invoice.key].project,'旧工地','预览不写入');
+const result=applyAssignmentReview(review,['invoice|2'],ledger,[],dir);assert.equal(result.ledger[invoice.key].project,'新工地');assert.equal(result.ledger[invoice.key].reimbursement,'已报销');assert.equal(result.ledger[invoice.key].total,106);assert.equal(result.ledger[invoice.key].verified,true);assert.equal(result.ledger[invoice.key].printed,true);
+assert.equal(reviewAssignmentImport({...source,invoices:[{...source.invoices[0],total:107}]},ledger,[],dir)[0].canApply,false);
+assert.equal(reviewAssignmentImport({...source,invoices:[{...source.invoices[0],number:'26990000000000000002'}]},ledger,[],dir)[0].canApply,false,'不存在的票号不新增发票');
+assert.equal(reviewAssignmentImport({...source,invoices:[{...source.invoices[0],project:'名称相似的新工地'}]},ledger,[],dir)[0].canApply,false,'工地必须命中完整档案');
+assert.throws(()=>applyAssignmentReview(review,['invoice|2'],{[invoice.key]:{...invoice,total:107}},[],dir),/预览后/);
+const payment={id:'batch.xlsx|sheet|3',date:'2026-11-01',seller:'测试收款人',total:50,payer:'测试付款人',reimbursement:'已报销',evidenceHash:'original',evidenceConfirmed:true};
+const ps={invoices:[],payments:[{id:'payment|2',date:payment.date,seller:payment.seller,total:50,payer:payment.payer,allocation:'个人报账',owner:'测试人',project:'',note:'确认独立费用'}],allocations:[]};
+const pr=reviewAssignmentImport(ps,ledger,[payment],dir);assert.equal(pr[0].canApply,true);const applied=applyAssignmentReview(pr,['payment|2'],ledger,[payment],dir);assert.equal(applied.payments[0].evidenceHash,'original');assert.equal(applied.payments[0].reimbursement,'已报销');assert.equal(applied.payments[0].expenseOwner,'测试人');
+assert.equal(reviewAssignmentImport(ps,ledger,[payment,{...payment,id:'other'}],dir)[0].canApply,false,'同日同额同收款方多候选必须进一步核对');
+let savedLedger=ledger;assert.throws(()=>persistAssignmentImport(result,{previousLedger:ledger,previousPayments:[],writeBackup(){},writeLedger:x=>{savedLedger=x;},writePayments(){throw Error('付款写入失败');}}));assert.deepEqual(savedLedger,ledger,'后一步失败恢复先前台账');
+console.log('归属导入预览、身份金额核对、精确工地、状态保护、重复候选、过期预览和写入回滚验证通过');
+
+const template=buildAssignmentTemplate(dir);assert.deepEqual(parseAssignmentWorkbook(template),{invoices:[],payments:[],allocations:[]},'空白模板不能生成业务数据');
+const {parsePaymentWorkbook}=await import('../src/lib/payment-records.js');assert.throws(()=>parsePaymentWorkbook(template),/批量导入归属/,'付款入口拒绝把归属模板当付款清单');
+const multi={...source,invoices:[{...source.invoices[0],allocation:'多工地分配',project:''}],allocations:[{kind:'发票',matchId:invoice.number,project:'新工地',total:40}]};
+const mr=reviewAssignmentImport(multi,ledger,[],dir);assert.equal(mr[0].canApply,true);assert.equal(mr[0].patch.projectAllocations[0].total,40,'允许未分配余额，不编造分摊');assert.throws(()=>applyAssignmentReview(mr,['invoice|2'],ledger,[],{...dir,projects:['旧工地']}),/工地档案/);
+assert.equal(reviewAssignmentImport({...multi,allocations:[...multi.allocations,...multi.allocations]},ledger,[],dir)[0].canApply,false,'不能悄悄覆盖重复分配工地');

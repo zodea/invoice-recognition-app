@@ -6,7 +6,7 @@ try { rows = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { /*
 export const paymentStore = reactive({ rows });
 
 export function needsPaymentEvidence(record) {
-  return !record.evidenceConfirmed && !record.duplicateOf && !record.linkedLedgerKey;
+  return !record.supplementOnly && !record.evidenceConfirmed && !record.duplicateOf && !record.linkedLedgerKey;
 }
 
 export const pendingPaymentCount = computed(() => paymentStore.rows.filter(needsPaymentEvidence).length);

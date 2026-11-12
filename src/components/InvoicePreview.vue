@@ -11,7 +11,7 @@ import {
   SliderThumb,
   SliderTrack,
 } from "reka-ui";
-import { invoiceStore, invoiceActions, printUnits, selectInvoice } from "../invoiceStore";
+import { invoiceStore, invoiceActions, printUnits, selectInvoice } from "../invoiceStore.js";
 import { A4_RATIO, perPageCount, planSlots } from "../lib/print-layout";
 import DocumentImage from "./DocumentImage.vue";
 import PreviewMinimap from './PreviewMinimap.vue';

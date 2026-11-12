@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { intakeDecision, intakeFingerprint, canEnterLedger, planRecognizedInvoice, tripInvoiceCandidates } from '../src/lib/invoice-intake.js';
+import { intakeDecision, intakeFingerprint, canEnterLedger, planRecognizedInvoice } from '../src/lib/invoice-intake.js';
 import { buildReceiptPayment, transferReceipt } from '../src/lib/receipt-transfer.js';
 
 const buyers = ['测试公司'];
@@ -17,7 +17,7 @@ assert.equal(intakeDecision(bad,buyers).state,'ready','修正购买方后可保�
 bad.otherReceiptConfirmed=true;
 assert.equal(intakeDecision(bad,buyers).state,'receipt');
 assert.throws(()=>planRecognizedInvoice({},bad,buyers));
-for(const type of ['行程单','医疗票据','货物运输凭证','收款凭证','其他票据']) {
+for(const type of ['医疗票据','货物运输凭证','收款凭证','其他票据']) {
  const inv=copy(); inv.fields.docType=type;
  assert.equal(intakeDecision(inv,buyers).state,'receipt',type+'只能走付款凭证');
  assert.equal(canEnterLedger(inv,buyers),false);
@@ -36,7 +36,7 @@ assert.equal(conflict.total,999);
 const official={...entry,verified:true,printed:true,reviewedAt:'old',reimbursement:'已报销',validTax:4,payer:'垫付人',tags:'保留'};
 const merged=planRecognizedInvoice({[plan.key]:official},valid,buyers).ledger[plan.key];
 assert.equal(merged.validTax,4);assert.equal(merged.payer,'垫付人');assert.equal(merged.reimbursement,'已报销');
-const trip=copy();trip.fields.docType='行程单';trip.fields.buyer='';trip.blob=new Blob(['fixture']);
+const trip=copy();trip.fields.docType='医疗票据';trip.fields.buyer='';trip.blob=new Blob(['fixture']);
 const payment=buildReceiptPayment(trip,'hash');
 assert.equal(payment.evidenceConfirmed,false);assert.equal(payment.sourceKind,'receipt');assert.ok(payment.tags.includes('其他票据'));assert.equal(payment.receiptFields.buyer,'');
 let rows=[], attachmentWrites=0;
@@ -47,7 +47,4 @@ assert.equal((await transferReceipt(trip,ports)).existing,true);assert.equal(row
 await assert.rejects(transferReceipt(trip,{...ports,getRows:()=>[],saveAttachment:async()=>{throw Error('附件失败');}}));
 await assert.rejects(transferReceipt(trip,{...ports,getRows:()=>[],saveRows:()=>{throw Error('记录失败');}}));
 assert.equal(trip.paymentId,undefined,'失败不改变本批原件状态');
-const suggestions=tripInvoiceCandidates(trip.fields,{a:{...entry,key:'a'},b:{...entry,key:'b',total:999},c:{...entry,key:'c',docType:'行程单'}});
-assert.equal(suggestions.length,2);assert.equal(suggestions[0].entry.key,'a');assert.equal(suggestions[0].hint,'日期、金额一致');
-assert.equal(tripInvoiceCandidates(trip.fields,{a:entry},'不存在').length,0);
-console.log('购买方入账拦截、二次确认、其他票据分流、原件失败保护、去重和行程单候选测试通过');
+console.log('购买方入账拦截、二次确认、独立费用分流、原件失败保护和去重测试通过');

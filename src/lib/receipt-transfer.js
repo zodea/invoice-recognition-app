@@ -1,6 +1,8 @@
 import { fileHash } from './file-utils.js';
+import {supplementType} from './invoice-supplements.js';
 export function buildReceiptPayment(inv, hash) {
   const f = inv.fields;
+  if (supplementType(f)) throw new Error('行程或邮寄明细只能保存为附件，不能作为独立付款费用');
   if (f.direction === 'income') throw new Error('原件为收款或退款入账，不能作为付款支出；请核对对应收款或退款业务。');
   return {
     id: 'receipt:'+hash, source: '票据识别 / '+inv.name, sourceKind: 'receipt', receiptType: f.docType || f.type || '其他票据',

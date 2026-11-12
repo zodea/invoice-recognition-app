@@ -3,7 +3,7 @@ import InvoiceTypeTags from "./InvoiceTypeTags.vue";
 import AppIcon from "./AppIcon.vue";
 import { invoiceExpenseColumns } from "../lib/expense-columns";
 import { ref } from 'vue';
-import { invoiceStore, invoiceActions } from '../invoiceStore';
+import { invoiceStore, invoiceActions } from '../invoiceStore.js';
 import { importExpenseWorkbook } from '../lib/expense-import';
 defineProps({ standalone: Boolean });
 const files=ref([]), rows=ref([]), period=ref(''), message=ref(''), busy=ref(false);const preview=ref(null);let base=null;

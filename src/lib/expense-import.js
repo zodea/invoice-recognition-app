@@ -2,10 +2,12 @@ import { isMultiProject, projectNames } from './invoice-allocation.js';
 import { paymentDate } from "./payment-records.js";
 import * as XLSX from "xlsx";
 import { inferExpenseTag } from "./invoice-tags.js";
+import {isAssignmentWorkbook} from './expense-assignment-import.js';
 
 // 报销表的“金额”是价税合计；只接受完整的数电号码，避免短号码误匹配。
 export function importExpenseWorkbook(ledger, bytes, options = {}) {
   const wb = XLSX.read(bytes, { type: "array", cellDates: true });
+  if(isAssignmentWorkbook(wb))throw new Error('这是归属导入表，请使用“批量导入归属”，不能当作报销记录导入');
   const candidates = new Map();
   let skipped = 0, conflicts = 0, added = 0, updated = 0;
   const review = [];

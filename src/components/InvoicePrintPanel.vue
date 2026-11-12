@@ -10,7 +10,7 @@ import {
   RadioGroupItem,
   RadioGroupRoot,
 } from "reka-ui";
-import { invoiceStore, invoiceActions, invoiceSummary, orderedForPrint } from "../invoiceStore";
+import { invoiceStore, invoiceActions, invoiceSummary, orderedForPrint } from "../invoiceStore.js";
 import { buildPrintLayout, openForPrint } from "../lib/invoice-layout";
 import { downloadBytes } from "../lib/file-utils.js";
 import { buildInvoiceWorkbookBytes } from "../lib/invoice-excel";

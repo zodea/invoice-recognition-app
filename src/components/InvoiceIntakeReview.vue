@@ -5,12 +5,13 @@ import { receiptType } from '../lib/invoice-intake.js';
 import { TooltipProvider, TooltipRoot, TooltipTrigger, TooltipPortal, TooltipContent, PopoverRoot, PopoverTrigger, PopoverPortal, PopoverContent } from 'reka-ui';
 import { toast, toastError, toastWarn } from '../lib/toast.js';
 import ConfirmAction from './ConfirmAction.vue';
-import TripAttachmentLink from './TripAttachmentLink.vue';
+import InvoiceSupplementLink from './InvoiceSupplementLink.vue';
+import {supplementType} from '../lib/invoice-supplements.js';
 import { useConfirmation } from '../composables/useConfirmation.js';
 const props = defineProps({ invoice: { type: Object, required: true } });
 const { confirmation, requestConfirmation, answerConfirmation } = useConfirmation();
 const decision = computed(() => invoiceActions.intakeDecision(props.invoice));
-const finished = computed(() => ['saved','payment-saved','linked'].includes(decision.value.state));
+const finished = computed(() => ['saved','payment-saved','linked','attachment-saved'].includes(decision.value.state));
 async function saveInvoice() {
   try { const result = await invoiceActions.saveRecognizedInvoices([props.invoice]); if (result.failed) toastError(result.errors.join('；')); else if (result.saved) toast('已保存到历史进项台账'); else toastWarn(decision.value.reason); }
   catch (error) { toastError(error.message); }
@@ -33,19 +34,20 @@ function recheckInvoice() {
 <template>
   <div class="intake-review" aria-label="票据入账检查">
     <ConfirmAction :request="confirmation" @answer="answerConfirmation" />
+    <button v-if="decision.state==='ready'" type="button" class="btn-primary" :disabled="invoiceStore.savingIntake" @click="saveInvoice">确认保存</button>
+    <InvoiceSupplementLink v-if="supplementType(invoice.fields)" :invoice="invoice" :fields="invoice.fields" :file="invoice.blob" />
     <TooltipProvider :delay-duration="150">
       <TooltipRoot>
         <TooltipTrigger class="intake-tag" :class="{ issue: decision.state==='review', finished }" :aria-label="decision.state==='review' ? '问题：'+decision.reason : decision.label+'：'+decision.reason">{{ decision.state==='review' ? '问题' : decision.label }}</TooltipTrigger>
         <TooltipPortal><TooltipContent class="intake-tooltip" side="bottom" align="end" :side-offset="7">{{ decision.reason }}</TooltipContent></TooltipPortal>
       </TooltipRoot>
     </TooltipProvider>
-    <PopoverRoot v-if="!finished || decision.state==='payment-saved' && receiptType(invoice.fields)==='行程单'">
+    <PopoverRoot v-if="!finished">
       <PopoverTrigger class="intake-more" aria-label="更多票据处理操作">更多 ▾</PopoverTrigger>
       <PopoverPortal><PopoverContent class="intake-menu" side="bottom" align="end" :side-offset="7">
-        <button v-if="decision.state==='ready'" class="btn-primary" :disabled="invoiceStore.savingIntake" @click="saveInvoice">保存到台账</button>
+        <button v-if="['ready','review'].includes(decision.state)" class="btn" @click="invoice.fields.attachmentType='行程及费用明细';invoice.include=false">作为发票附件保存</button>
         <button v-if="['review','ready'].includes(decision.state)" class="btn" :disabled="invoiceStore.savingIntake" @click="markOther">标记为其他票据</button>
         <template v-if="decision.state==='receipt'"><button class="btn-primary" :disabled="invoiceStore.savingIntake" @click="transfer">保存到付款凭证</button><button class="btn" @click="recheckInvoice">这是发票，重新核对</button></template>
-        <TripAttachmentLink v-if="receiptType(invoice.fields)==='行程单' && ['receipt','payment-saved'].includes(decision.state)" :file="invoice.blob" :fields="invoice.fields" :payment-id="invoice.paymentId" :invoice="invoice" />
       </PopoverContent></PopoverPortal>
     </PopoverRoot>
   </div>

@@ -58,6 +58,7 @@ export function classifyDocType(rawText) {
   if ((/医疗/.test(heading) && /票据|医保|医疗机构|就诊日期/.test(t)) || (/医疗机构类型/.test(t) && /票据代码/.test(t) && /票据号码/.test(t))) return "医疗票据";
   // A formal invoice's own fields outrank its service/category wording.
   if (/发\s*票\s*号\s*码/.test(t) && /价\s*税\s*合\s*计/.test(t)) return "增值税发票";
+  if (/(?:快递|寄件|邮寄|运单)[^\n]{0,8}明细|寄件清单|邮寄清单/.test(t)) return "快递邮寄明细";
   if (/支付成功|转账成功|交易成功|转账详情|已存入零钱|对方已收钱|转账[一—-]?(?:来自|转给)/.test(t.replace(/\s/g, ''))) return "付款凭证";
   // 先认行程单/货运凭证：它们文里也常出现“电子发票”字样（如“请以电子发票金额为准”），
   // 必须在“增值税发票”之前判断，否则会被误判成发票。
@@ -375,5 +376,5 @@ export function isProbablyInvoiceText(text) {
   // 先去掉字符间空格再判：有的混淆票把每个字拆开成“电 子 发 票”，连写关键词会匹配不到，
   // 导致被误当扫描件走 OCR、丢失本可抽到的买卖方。去空格后这类票也能正确进入文字解析。
   const t = String(text || "").replace(/[ \t]+/g, "");
-  return /发票|价税合计|开票日期|税额|行程单|货物运输|货拉拉|收款凭证|托运人|支付成功|转账成功|交易成功|转账详情/.test(t);
+  return /发票|价税合计|开票日期|税额|行程单|快递.*明细|邮寄.*明细|寄件清单|货物运输|货拉拉|收款凭证|托运人|支付成功|转账成功|交易成功|转账详情/.test(t);
 }

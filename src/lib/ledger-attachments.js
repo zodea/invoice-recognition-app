@@ -25,7 +25,11 @@ async function run(mode, operation) {
 }
 
 export const getLedgerAttachment = (key) => run("readonly", store => store.get(key));
-export const listLedgerAttachmentKeys = async () => (await run("readonly", store => store.getAll())).filter(item => item.blob).map(item => item.key);
+export async function listLedgerAttachmentMetadata(){
+ const db=await openDb();
+ try{return await new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readonly'),request=tx.objectStore(STORE).openCursor(),rows=[];request.onsuccess=()=>{const cursor=request.result;if(!cursor)return;const item=cursor.value;rows.push({key:item.key,hasOriginal:!!item.blob,supplements:(item.supplements||[]).map(s=>({hash:s.hash,name:s.name,type:s.type}))});cursor.continue();};tx.oncomplete=()=>resolve(rows);tx.onerror=()=>reject(tx.error);});}finally{db.close();}
+}
+export const listLedgerAttachmentKeys = async () => (await listLedgerAttachmentMetadata()).filter(item=>item.hasOriginal).map(item=>item.key);
 export async function deleteUnusedLedgerAttachments(keys, isReferenced) {
   if (!keys.length) return;
   const db = await openDb();

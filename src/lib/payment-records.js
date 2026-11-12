@@ -6,6 +6,7 @@ export function paymentDate(v) {
 }
 export function parsePaymentWorkbook(bytes,source='',options={}) {
  const w=XLSX.read(bytes,{type:'array',cellDates:true}), out=[];
+ if(w.SheetNames.some(name=>['发票归属','付款归属'].includes(name)))throw new Error('这是归属导入表，请使用“批量导入归属”入口，不能新增付款款项');
  for(const sheet of w.SheetNames){const ws=w.Sheets[sheet];const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});const hi=rows.findIndex(r=>((r.includes('下单日期')||r.includes('日期'))&&r.includes('收款名称'))||(r.includes('日期')&&(r.includes('名字')||r.includes('姓名'))&&r.includes('金额')));if(hi<0)continue;
  const h=rows[hi];const get=(r,...keys)=>{const i=keys.map(k=>h.indexOf(k)).find(i=>i>=0);return i==null?'':r[i];};let current=null;
  const firstRow=XLSX.utils.decode_range(ws['!ref']||'A1').s.r;

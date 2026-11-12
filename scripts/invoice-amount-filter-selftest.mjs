@@ -1,0 +1,3 @@
+import assert from 'node:assert/strict';
+import {matchesInvoiceAmount} from '../src/lib/invoice-amount-filter.js';
+const e={total:106,amount:100,tax:6};assert.equal(matchesInvoiceAmount(e,'106.00'),true);assert.equal(matchesInvoiceAmount(e,'100'),false);assert.equal(matchesInvoiceAmount(e,'100','amount'),true);assert.equal(matchesInvoiceAmount({total:0},'0.00'),true);assert.equal(matchesInvoiceAmount({total:''},'0'),false);assert.equal(matchesInvoiceAmount({total:-106},'-106.00'),true);assert.equal(matchesInvoiceAmount(e,'abc'),false);assert.equal(matchesInvoiceAmount({total:1000},'￥1,000.00元'),true);console.log('含税/未税金额精确到分筛选、零值、红字、空值和非法输入检查通过');

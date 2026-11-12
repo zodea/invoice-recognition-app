@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import {parseInvoice} from '../src/lib/invoice-parse.js';
+import {intakeDecision} from '../src/lib/invoice-intake.js';
+assert.equal(parseInvoice('顺丰快递邮寄明细\n对应发票号码:26990000000000000001\n寄件日期2026年11月1日\n合计 106.00').docType,'快递邮寄明细','快递明细识别为附件，不能当作新增费用');
+assert.equal(intakeDecision({status:'done',fields:{docType:'行程单'}},[]).state,'supplement','行程单使用直接保存附件入口');
+const {supplementInvoiceCandidates,saveInvoiceSupplement,reconcileInvoiceSupplements,linkInvoiceSupplement}=await import('../src/lib/invoice-supplements.js');
+const entry={key:'26990000000000000001',number:'26990000000000000001',date:'2026-11-01',total:106,buyer:'测试购买方',seller:'测试出行公司',reimbursement:'已报销'};
+const doc={name:'2026-11-01-测试出行公司-106.00元-行程单.pdf',fields:{docType:'行程单',date:'2026-11-01',total:106},file:new Blob(['虚构附件'])};
+assert.equal(supplementInvoiceCandidates(doc,{a:entry})[0].strong,true,'日期金额及文件名明确商户唯一对应即可自动挂附件');
+assert.equal(supplementInvoiceCandidates({...doc,name:'未知.pdf'},{a:entry})[0].strong,false,'金额日期相同不能单独认定');
+assert.equal(supplementInvoiceCandidates({...doc,fields:{...doc.fields,relatedInvoiceNumber:'26990000000000000099'}},{a:entry})[0].strong,false,'明确关联票号不存在时，不按同日同额误配其他发票');
+assert.equal(supplementInvoiceCandidates({...doc,fields:{...doc.fields,buyer:'其他购买方'}},{a:entry})[0].strong,false,'购买方冲突不能自动匹配');
+let ledger={},records=[],writes=0;const files=new Map();
+const ports={getLedger:()=>ledger,saveLedger:x=>{ledger=x;},getRecords:()=>records,saveRecords:x=>{records=x;},saveOriginal:async(key,file)=>{files.set(key,file);},getOriginal:async key=>files.get(key),append:async()=>{writes++;},hashFile:async()=> 'fake-hash'};
+let saved=await saveInvoiceSupplement(doc,ports);assert.equal(saved.record.ledgerKey,'');assert.equal(records.length,1);assert.equal(Object.keys(ledger).length,0,'主票尚未保存时只存附件，不产生发票或付款金额');
+ledger={a:entry};await reconcileInvoiceSupplements(ports);assert.equal(records[0].ledgerKey,'a');assert.equal(writes,1);assert.equal(ledger.a.total,106);assert.equal(ledger.a.reimbursement,'已报销');
+await saveInvoiceSupplement(doc,ports);assert.equal(records.length,1);assert.equal(writes,1,'再次选择同原件不重复保存/挂载');
+ledger={a:entry,b:{...entry,key:'b',number:'26990000000000000002'}};records=[];writes=0;
+saved=await saveInvoiceSupplement(doc,ports);assert.equal(saved.record.ledgerKey,'');assert.equal(writes,0,'有两个强候选时也不能强配');
+console.log('附件独立持久保存、自动匹配、主票后到、重复保护、歧义保留和费用不增加验证通过');
+
+records=[{hash:"fake-hash",fields:doc.fields,ledgerKey:""}];ledger={a:{...entry,supplementHashes:["fake-hash"]},b:{...entry,key:"b",number:"26990000000000000002"}};await assert.rejects(()=>linkInvoiceSupplement(records[0],"b",ports),/已经关联/);

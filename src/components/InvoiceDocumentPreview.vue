@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
-import { invoiceActions, invoiceStore } from "../invoiceStore";
+import { invoiceActions, invoiceStore } from "../invoiceStore.js";
 import { createPreviewPan } from "../lib/preview-pan";
 import MiddleEllipsis from "./MiddleEllipsis.vue";
 import DocumentImage from './DocumentImage.vue';

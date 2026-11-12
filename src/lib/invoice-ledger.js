@@ -7,6 +7,7 @@ import { allocationKind } from "./payment-records.js";
 // 第三方程序无法直接联机查询。这里走“本地台账 + 导入官方清单”的稳妥方案。
 import { invoiceProblems } from "./invoice-review.js";
 import * as XLSX from "xlsx";
+import {isAssignmentWorkbook} from "./expense-assignment-import.js";
 import { inferExpenseTag } from "./invoice-tags.js";
 
 const LS_KEY = "invoiceLedger.v1";
@@ -440,6 +441,7 @@ function groupInvoiceDetails(entries) {
 
 export function importInputInvoiceWorkbookBytes(ledger, bytes, opts = {}) {
   const wb = XLSX.read(bytes, { type: "array", cellDates: true });
+  if(isAssignmentWorkbook(wb))throw new Error("这是归属导入表，请使用批量导入归属，不能当作进项发票导入");
   let next = ledger || {};
   let imported = 0, added = 0, updated = 0;
   const preferredSheet = wb.SheetNames.find((n) => n === "发票基础信息")

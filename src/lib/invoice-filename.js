@@ -4,6 +4,8 @@ function pad2(n) {
 
 export function parseInvoiceFilename(name) {
   const base = String(name || "").replace(/\.(?:pdf|png|jpe?g|bmp|webp|gif|tiff?)$/i, "");
+  const organized = base.match(/^(\d{4}-\d{2}-\d{2})-(.+)-(\d+\.\d{2})元(?:-(行程单|快递邮寄明细|邮寄明细|行程及费用明细))?(?:-\d+)?$/);
+  if (organized) return {date:organized[1],seller:organized[2],total:organized[3],number:'',type:organized[4]||'',source:'filename',hasSellerTruth:true};
 
   // 明确标明医院、日期和金额的文件名可作为待核对的兜底；未写年份时不猜年份。
   const medical = base.match(/^(.{2,60}医院)[：:]\s*(?:(\d{2}|\d{4})-)?(\d{1,2})-(\d{1,2})\s*=\s*(\d+(?:\.\d{1,2})?)元?$/);

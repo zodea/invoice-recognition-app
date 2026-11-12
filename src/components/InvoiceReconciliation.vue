@@ -5,7 +5,7 @@ import { useExpenseOptions } from "../composables/useExpenseOptions";
 const expenseChoices = useExpenseOptions();
 import { computed, ref } from "vue";
 import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
-import { invoiceActions, invoiceStore } from "../invoiceStore";
+import { invoiceActions, invoiceStore } from "../invoiceStore.js";
 import { deductionStatus, historyStatus, missingReimbursementFields } from "../lib/invoice-ledger";
 import InvoiceReimbursementBatch from "./InvoiceReimbursementBatch.vue";
 

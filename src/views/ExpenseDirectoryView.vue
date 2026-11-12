@@ -4,7 +4,7 @@ import AppIcon from '../components/AppIcon.vue';
 import MiddleEllipsis from '../components/MiddleEllipsis.vue';
 import DirectoryRecordsDialog from '../components/DirectoryRecordsDialog.vue';
 import { directory, saveDirectory } from '../lib/expense-directory';
-import { invoiceStore } from '../invoiceStore';
+import { invoiceStore } from '../invoiceStore.js';
 import { paymentStore } from '../lib/payment-store';
 import { expenseSummary } from '../lib/expense-summary.js';
 import { toast, toastError, toastWarn } from '../lib/toast';

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { store, actions } from "../store";
 import UploadZone from "../components/UploadZone.vue";
-import PartitionBar from "../components/PartitionBar.vue";
+import ProjectSidebar from "../components/ProjectSidebar.vue";
 import FileCard from "../components/FileCard.vue";
 import ExportPanel from "../components/ExportPanel.vue";
 
@@ -18,6 +18,7 @@ const visibleFiles = computed(() =>
 );
 const problemCount = computed(() => collectProblems().total);
 const selectedFileId = ref("");
+const projectCollapsed=ref(false);
 const selectedFile = computed(() => visibleFiles.value.find(file => file.id === selectedFileId.value));
 watch(visibleFiles, files => {
   if (!files.some(file => file.id === selectedFileId.value)) selectedFileId.value = files[0]?.id || "";
@@ -28,7 +29,7 @@ watch(visibleFiles, files => {
   <div class="flex flex-col gap-3.5">
     <UploadZone v-if="!store.staging" />
     <DeliveryTree />
-    <PartitionBar v-if="!store.staging" />
+    <div class="delivery-project-layout" :class="{'projects-collapsed':projectCollapsed,staging:store.staging}"><ProjectSidebar v-if="!store.staging" v-model:collapsed="projectCollapsed" /><main class="delivery-project-main">
 
     <div class="flex items-center gap-3 flex-wrap sticky top-[54px] z-10 bg-panel border border-line rounded-card px-3 py-2 shadow-card" v-if="store.files.length && !store.staging">
       <button class="btn px-3 py-1.75 font-600" :disabled="store.ocrBusy" @click="actions.runOcrAll">
@@ -65,5 +66,7 @@ watch(visibleFiles, files => {
         <li>识别与导出都在本机完成；OCR 首次会联网下载模型。扫描的图片型 PDF 会自动抽出页图；文字版 PDF 抽不到图时可手动录入。</li>
       </ul>
     </details>
+    </main></div>
   </div>
 </template>
+<style scoped>.delivery-project-layout{display:grid;grid-template-columns:282px minmax(0,1fr);gap:14px;align-items:start}.delivery-project-layout.projects-collapsed{grid-template-columns:68px minmax(0,1fr)}.delivery-project-layout.staging{grid-template-columns:minmax(0,1fr)}.delivery-project-main{display:flex;flex-direction:column;gap:14px;min-width:0}@media(max-width:900px){.delivery-project-layout,.delivery-project-layout.projects-collapsed{grid-template-columns:minmax(0,1fr)}}</style>

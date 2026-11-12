@@ -1,7 +1,7 @@
 <script setup>
 import SupplierMatch from './SupplierMatch.vue';
 import { CheckboxIndicator, CheckboxRoot } from "reka-ui";
-import { invoiceStore, invoiceActions, selectInvoice, groupPath } from "../invoiceStore";
+import { invoiceStore, invoiceActions, selectInvoice, groupPath } from "../invoiceStore.js";
 import { invoiceExportFileName } from "../lib/invoice-export-package";
 import { EXPENSE_TAGS, inferExpenseTag } from "../lib/invoice-tags";
 import { toastWarn } from "../lib/toast";
@@ -87,7 +87,7 @@ const tagBase = "chip flex-none px-1.75 py-0.5 border";
       <span v-if="item.inv.historyAutoExcluded" class="text-[#b45309]">已按历史记录默认取消勾选，可手动勾选</span>
     </div>
 
-    <div class="grid grid-cols-4 gap-2 max-md:grid-cols-2" @change="invoiceActions.refreshInvoiceMatches">
+    <div class="grid grid-cols-4 gap-2 max-md:grid-cols-2" @input="invoiceActions.markDraftEdited(item.inv)" @change="invoiceActions.markDraftEdited(item.inv)">
       <label class="field-label">发票号码<input class="field-input" v-model="item.inv.fields.number" /></label>
       <label class="field-label">开票日期<input class="field-input" v-model="item.inv.fields.date" placeholder="2026-03-09" @input="syncDate(item.inv)" /></label>
       <label class="field-label col-span-2">销售方<input class="field-input" v-model="item.inv.fields.seller" /><SupplierMatch v-model="item.inv.fields.seller" /></label>

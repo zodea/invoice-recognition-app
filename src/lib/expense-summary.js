@@ -4,6 +4,7 @@ import { isMultiProject, projectExpenseRows } from './invoice-allocation.js';
 export function expenseSummary(entries, bySeller = false) {
   const map = new Map();
   for (const entry of entries) {
+    if(entry.supplementOnly)continue;
     const kind = allocationKind(entry);
     const rows = isMultiProject(entry) ? projectExpenseRows(entry) : [{ project: kind === '指定工地' ? entry.project : kind, total: Number(entry.total) || 0 }];
     for (const row of rows) {

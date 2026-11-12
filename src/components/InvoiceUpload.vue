@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from "vue";
-import { invoiceActions, invoiceStore } from "../invoiceStore";
+import { invoiceActions, invoiceStore } from "../invoiceStore.js";
 import { partitionFiles, SUPPORTED_HINT } from "../lib/upload";
 import { toastWarn } from "../lib/toast";
 

@@ -1,5 +1,5 @@
 <script setup>
-import { selectInvoice, invoiceActions } from "../invoiceStore";
+import { selectInvoice, invoiceActions } from "../invoiceStore.js";
 import MiddleEllipsis from "./MiddleEllipsis.vue";
 
 defineProps({ items: { type: Array, required: true }, activeId: String });

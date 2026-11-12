@@ -1,11 +1,12 @@
 <script setup>
+import ExpenseAssignmentImport from './ExpenseAssignmentImport.vue';
 import ConfirmAction from './ConfirmAction.vue';
 import { useConfirmation } from '../composables/useConfirmation.js';
 const { confirmation, requestConfirmation, answerConfirmation } = useConfirmation();
 import { computed, ref } from "vue";
 import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
 const expenseImportOpen = ref(false);
-import { invoiceStore, invoiceActions } from "../invoiceStore";
+import { invoiceStore, invoiceActions } from "../invoiceStore.js";
 import { buildCurrentInputInvoiceReportBytes, buildHistoryReportBytes, currentInputReportName, historyReportName, ledgerStats } from "../lib/invoice-ledger";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
 import { downloadBytes } from "../lib/file-utils.js";
@@ -143,6 +144,7 @@ async function clearLedger() {
 
       <button v-if="!ledgerPage" class="btn px-2.5 py-1.75" @click="emit('open-ledger')">打开台账页面</button>
       <button class="btn" @click="expenseImportOpen = true">导入报销记录</button>
+      <ExpenseAssignmentImport />
       <button class="btn px-2.5 py-1.75" :disabled="!stats.total" @click="reconciliationOpen = true">历史报销核对</button>
       <button class="btn px-2.5 py-1.75" :disabled="busy || !stats.total" @click="exportHistory">导出历史台账</button>
       <button class="btn px-2.5 py-1.75" :disabled="busy || !invoiceStore.invoices.length" @click="exportCurrentInputStatus">导出当前进项状态</button>
