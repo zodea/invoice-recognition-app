@@ -1,5 +1,6 @@
+import { appStorage } from './app-storage.js';
 // 分供方（供应商）资料库：公司全称、简称/别名、税号、开户行、银行账号、联系人等。
-// 本地持久化（localStorage，沿用台账模式）；提供 名称归一化 + 模糊匹配，
+// 本地持久化（桌面版使用便携数据目录）；提供 名称归一化 + 模糊匹配，
 // 供送货单子文件夹简称（大板东 / 兆鑫建 材 / 智道(1)）对应到公司全称。issue #6
 import * as XLSX from "xlsx";
 import { reactive } from "vue";
@@ -14,13 +15,13 @@ const uid = () => `sup_${Date.now().toString(36)}_${(seq++).toString(36)}`;
 const mem = { v: "" };
 function storageGet() {
   try {
-    if (typeof localStorage !== "undefined") return localStorage.getItem(STORAGE_KEY) || "";
+    if (typeof localStorage !== "undefined") return appStorage.getItem(STORAGE_KEY) || "";
   } catch (e) { /* ignore */ }
   return mem.v;
 }
 function storageSet(v) {
   try {
-    if (typeof localStorage !== "undefined") { localStorage.setItem(STORAGE_KEY, v); return; }
+    if (typeof localStorage !== "undefined") { appStorage.setItem(STORAGE_KEY, v); return; }
   } catch (e) { throw new Error("分供方保存失败：" + e.message); }
   mem.v = v;
 }

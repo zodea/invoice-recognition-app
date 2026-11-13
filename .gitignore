@@ -57,3 +57,6 @@ public/octest/
 # App source asset: empty supplier import form, contains no business data
 !src/assets/supplier-import.xlsx
 /outputs/
+/数据/
+/调试数据/
+*.sdbak

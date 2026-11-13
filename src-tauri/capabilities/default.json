@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-window",
+  "description": "Main window close guard for pending local data writes",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:window:allow-destroy"]
+}

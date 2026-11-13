@@ -1,3 +1,4 @@
+import { appStorage } from './app-storage.js';
 import {parseInvoiceFilename} from './invoice-filename.js';
 import {standaloneDocumentType} from './document-kind.js';
 const normalize=value=>String(value||'').normalize('NFKC').replace(/\s/g,'');
@@ -5,12 +6,12 @@ export const supplementStorageKey='invoiceSupplements.v1';
 export function supplementType(fields={}) {
  return [fields.attachmentType,fields.docType,fields.type].find(value=>['行程单','快递邮寄明细','邮寄明细','寄件明细','快递明细','行程及费用明细'].includes(value))||'';
 }
-export function readInvoiceSupplements(storage=globalThis.localStorage) {
+export function readInvoiceSupplements(storage=appStorage) {
  const records=JSON.parse(storage?.getItem(supplementStorageKey)||'[]');
  if(!Array.isArray(records))throw new Error('附件索引异常，请先检查本地备份');
  return records;
 }
-export function writeInvoiceSupplements(records,storage=globalThis.localStorage){storage.setItem(supplementStorageKey,JSON.stringify(records));}
+export function writeInvoiceSupplements(records,storage=appStorage){storage.setItem(supplementStorageKey,JSON.stringify(records));}
 export function supplementInvoiceCandidates(doc,ledger) {
  const fields=doc.fields||{},fallback=parseInvoiceFilename(doc.name),seller=normalize(fields.seller||fallback.seller),date=fields.date||fallback.date;
  const amount=fields.total!==''&&fields.total!=null?fields.total:fallback.total;

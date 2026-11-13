@@ -1,9 +1,10 @@
+import { appStorage } from './app-storage.js';
 import { reactive } from 'vue';
 import { normalizeCompanyName, matchSupplierExact, supplierStore } from './supplier-db.js';
 const key='expenseDirectory.v1';
-let saved={}; try { saved=JSON.parse(localStorage.getItem(key)||'{}'); } catch {}
+let saved={}; try { saved=JSON.parse(appStorage.getItem(key)||'{}'); } catch {}
 export const directory=reactive({buyers:[],projects:[],allocations:[],people:[],tags:[],purposes:[],paymentMethods:["微信","支付宝","银行转账","现金","其他"],rules:[],deletedArchives:[],...saved});
-export function saveDirectory(next) { localStorage.setItem(key,JSON.stringify(next)); Object.assign(directory,next); }
+export function saveDirectory(next) { appStorage.setItem(key,JSON.stringify(next)); Object.assign(directory,next); }
 export function deleteArchive(kind, value) {
  if (!Array.isArray(directory[kind]) || !directory[kind].includes(value)) return;
  saveDirectory({...directory,[kind]:directory[kind].filter(v=>v!==value),deletedArchives:[...directory.deletedArchives.filter(r=>r.kind!==kind||r.value!==value),{kind,value,deletedAt:new Date().toISOString()}]});

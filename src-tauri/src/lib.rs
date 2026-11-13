@@ -1,6 +1,7 @@
 use base64::{engine::general_purpose, Engine as _};
 use std::fs;
 use std::path::{Path, PathBuf};
+mod local_data;
 
 fn clean_path_part(value: &str, fallback: &str) -> String {
     let cleaned = value
@@ -127,7 +128,10 @@ async fn vl_submit_file(
     let status = resp.status();
     let text = resp.text().await.map_err(|e| e.to_string())?;
     if !status.is_success() {
-        return Err(format!("提交失败 {status}：{}", &text[..text.len().min(200)]));
+        return Err(format!(
+            "提交失败 {status}：{}",
+            &text[..text.len().min(200)]
+        ));
     }
     Ok(text)
 }
@@ -145,7 +149,10 @@ async fn vl_get_json(url: String, token: String) -> Result<String, String> {
     let status = resp.status();
     let text = resp.text().await.map_err(|e| e.to_string())?;
     if !status.is_success() {
-        return Err(format!("查询失败 {status}：{}", &text[..text.len().min(200)]));
+        return Err(format!(
+            "查询失败 {status}：{}",
+            &text[..text.len().min(200)]
+        ));
     }
     Ok(text)
 }
@@ -177,7 +184,11 @@ fn open_external(url: String) -> Result<(), String> {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+        let opener = if cfg!(target_os = "macos") {
+            "open"
+        } else {
+            "xdg-open"
+        };
         std::process::Command::new(opener)
             .arg(&url)
             .spawn()
@@ -189,7 +200,25 @@ fn open_external(url: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            local_data::setup(app.handle());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
+            local_data::local_data_init,
+            local_data::local_data_migrate_record,
+            local_data::local_data_finish_migration,
+            local_data::local_data_save_values,
+            local_data::local_data_get_attachment,
+            local_data::local_data_list_attachments,
+            local_data::local_data_put_attachment,
+            local_data::local_data_delete_attachments,
+            local_data::local_data_backup,
+            local_data::local_data_prepare_restore,
+            local_data::local_data_restore,
+            local_data::local_data_cancel_restore,
+            local_data::local_data_recover,
+            local_data::local_data_open_folder,
             pick_export_dir,
             write_export_file,
             open_external,

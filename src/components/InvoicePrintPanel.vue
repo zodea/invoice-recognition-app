@@ -1,4 +1,6 @@
 <script setup>
+import { appStorage } from '../lib/app-storage.js';
+
 import { invoiceProblems } from "../lib/invoice-review";
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from "vue";
 import {
@@ -25,9 +27,9 @@ import {
 } from "../lib/invoice-export-package";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 
-const filenameTemplate = ref(localStorage.getItem("invoiceFilenameTemplate") || "{销售方}：{日期}={金额}元");
-const exportSort = ref(localStorage.getItem("invoiceExportSort") || "original");
-const exportDirection = ref(localStorage.getItem("invoiceExportDirection") || "asc");
+const filenameTemplate = ref(appStorage.getItem("invoiceFilenameTemplate") || "{销售方}：{日期}={金额}元");
+const exportSort = ref(appStorage.getItem("invoiceExportSort") || "original");
+const exportDirection = ref(appStorage.getItem("invoiceExportDirection") || "asc");
 const busy = ref(false);
 const dockRef = ref(null);
 const activePanel = ref("");
@@ -216,9 +218,9 @@ async function exportPackage() {
   busy.value = true;
   msg.value = "请选择保存目录…";
   try {
-    localStorage.setItem("invoiceFilenameTemplate", filenameTemplate.value);
-    localStorage.setItem("invoiceExportSort", exportSort.value);
-    localStorage.setItem("invoiceExportDirection", exportDirection.value);
+    appStorage.setItem("invoiceFilenameTemplate", filenameTemplate.value);
+    appStorage.setItem("invoiceExportSort", exportSort.value);
+    appStorage.setItem("invoiceExportDirection", exportDirection.value);
     const list = [...included.value];
     if (exportSort.value !== "original") list.sort((a, b) => {
       const key = exportSort.value;

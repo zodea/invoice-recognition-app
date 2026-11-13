@@ -4,22 +4,24 @@ import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, Di
 import { appSettings, saveAppSettings, vlConfigured } from "../lib/app-settings";
 import { vlParseDocument } from "../lib/ocr-vl";
 import { toast, toastError, toastInfo } from "../lib/toast";
+import LocalDataPanel from './LocalDataPanel.vue';
+import { flushLocalData } from '../lib/local-data.js';
 
 defineProps({ open: Boolean });
 const emit = defineEmits(["update:open"]);
 
 const testing = ref(false);
 
-function save() {
+async function save() {
   appSettings.vlApiUrl = (appSettings.vlApiUrl || "").trim();
   appSettings.vlToken = (appSettings.vlToken || "").trim();
-  saveAppSettings();
-  toast("设置已保存（仅存本机）。");
+  try { saveAppSettings(); await flushLocalData(); toast("设置已保存到本地。"); return true; }
+  catch (e) { toastError(String(e.message || e)); return false; }
 }
 
 // 用一张小测试图实测一次云识别，验证 地址+令牌+网络 三件事
 async function testConnection() {
-  save();
+  if (!await save()) return;
   if (!vlConfigured()) {
     toastError("请先填写 API 地址（https 开头）和访问令牌。");
     return;
@@ -52,13 +54,15 @@ async function testConnection() {
   <DialogRoot :open="open" @update:open="emit('update:open', $event)">
     <DialogPortal>
       <DialogOverlay class="fixed inset-0 z-50 bg-black/40" />
-      <DialogContent class="fixed z-51 top-[10vh] left-1/2 -translate-x-1/2 w-[min(640px,94vw)] bg-bg rounded-card shadow-pop p-4 outline-none">
+      <DialogContent class="fixed z-51 top-[5vh] left-1/2 -translate-x-1/2 w-[min(680px,94vw)] max-h-[90vh] overflow-y-auto bg-bg rounded-card shadow-pop p-4 outline-none">
         <div class="flex items-center mb-3">
-          <DialogTitle class="m-0 text-base font-700">⚙ 设置 — 云识别（PaddleOCR-VL）</DialogTitle>
+          <DialogTitle class="m-0 text-base font-700">设置</DialogTitle>
           <DialogClose class="ml-auto btn px-2.5 py-1">关闭 ✕</DialogClose>
         </div>
 
-        <div class="panel p-3 flex flex-col gap-2.5">
+        <LocalDataPanel />
+        <div class="panel p-3 mt-3 flex flex-col gap-2.5">
+          <h3 class="m-0 text-sm">云识别（PaddleOCR-VL）</h3>
           <p class="m-0 text-ink-soft text-xs leading-relaxed">
             手写送货单识别需要云端大模型。到
             <b class="text-brand">aistudio.baidu.com/paddleocr/task</b>
@@ -77,7 +81,7 @@ async function testConnection() {
               {{ vlConfigured() ? "✓ 已配置：识别将走云端" : "未配置：识别走本地小模型" }}
             </span>
           </div>
-          <p class="m-0 text-ink-soft text-[11px]">令牌只保存在本机（localStorage），不会写入任何文件或上传；识别时单据图片会发送到百度星河平台处理。</p>
+          <p class="m-0 text-ink-soft text-[11px]">桌面版令牌保存在本地数据目录并随完整备份携带；识别时单据图片会发送到百度星河平台处理。</p>
         </div>
       </DialogContent>
     </DialogPortal>

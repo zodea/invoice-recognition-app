@@ -1,12 +1,12 @@
-// 应用设置：本地持久化（localStorage）。当前只有 PaddleOCR-VL 云识别的接入配置。
-// 注意：token 属于凭证，只存本机 localStorage，绝不写进代码仓库。
+import { appStorage } from './app-storage.js';
+// 桌面设置存入便携数据目录；令牌随本地完整备份携带，绝不提交代码仓库。
 import { reactive } from "vue";
 
 const KEY = "appSettings.v1";
 
 function load() {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = appStorage.getItem(KEY);
     if (raw) return JSON.parse(raw);
   } catch (e) { /* ignore */ }
   return {};
@@ -20,9 +20,7 @@ export const appSettings = reactive({
 });
 
 export function saveAppSettings() {
-  try {
-    localStorage.setItem(KEY, JSON.stringify({ vlApiUrl: appSettings.vlApiUrl, vlToken: appSettings.vlToken, hoverZoom: appSettings.hoverZoom }));
-  } catch (e) { /* ignore */ }
+  appStorage.setItem(KEY, JSON.stringify({ vlApiUrl: appSettings.vlApiUrl, vlToken: appSettings.vlToken, hoverZoom: appSettings.hoverZoom }));
 }
 
 export function vlConfigured() {

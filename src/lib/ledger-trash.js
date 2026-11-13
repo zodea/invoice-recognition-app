@@ -1,11 +1,12 @@
+import { appStorage } from './app-storage.js';
 export const ledgerTrashKey = 'invoiceLedgerTrash.v1';
 
-export function loadLedgerTrash(storage = globalThis.localStorage) {
+export function loadLedgerTrash(storage = appStorage) {
   try { return readLedgerTrashForChange(storage); }
   catch { return []; }
 }
 
-export function readLedgerTrashForChange(storage = globalThis.localStorage) {
+export function readLedgerTrashForChange(storage = appStorage) {
   const records = JSON.parse(storage?.getItem(ledgerTrashKey) || '[]');
   if (!Array.isArray(records) || records.some(r => !r || !r.id || !r.key || !r.entry)) {
     throw new Error('回收站数据格式异常，请先检查备份，未执行删除或恢复。');
@@ -36,7 +37,7 @@ export function restoreLedgerFromTrash(ledger, trash, ids) {
 }
 
 // 先保存完整备份，再修改台账；任一步写入失败都不会丢失被删除的数据。
-export function persistLedgerTransition(result, previousTrash, saveActive, storage = globalThis.localStorage) {
+export function persistLedgerTransition(result, previousTrash, saveActive, storage = appStorage) {
   const backup = [...new Map([...previousTrash, ...result.trash].map(r => [r.id, r])).values()];
   storage.setItem(ledgerTrashKey, JSON.stringify(backup));
   saveActive(result.ledger);

@@ -1,3 +1,4 @@
+import { appStorage } from './app-storage.js';
 import { isMultiProject, projectAllocationState, projectNames, projectExpenseRows } from './invoice-allocation.js';
 import { allocationKind } from "./payment-records.js";
 // 历史发票台账（本地持久化）：跨批次按「发票号码」查重，避免同一张发票被重复报销/使用；
@@ -12,10 +13,10 @@ import { inferExpenseTag } from "./invoice-tags.js";
 
 const LS_KEY = "invoiceLedger.v1";
 
-// —— 持久化（localStorage；Tauri WebView2 同样会持久化到应用数据目录）——
+// 桌面版由 appStorage 写入软件旁的便携数据目录。
 export function loadLedger() {
   try {
-    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(LS_KEY) : null;
+    const raw = typeof localStorage !== "undefined" ? appStorage.getItem(LS_KEY) : null;
     return raw ? JSON.parse(raw) : {};
   } catch (e) {
     return {};
@@ -23,7 +24,7 @@ export function loadLedger() {
 }
 export function saveLedger(ledger) {
   try {
-    if (typeof localStorage !== "undefined") localStorage.setItem(LS_KEY, JSON.stringify(ledger || {}));
+    if (typeof localStorage !== "undefined") appStorage.setItem(LS_KEY, JSON.stringify(ledger || {}));
   } catch (e) {
     throw new Error(`台账保存失败，请检查本地存储空间：${e.message || e}`);
   }

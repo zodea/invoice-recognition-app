@@ -4,6 +4,7 @@ import { TabsContent, TabsList, TabsRoot, TabsTrigger } from "reka-ui";
 import { pendingPaymentCount } from "./lib/payment-store";
 import AppIcon from "./components/AppIcon.vue";
 import ToastHost from "./components/ToastHost.vue";
+import LocalDataStatus from './components/LocalDataStatus.vue';
 
 // 各功能视图按需加载，仅在激活时挂载。
 // 数据存于 store 单例（store.js / invoiceStore.js），切换 tab 卸载组件也不丢数据。
@@ -46,6 +47,7 @@ const tabCls = "app-nav-item";
         <TabsTrigger value="price" :class="tabCls"><AppIcon name="chart" /> 单价对比</TabsTrigger>
       </TabsList>
       <div class="app-sidebar-bottom">
+      <LocalDataStatus />
       <button class="app-nav-item" title="云识别等设置" @click="settingsOpen = true"><AppIcon name="settings" /> 设置</button>
       </div>
     </header>

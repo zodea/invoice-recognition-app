@@ -1,3 +1,4 @@
+import { appStorage } from './lib/app-storage.js';
 import { reactive, watch } from "vue";
 import { renderFileToPages } from "./lib/pdf";
 import { recognizePages } from "./lib/ocr";
@@ -10,7 +11,7 @@ import { rotateImageUrl } from "./lib/pdftext";
 import { toastWarn } from "./lib/toast";
 
 import { directory, saveDirectory, deleteArchive } from './lib/expense-directory.js';
-let savedPartitions=[];try{savedPartitions=JSON.parse(localStorage.getItem('deliveryPartitions.v1')||'[]');}catch{}
+let savedPartitions=[];try{savedPartitions=JSON.parse(appStorage.getItem('deliveryPartitions.v1')||'[]');}catch{}
 function rememberProject(name){if(name&&name!=='默认项目'&&!directory.projects.includes(name))saveDirectory({...directory,projects:[...directory.projects,name]});}
 let seq = 0;
 const uid = (p) => `${p}_${Date.now().toString(36)}_${(seq++).toString(36)}`;
@@ -37,7 +38,7 @@ watch(()=>[...directory.projects], projects=>{
  store.partitions=store.partitions.filter(p=>!p.archiveManaged||projects.includes(p.name)||store.files.some(f=>f.partitionId===p.id));
  if(!store.partitions.length)store.partitions=[{id:'p_default',name:'默认项目'}];
 },{immediate:true,flush:'sync'});
-watch(()=>store.partitions, value=>{try{localStorage.setItem('deliveryPartitions.v1',JSON.stringify(value));}catch(error){toastWarn('工地保存失败：'+error.message);}},{deep:true});
+watch(()=>store.partitions, value=>{try{appStorage.setItem('deliveryPartitions.v1',JSON.stringify(value));}catch(error){toastWarn('工地保存失败：'+error.message);}},{deep:true});
 
 // 汇总当前所有"需要人解决的问题"，问题弹窗和工具栏角标共用。
 export function collectProblems() {

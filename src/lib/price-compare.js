@@ -1,3 +1,4 @@
+import { appStorage } from './app-storage.js';
 // 单价对比（issue #7）：跨供应商对比同一材料的单价，辅助询价/砍价。
 // 数据源：① 当前已识别的送货单明细（store.files 的 docs.items）；② 历史导出的「送货单整理汇总.xlsx」。
 // 归组策略（用户已确认）：规格归一化（厘↔mm、×↔*、全/半角、去空格、大小写）后**精确匹配**自动归组；
@@ -105,10 +106,10 @@ export function splitGroup(manualGroups, key) {
 
 const LS_KEY = "priceCompareManualGroups";
 export function loadManualGroups() {
-  try { return JSON.parse((typeof localStorage !== "undefined" && localStorage.getItem(LS_KEY)) || "{}"); } catch { return {}; }
+  try { return JSON.parse((typeof localStorage !== "undefined" && appStorage.getItem(LS_KEY)) || "{}"); } catch { return {}; }
 }
 export function saveManualGroups(m) {
-  try { if (typeof localStorage !== "undefined") localStorage.setItem(LS_KEY, JSON.stringify(m || {})); } catch { /* ignore */ }
+  try { if (typeof localStorage !== "undefined") appStorage.setItem(LS_KEY, JSON.stringify(m || {})); } catch { /* ignore */ }
 }
 
 // 从历史导出的「…送货单整理汇总.xlsx」读回观测点（每工作表=一个公司；跳过待复核清单）。

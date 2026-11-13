@@ -1,3 +1,4 @@
+import { appStorage } from './lib/app-storage.js';
 import { intakeDecision, intakeFingerprint, canEnterLedger, planRecognizedInvoice, receiptType } from './lib/invoice-intake.js';
 import { transferReceipt } from './lib/receipt-transfer.js';
 import { fileHash, isPdf } from './lib/file-utils.js';
@@ -480,7 +481,7 @@ export const invoiceActions = {
   applyAssignmentImport(review,selected){
     if(invoiceStore.savingIntake)throw new Error('正在保存，请稍候');
     const result=applyAssignmentReview(review,selected,invoiceStore.ledger,paymentStore.rows,directory);
-    persistAssignmentImport(result,{previousLedger:invoiceStore.ledger,previousPayments:paymentStore.rows,writeBackup:data=>localStorage.setItem('expenseAssignmentBackup.v1',JSON.stringify(data)),writeLedger:saveLedger,writePayments:rows=>localStorage.setItem('paymentRecords.v1',JSON.stringify(rows))});
+    persistAssignmentImport(result,{previousLedger:invoiceStore.ledger,previousPayments:paymentStore.rows,writeBackup:data=>appStorage.setItem('expenseAssignmentBackup.v1',JSON.stringify(data)),writeLedger:saveLedger,writePayments:rows=>appStorage.setItem('paymentRecords.v1',JSON.stringify(rows))});
     invoiceStore.ledger=result.ledger;paymentStore.rows=result.payments;refreshHistory();return result;
   },
   markDraftEdited(inv){inv.manualEditPending=true;},
