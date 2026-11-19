@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx/xlsx.mjs';
-import {paymentDate} from './payment-records.js';
+import {paymentDate,readPaymentExcel} from './payment-records.js';
 import {moneyCents,withProjectAllocation,isMultiProject} from './invoice-allocation.js';
 const norm=v=>String(v??'').normalize('NFKC').replace(/\s/g,'');
 const text=v=>String(v??'').trim();
@@ -10,7 +10,7 @@ export const assignmentHeaders={
 };
 export function isAssignmentWorkbook(wb){return wb.SheetNames.some(name=>['发票归属','付款归属'].includes(name));}
 export function parseAssignmentWorkbook(bytes){
- const wb=XLSX.read(bytes,{type:'array',cellDates:true}),result={invoices:[],payments:[],allocations:[]};
+ const wb=readPaymentExcel(bytes),result={invoices:[],payments:[],allocations:[]};
  for(const [kind,name]of[['invoices','发票归属'],['payments','付款归属'],['allocations','多工地分配']]){
   if(!wb.Sheets[name])continue;
   const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,defval:''}),headers=(rows[0]||[]).map(text);const get=(row,label)=>row[headers.indexOf(label)]??'';
@@ -18,7 +18,7 @@ export function parseAssignmentWorkbook(bytes){
    if(!row.some(v=>v!==''&&v!=null))return;
    if(kind==='allocations'){result.allocations.push({kind:text(get(row,'单据类型')),matchId:text(get(row,'匹配标识')),project:text(get(row,'工地')),total:get(row,'分配金额'),remark:text(get(row,'分配备注'))});return;}
    const rawNumber=get(row,'发票号码');
-   result[kind].push({id:kind+'|'+(index+2),number:typeof rawNumber==='string'?rawNumber.replace(/\s/g,''):'',numberUnsafe:kind==='invoices'&&typeof rawNumber==='number',matchId:kind==='invoices'?text(rawNumber):text(get(row,'匹配标识')),date:paymentDate(get(row,kind==='invoices'?'发票日期':'付款日期')),total:get(row,kind==='invoices'?'价税合计':'实付金额'),buyer:text(get(row,kind==='invoices'?'购买方':'归属公司')),seller:text(get(row,kind==='invoices'?'销售方':'收款名称')),payer:text(get(row,'付款名称')),allocation:text(get(row,'费用归属')),project:text(get(row,'使用工地')),owner:text(get(row,'费用归属人')),note:text(get(row,'归属备注')),sourceFile:text(get(row,'原清单')),sourceSheet:text(get(row,'原工作表')),sourceRow:text(get(row,'原行号'))});
+   result[kind].push({id:kind+'|'+(index+2),number:typeof rawNumber==='string'?rawNumber.replace(/\s/g,''):'',numberUnsafe:kind==='invoices'&&typeof rawNumber==='number',matchId:kind==='invoices'?text(rawNumber):text(get(row,'匹配标识')),date:paymentDate(get(row,kind==='invoices'?'发票日期':'付款日期'),!!wb.Workbook?.WBProps?.date1904),total:get(row,kind==='invoices'?'价税合计':'实付金额'),buyer:text(get(row,kind==='invoices'?'购买方':'归属公司')),seller:text(get(row,kind==='invoices'?'销售方':'收款名称')),payer:text(get(row,'付款名称')),allocation:text(get(row,'费用归属')),project:text(get(row,'使用工地')),owner:text(get(row,'费用归属人')),note:text(get(row,'归属备注')),sourceFile:text(get(row,'原清单')),sourceSheet:text(get(row,'原工作表')),sourceRow:text(get(row,'原行号'))});
   });
  }
  if(!isAssignmentWorkbook(wb))throw new Error('请选择归属导入表，工作表应为“发票归属”或“付款归属”');

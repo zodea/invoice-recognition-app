@@ -24,10 +24,11 @@ const book=XLSX.utils.book_new();const sheet=XLSX.utils.aoa_to_sheet([['日期',
 const merged=XLSX.utils.aoa_to_sheet([['下单日期','付款名称','收款名称','实付合计'],['2026-06-01','测试付款人','商户甲',10],['2026-06-02','','商户乙',20]]);merged['!merges']=[XLSX.utils.decode_range('B2:B3')];XLSX.utils.book_append_sheet(book,merged,'合并付款名称');
 const payments=parsePaymentWorkbook(XLSX.write(book,{type:'array'}),'虚构样本.xlsx');
 assert.equal(payments.find(r=>r.seller==='测试商户').payer,'建行','旧表空白列头不能漏掉实际填写的付款账户');
-assert.equal(payments.find(r=>r.seller==='商户乙').payer,'测试付款人','仅依据实际合并单元格继承付款名称');
+assert.ok(payments.find(r=>r.seller==='商户甲').importWarnings.some(w=>w.includes('边界')),'付款人合并范围跨不同收款人时必须提示');
+assert.equal(payments.find(r=>r.seller==='商户甲').rawRows[1]['收款名称'],'商户乙');
 const offsetBook=XLSX.utils.book_new(),offsetSheet=XLSX.utils.aoa_to_sheet([]);
 XLSX.utils.sheet_add_aoa(offsetSheet,[['下单日期','付款名称','收款名称','实付合计'],['2026-06-01','合并付款人','商户丙',10],['2026-06-02','','商户丁',20],['2026-06-03','','商户戊',30]],{origin:'A3'});
 offsetSheet['!merges']=[XLSX.utils.decode_range('B4:B5')];XLSX.utils.book_append_sheet(offsetBook,offsetSheet,'偏移表');
 const offsetRows=parsePaymentWorkbook(XLSX.write(offsetBook,{type:'array'}),'偏移.xlsx');
-assert.equal(offsetRows[0].id,'偏移.xlsx|偏移表|4');assert.equal(offsetRows[1].payer,'合并付款人');assert.equal(offsetRows[2].payer,'','未合并的空单元格不向下猜填');
+assert.equal(offsetRows[0].id,'偏移.xlsx|偏移表|4');assert.ok(offsetRows[0].importWarnings.some(w=>w.includes('边界')));assert.equal(offsetRows[1].payer,'','未合并的空单元格不向下猜填');
 console.log('账单列顺序、旧票日期与收入支出隔离测试通过');

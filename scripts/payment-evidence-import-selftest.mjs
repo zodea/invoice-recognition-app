@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import { File, Blob } from 'node:buffer';
+import { recognizePaymentEvidenceFile } from '../src/lib/payment-evidence-import.js';
+const img = new File(['x'], 'IMG_0001.png', {type:'image/png'});
+const imageResult = await recognizePaymentEvidenceFile(img,{recognizePages:async()=>['支付成功','收款人:虚构商户','2026-03-02','付款金额:90.00']});
+assert.equal(imageResult.file,img); assert.equal(imageResult.fields.total,90); assert.equal(imageResult.fields.seller,'虚构商户');
+const pdf = new File(['x'],'random.pdf',{type:'application/pdf'});
+const pdfApi={extractPdfText:async()=>({numPages:2,pages:[{lines:[{text:'支付成功\n2026-03-02\n付款金额:90.00'}]},{lines:[]}]}),renderPdfPages:async()=>[null,URL.createObjectURL(new Blob(['x']))]};
+const result=await recognizePaymentEvidenceFile(pdf,{pdfApi,recognizePages:async()=>['支付成功','2026-03-03','付款金额:15.00']});
+assert.equal(result.pages.length,2);assert.equal(result.pages[0].fields.total,90);assert.equal(result.pages[1].fields.total,15);assert.equal(result.fields.total,''); assert.ok(result.warnings.some(x=>x.includes('多页')));
+const failure=await recognizePaymentEvidenceFile(pdf,{pdfApi:{extractPdfText:async()=>({numPages:1,pages:[{lines:[]}]}),renderPdfPages:async()=>[null]},recognizePages:async()=>[]});
+assert.ok(failure.warnings.some(x=>x.includes('渲染失败')));
+console.log('原始图片、PDF逐页识别、错误提示和多页不合并测试通过');

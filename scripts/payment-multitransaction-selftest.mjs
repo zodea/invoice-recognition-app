@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import { parsePaymentTransactions } from '../src/lib/payment-evidence.js';
+import { reconcileEvidenceTransactions } from '../src/lib/payment-transactions.js';
+const a = '缴费记录\n交易时间:2026-10-15\n缴费金额:¥20.00\n普表缴费\n付款成功\n订单编号:FAKE000001复制\n交易时间:2026-09-07\n缴费金额:¥20.00\n普表缴费\n付款成功\n订单编号:FAKE000002复制\n交易时间:2026-06-23\n缴费金额:¥100.00\n普表缴费\n付款成功\n订单编号:FAKE000006复制\n交易时间:2026-03-02\n缴费金额:¥100.00';
+const b = '普表缴费\n付款成功\n订单编号:FAKE000003复制\n交易时间:2026-11-16\n缴费金额:¥15.00\n普表缴费\n付款成功\n订单编号:FAKE000004复制\n交易时间:2026-10-27\n缴费金额:¥10.00\n普表缴费\n付款成功\n订单编号:FAKE000005复制\n交易时间:2026-10-15\n缴费金额:¥20.00\n普表缴费\n付款成功\n订单编号:FAKE000001复制\n交易时间:2026-09-07\n缴费金额:¥20.00';
+const x = parsePaymentTransactions(a), y = parsePaymentTransactions(b);
+assert.equal(x.length,4); assert.equal(y.length,4);assert.equal(x[0].complete,false);assert.equal(x[1].orderId,'FAKE000001');
+const r = reconcileEvidenceTransactions([...x,...y],265);
+assert.equal(r.total,265);assert.equal(r.duplicates.length,1);assert.equal(r.unresolved.length,1);assert.equal(r.matches,false);
+assert.equal(reconcileEvidenceTransactions([{...y[0],orderId:''}],15).matches,false);
+const outside = reconcileEvidenceTransactions([y[0]],15,'2026-03-01至2026-10-31');assert.equal(outside.total,0);assert.equal(outside.unresolved.length,1);
+console.log('多笔缴费、订单号去重、同额不同交易及截断记录核验通过');

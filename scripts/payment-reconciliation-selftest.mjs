@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { paymentEvidenceCandidates, reviewPaymentImport } from '../src/lib/payment-reconciliation.js';
 const record = { id: 'batch.xlsx|sheet|3', date: '2026-06-01', seller: '测试商户', total: 74, payer: '赵东', project: '工地', purpose: '材料' };
-const files = [{ name: '2026-06-01-测试商户-74.00元.png' }, { name: '2026-06-01_另一商户_74.00元.pdf' }, { name: '2026-06-02_测试商户_74.00元.png' }];
+const files = [{ name: 'a.png', fields: {date:'2026-06-01', seller:'测试商户', total:74} }, { name: 'b.pdf', fields: {date:'2026-06-01', seller:'另一商户', total:74} }, { name: 'c.png', fields: {date:'2026-06-02', seller:'测试商户', total:74} }];
+assert.equal(paymentEvidenceCandidates(record, [{name:'2026-06-01-测试商户-74.00元.png'}]).length, 0);
 const candidates = paymentEvidenceCandidates(record, files);
 assert.equal(candidates.length, 2); assert.equal(candidates[0].sameSeller, true); assert.equal(candidates[1].sameSeller, false);
 const reviewed = reviewPaymentImport([record], [], files, '批次一');

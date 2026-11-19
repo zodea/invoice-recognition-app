@@ -1,50 +1,89 @@
-import { paymentDate } from './payment-records.js';
+import { paymentRange } from './payment-transactions.js';
 
-const normalize = value => String(value || '').normalize('NFKC').replace(/\s+/g, '');
-const hasAmount = value => value !== '' && value != null && Number.isFinite(Number(value));
-const sameAmount = (a, b) => hasAmount(a) && hasAmount(b) && Math.round(Number(a) * 100) === Math.round(Number(b) * 100);
-export function paymentEvidenceMetadata(name) {
-  const text = String(name || '').normalize('NFKC');
-  const date = paymentDate(text);
-  const amount = text.match(/[-_=：:](\d+(?:\.\d{1,2})?)元(?:[-_.]|$)/);
-  const receiver = date && amount ? text.slice(text.indexOf(date) + date.length, amount.index).replace(/^[-_：:]+|[-_：:]+$/g, '') : '';
-  return { date, total: amount ? Number(amount[1]) : '', seller: receiver };
-}
+const normalize = v => String(v ?? '').normalize('NFKC').replace(/\s+/g,'');
+const hasAmount = v => v !== '' && v != null && Number.isFinite(Number(v));
+const sameAmount = (a,b) => hasAmount(a) && hasAmount(b) && Math.round(Number(a)*100) === Math.round(Number(b)*100);
+
 export function paymentEvidenceCandidates(record, files) {
-  return files.flatMap(file => {
-    const fields = file.fields || paymentEvidenceMetadata(file.name);
-    if (!record.date || fields.date !== record.date || !sameAmount(fields.total, record.total)) return [];
-    const sameSeller = !!normalize(record.seller) && normalize(fields.seller) === normalize(record.seller);
-    return [{ file, sameSeller, hint: sameSeller ? '日期、金额、收款名称一致，仍需对照原件' : '仅日期金额一致，需核对收款方及备注' }];
-  }).sort((a, b) => Number(b.sameSeller) - Number(a.sameSeller));
-}
-function sourceConflict(a, b) {
-  return ['date', 'seller', 'payer', 'project', 'purpose'].some(key => normalize(a[key]) !== normalize(b[key])) || !sameAmount(a.total, b.total);
-}
-export function reviewPaymentImport(records, existing, files = [], period = '') {
-  const seen = new Map(existing.map(row => [row.id, row]));
-  const accepted = [];
-  return records.map(record => {
-    const prior = seen.get(record.id);
-    let status = '可新增待核对', reason = '', canImport = true;
-    if (prior) {
-      status = sourceConflict(prior, record) ? '来源内容冲突' : '来源已存在';
-      reason = status === '来源内容冲突' ? '同一来源行的日期、收款方、金额或归属已变化，请对照已有记录' : '保留已有记录、原件及报销状态';
-      canImport = false;
-    } else if (!record.date || !record.seller || !hasAmount(record.total)) {
-      status = '信息不完整'; reason = '请补全实际日期、收款名称和有效实付金额'; canImport = false;
-    } else if ([...existing, ...accepted].some(row => row.date === record.date && normalize(row.seller) === normalize(record.seller) && sameAmount(row.total, record.total))) {
-      status = '疑似重复'; reason = '其他来源存在同日期、金额及收款方记录，请进一步核对备注和原件'; canImport = false;
+  const range = paymentRange(record.dateRange);
+  const candidates = [];
+  const linkedOrders = new Set();
+  for (const file of files) {
+    const fields = file.fields || {};
+    if (fields.direction==='income' || ['failed','pending'].includes(fields.paymentStatus)) continue;
+    const sameSeller = !!normalize(record.seller) && normalize(fields.seller)===normalize(record.seller);
+    const sameDate = !!record.date && fields.date===record.date;
+    const sameTotal = fields.kind!=='order' && sameAmount(record.total,fields.total);
+    const content = normalize((file.pages || []).map(p=>p.text).join(' '));
+    const clues = [...new Set([record.purpose,record.project,record.note,...(record.lines||[]).map(l=>l.purpose)].map(normalize))]
+      .filter(v=>v.length>=2 && content.includes(v));
+    const stage = record.recordType==='阶段汇总';
+    if (stage) {
+      const observations = file.transactions?.length ? file.transactions.map(t=>t.fields||t) : [fields];
+      if (!observations.some(t=>{
+        if (t.direction==='income' || ['pending','failed'].includes(t.paymentStatus)) return false;
+        if (t.date && ((range.start && t.date<range.start)||(range.end && t.date>range.end))) return false;
+        return (t.date && (range.start || range.end)) || (record.seller && normalize(t.seller)===normalize(record.seller)) || clues.length;
+      })) continue;
+    } else {
+      if ((record.date && fields.date && !sameDate) || (fields.kind!=='order' && hasAmount(fields.total) && hasAmount(record.total) && !sameTotal)) continue;
+      if (!(sameDate && sameTotal) && !(sameSeller && (sameTotal || sameDate || clues.length)) && !(clues.length && (sameTotal || sameDate))) continue;
     }
-    const candidates = paymentEvidenceCandidates(record, files);
-    const issues = [reason];
-    if (!record.payer) issues.push('付款名称缺失，不能使用收款人代替');
-    if (!candidates.length) issues.push('未找到文件名信息相符的凭证，可手动补充或先识别原件');
-    else if (candidates.length > 1) issues.push(`${candidates.length} 份等额同日候选，需逐笔核对收款方和备注`);
-    else issues.push(candidates[0].hint);
-    const draft = { ...record, reimbursementPeriod: period || '', evidenceConfirmed: false };
-    if (canImport) accepted.push(draft);
-    seen.set(record.id, prior || record);
-    return { record: draft, status, issues: issues.filter(Boolean), candidates, canImport };
+    const reasons=[sameDate && '日期',sameTotal && '金额',sameSeller && '收款方',clues.length && '用途、项目或备注'].filter(Boolean);
+    const hint = reasons.length ? reasons.join('、')+'相符' : '符合阶段范围，请核对逐笔交易';
+    candidates.push({file,sameSeller,score:reasons.length,hint});
+    if (fields.orderId && sameSeller && sameTotal && sameDate && fields.kind==='payment') linkedOrders.add(fields.orderId);
+  }
+  for (const file of files) {
+    if (file.fields?.kind==='order' && linkedOrders.has(file.fields.orderId) && !candidates.some(c=>c.file===file))
+      candidates.push({file,sameSeller:false,score:2,hint:'订单号与付款候选相同，可作为补充附件'});
+  }
+  return candidates.sort((a,b)=>b.score-a.score || Number(b.sameSeller)-Number(a.sameSeller));
+}
+function sourceConflict(a,b) {
+  return ['date','seller','payer','project','purpose','recordType','dateRange'].some(k=>normalize(a[k])!==normalize(b[k])) ||
+    !sameAmount(a.total,b.total) || (a.rawRows && b.rawRows && JSON.stringify(a.rawRows)!==JSON.stringify(b.rawRows));
+}
+function sourceRows(record) {
+  const m=record.id?.match(/^(.*\|)(\d+)$/);
+  return m ? Array.from({length:Math.max(1,record.rawRows?.length||0)},(_,i)=>m[1]+(Number(m[2])+i)) : [record.id];
+}
+export function reviewPaymentImport(records,existing,files=[],period='',{confirmed=[],excluded=[]}={}) {
+  const origins=new Map(existing.flatMap(r=>sourceRows(r).map(key=>[key,r])));
+  const included=[...existing];
+  return records.map(record=>{
+    const keys=sourceRows(record);
+    const prior=keys.map(key=>origins.get(key)).find(Boolean);
+    const warnings=[...(record.importWarnings || [])];
+    if (record.manualTotal && hasAmount(record.lineTotal) && !sameAmount(record.total,record.lineTotal)) warnings.push('调整后的实付与明细合计不一致');
+    const issues=[];
+    let status='可新增待核对', canImport=true;
+    const stage=record.recordType==='阶段汇总';
+    const complete=(stage || (record.date && record.seller)) && hasAmount(record.total);
+    if (prior) {
+      status=prior.id!==record.id || sourceConflict(prior,record) ? '来源内容冲突' : '来源已存在';
+      issues.push('保留已有款项、归属、报销状态及附件'); canImport=false;
+    } else if (record.recordType==='合计') {
+      status='统计汇总行'; canImport=false;
+    } else if (!complete) {
+      status='信息不完整'; issues.push('请核对日期、收款方和实付金额，阶段汇总可保留未知日期'); canImport=false;
+    } else {
+      const similar=included.some(row=>row.date===record.date && normalize(row.seller)===normalize(record.seller) && sameAmount(row.total,record.total));
+      if (similar) {status='疑似重复'; issues.push('其他款项的日期、金额、收款方相同，请确认是否独立付款');}
+      else if (warnings.some(w=>/不一致|边界|为空/.test(w))) status='需人工核对';
+      if (status!=='可新增待核对') {
+        canImport=confirmed.includes(record.id);
+        if (canImport) status='已人工核对';
+      }
+    }
+    const candidates=paymentEvidenceCandidates(record,files);
+    issues.push(...warnings);
+    if (!record.payer) issues.push('付款名称未知');
+    if (!candidates.length && record.recordType!=='合计' && record.recordType!=='现金无凭证' && !record.cashWithoutEvidence) issues.push('暂无匹配凭证，可手动选择');
+    if (!excluded.includes(record.id)) {
+      for (const key of keys) if (!origins.has(key)) origins.set(key,record);
+      if (canImport) included.push(record);
+    }
+    return {record:{...record,reimbursementPeriod:period,evidenceConfirmed:false,...(status==='已人工核对'?{importManuallyReviewed:true}:{})},status,issues,candidates,canImport};
   });
 }

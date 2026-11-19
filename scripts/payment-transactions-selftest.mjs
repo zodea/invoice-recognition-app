@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import { parsePaymentEvidence } from '../src/lib/payment-evidence.js';
+import { reconcileEvidenceTransactions } from '../src/lib/payment-transactions.js';
+import { paymentEvidenceCandidates } from '../src/lib/payment-reconciliation.js';
+const a = parsePaymentEvidence('支付成功\n付款金额:100.00\n支付时间\n2026-03-02\n收款人:燃气公司\n交易单号:ABC123456');
+assert.equal(a.total, 100);assert.equal(a.transactionId, 'ABC123456');assert.equal(a.paymentStatus,'success');
+const b = {...a, transactionId:'XYZ123456',total:165};
+let result = reconcileEvidenceTransactions([a,{...a},b],265);
+assert.equal(result.total,265);assert.equal(result.duplicates.length,1);assert.equal(result.matches,true);assert.equal(result.needsReview,true);
+result = reconcileEvidenceTransactions([a,{...a,transactionId:'XYZ123456'}],200);assert.equal(result.unique.length,2);
+result = reconcileEvidenceTransactions([a,{...a,transactionId:''}],200);assert.equal(result.unresolved.length,1);assert.equal(result.matches,false);
+result = reconcileEvidenceTransactions([a,{...a,total:90}],100);assert.equal(result.matches,false);assert.equal(result.unresolved.length,2);
+const order = parsePaymentEvidence('订单详情\n订单总额\n100.00\n订单号:ORDER123456');assert.equal(order.kind,'order');assert.equal(order.total,'');
+const record={date:'2026-03-02',seller:'燃气公司',total:100};assert.equal(paymentEvidenceCandidates(record,[{name:'2026-03-02-燃气公司-100元.png'}]).length,0);
+assert.equal(paymentEvidenceCandidates(record,[{name:'IMG_1.png',fields:a}]).length,1);
+assert.equal(paymentEvidenceCandidates({recordType:'阶段汇总',seller:'燃气公司',total:265,dateRange:'2026-03-01至2026-11-16'},[{name:'x.png',fields:b}]).length,1);
+console.log('付款内容、交易号去重、同额不同交易及订单区分测试通过');

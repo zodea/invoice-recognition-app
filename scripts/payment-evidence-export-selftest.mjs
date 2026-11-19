@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {paymentEvidenceExportPlan,writePaymentEvidenceCopies} from '../src/lib/payment-evidence-export.js';
+const a=new Blob(['pay'],{type:'image/png'}),b=new Blob(['order'],{type:'application/pdf'});
+const record={id:'fictional',date:'2026-03-02',seller:'测试商户',total:105};
+const single=paymentEvidenceExportPlan(record,[{name:'raw.png',kind:'付款凭证',blob:a}]);
+assert.equal(single.files[0].name,'2026-03-02-测试商户-105.00元.png');
+const phase=paymentEvidenceExportPlan({...record,date:'',recordType:'阶段汇总',dateRange:'2026-03-02至未知',total:265},[{name:'x.png',kind:'付款凭证',blob:a},{name:'q.pdf',kind:'订单详情',blob:b}]);
+assert.match(phase.folder,/2026-03-02至未知/);assert.deepEqual(phase.files.map(f=>f.name),['01-付款凭证.png','02-订单详情.pdf']);
+assert.ok(!phase.files.some(f=>f.name.includes('265')));
+const unknown=paymentEvidenceExportPlan({id:'other',date:'',seller:'',total:''},[{kind:'付款凭证',blob:a}]);
+assert.equal(unknown.files[0].name,'日期未知-收款方未知-金额未知.png');
+const writes=[];const result=await writePaymentEvidenceCopies(record,[{name:'raw.png',kind:'付款凭证',blob:a},{name:'q.pdf',kind:'订单详情',blob:b}],async(parts,name,blob)=>{writes.push({parts,name,blob});return parts.join('/')+'/'+name;});
+assert.equal(writes.length,2);assert.equal(writes[0].blob,a);assert.equal(writes[1].blob,b);assert.equal(result.paths.length,2);
+assert.notEqual(paymentEvidenceExportPlan({...record,id:'other'},[{blob:a,kind:'付款凭证'}]).folder,single.folder);
+console.log('凭证副本导出命名、未知日期、多图和原文件保留测试通过');

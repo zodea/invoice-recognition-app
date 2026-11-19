@@ -5,7 +5,7 @@ import MiddleEllipsis from '../components/MiddleEllipsis.vue';
 import DirectoryRecordsDialog from '../components/DirectoryRecordsDialog.vue';
 import { directory, saveDirectory } from '../lib/expense-directory';
 import { invoiceStore } from '../invoiceStore.js';
-import { paymentStore } from '../lib/payment-store';
+import { paymentStore, countPaymentExpense } from '../lib/payment-store';
 import { expenseSummary } from '../lib/expense-summary.js';
 import { toast, toastError, toastWarn } from '../lib/toast';
 
@@ -37,7 +37,7 @@ function rule() {
     toast('对应关系已保存');
   } catch (error) { toastError('保存失败：'+error.message); }
 }
-const summary = computed(() => expenseSummary([...Object.values(invoiceStore.ledger), ...paymentStore.rows.filter(row => row.evidenceConfirmed && !row.duplicateOf && !row.linkedLedgerKey)], bySeller.value));
+const summary = computed(() => expenseSummary([...Object.values(invoiceStore.ledger), ...paymentStore.rows.filter(countPaymentExpense)], bySeller.value));
 
 </script>
 

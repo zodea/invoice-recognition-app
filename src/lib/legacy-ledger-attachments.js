@@ -79,7 +79,7 @@ export function appendInvoiceSupplement(key, file, metadata) {
 }
 
 // 在同一个事务中检查并写入，自动同步不能替换用户已关联的原件。
-export async function saveLedgerAttachmentIfMissing(key, file) {
+export async function saveLedgerAttachmentIfMissing(key, file, metadata = {}) {
   if (!key || !file) throw new Error("缺少发票号码或原件");
   const db = await openDb();
   try {
@@ -90,7 +90,7 @@ export async function saveLedgerAttachmentIfMissing(key, file) {
       let saved = false;
       get.onsuccess = () => {
         if (get.result?.blob) return;
-        store.put({ ...(get.result || {}), key, name: file.name || "发票原件", blob: file, savedAt: new Date().toISOString() });
+        store.put({ ...(get.result || {}), ...metadata, key, name: file.name || "发票原件", blob: file, savedAt: new Date().toISOString() });
         saved = true;
       };
       tx.oncomplete = () => resolve(saved);

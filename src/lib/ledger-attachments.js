@@ -36,7 +36,7 @@ async function put(key, file, mode, metadata = {}) {
   } finally { finish(); }
 }
 export const saveLedgerAttachment = (key, file) => isTauri() ? put(key, file, 'replace') : legacy.saveLedgerAttachment(key, file);
-export const saveLedgerAttachmentIfMissing = (key, file) => isTauri() ? put(key, file, 'ifMissing') : legacy.saveLedgerAttachmentIfMissing(key, file);
+export const saveLedgerAttachmentIfMissing = (key, file, metadata = {}) => isTauri() ? put(key, file, 'ifMissing', metadata) : legacy.saveLedgerAttachmentIfMissing(key, file, metadata);
 export const appendInvoiceSupplement = (key, file, metadata) => isTauri() ? put(key, file, 'supplement', metadata) : legacy.appendInvoiceSupplement(key, file, metadata);
 export async function deleteUnusedLedgerAttachments(keys, isReferenced) {
   if (!isTauri()) return legacy.deleteUnusedLedgerAttachments(keys, isReferenced);

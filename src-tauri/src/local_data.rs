@@ -763,6 +763,11 @@ pub async fn local_data_put_attachment(
                 .ok_or("附件信息格式错误")?
                 .push(Value::Object(item));
         } else if mode == "replace" || mode == "ifMissing" {
+            if mode == "ifMissing" && metadata.get("kind").is_some() {
+                for field in ["kind", "hash", "fields", "transactions"] {
+                    record[field] = metadata[field].clone();
+                }
+            }
             record["name"] = blob["name"].clone();
             record["blob"] = blob;
             record["savedAt"] = metadata["savedAt"].clone();
