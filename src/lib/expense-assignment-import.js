@@ -9,8 +9,44 @@ export const assignmentHeaders={
  allocations:['单据类型','匹配标识','工地','分配金额','分配备注']
 };
 export function isAssignmentWorkbook(wb){return wb.SheetNames.some(name=>['发票归属','付款归属'].includes(name));}
-export function parseAssignmentWorkbook(bytes){
+function invoiceListRows(wb, filename) {
+ const result = [];
+ const epoch = !!wb.Workbook?.WBProps?.date1904;
+ for (const sheet of wb.SheetNames) {
+  const ws = wb.Sheets[sheet];
+  if (!ws['!ref']) continue;
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', range:0});
+  const index = rows.findIndex(row => row.some(cell => ['发票号码','数电发票号码','发票号'].includes(norm(cell))));
+  if (index < 0) continue;
+  const headers = rows[index].map(norm);
+  const column = (...names) => names.map(n => headers.indexOf(n)).find(i => i >= 0);
+  const numberCol = column('数电发票号码','发票号码','发票号');
+  const projectCol = column('使用工地','使用项目','工地','项目名称','工地名称');
+  const merges = (ws['!merges'] || []).filter(m => m.s.c === projectCol && m.e.c === projectCol);
+  rows.slice(index+1).forEach((row, offset) => {
+   const r = index+1+offset, raw = row[numberCol];
+   if (!text(raw)) return;
+   const get = (...names) => row[column(...names)] ?? '';
+   const merge = merges.find(m => m.s.r <= r && r <= m.e.r);
+   const project = text((merge ? rows[merge.s.r] : row)[projectCol]);
+   const seller = text(get('销售方','公司名称','开票单位','销方名称','销售方名称'));
+   const number = text(raw).replace(/\s/g,'');
+   const code = text(get('发票代码'));
+   // Excel 数值型长号可能已丢失末位，不能从格式或科学计数法补造票号。
+   const legacy = /^\d{8}$/.test(number) && !!seller;
+   result.push({id:JSON.stringify([filename,sheet,r+1]),fromInvoiceList:true,number,
+    numberUnsafe:typeof raw !== 'string' && !legacy,legacy,code,matchId:number,
+    date:paymentDate(get('发票日期','开票日期','日期'),epoch),total:get('价税合计','含税金额','金额','金额(元)'),
+    buyer:text(get('购买方','购买方名称')),seller,project,allocation:'指定工地',
+    sourceFile:filename,sourceSheet:sheet,sourceRow:String(r+1)});
+  });
+ }
+ if (!result.length) throw new Error('未找到含发票号码的清单行，请选择发票清单或归属模板');
+ return {invoices:result,payments:[],allocations:[]};
+}
+export function parseAssignmentWorkbook(bytes,filename='发票清单'){
  const wb=readPaymentExcel(bytes),result={invoices:[],payments:[],allocations:[]};
+ if(!isAssignmentWorkbook(wb))return invoiceListRows(wb,filename);
  for(const [kind,name]of[['invoices','发票归属'],['payments','付款归属'],['allocations','多工地分配']]){
   if(!wb.Sheets[name])continue;
   const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,defval:''}),headers=(rows[0]||[]).map(text);const get=(row,label)=>row[headers.indexOf(label)]??'';
@@ -51,8 +87,9 @@ export function reviewAssignmentImport(source,ledger,payments,dir){
   const issues=[];let found=[];
   if(!row.date||moneyCents(row.total)===null)issues.push('缺少有效日期或金额');
   if(kind==='invoice'){
-   if(row.numberUnsafe||!/^\d{18,25}$/.test(row.number||''))issues.push('发票号码必须为完整文本；旧式短号或数值精度问题需先核对');
+   if(row.numberUnsafe||(!/^\d{18,25}$/.test(row.number||'')&&!row.legacy))issues.push('票号精度或身份信息不足，需核对完整票号');
    found=Object.entries(ledger).filter(([key,e])=>String(e.number||key)===row.number).map(([key,entry])=>({key,entry}));
+   if(row.legacy&&row.code)found=found.filter(({entry})=>entry.code===row.code);
   }else{
    found=payments.filter(e=>e.date===row.date&&moneyCents(e.total)===moneyCents(row.total)&&norm(e.seller)===norm(row.seller)&&(!row.payer||norm(e.payer)===norm(row.payer))).map(entry=>({key:entry.id,entry}));
    if(found.length>1&&row.sourceFile&&row.sourceSheet&&row.sourceRow){const exact=found.filter(({entry})=>String(entry.source||entry.id).includes(row.sourceFile)&&(String(entry.id).endsWith('|'+row.sourceSheet+'|'+row.sourceRow)||String(entry.source).endsWith(' / '+row.sourceSheet+' / 行'+row.sourceRow)));if(exact.length)found=exact;}

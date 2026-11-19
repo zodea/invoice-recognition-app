@@ -6,10 +6,6 @@ import {
   ContextMenuPortal,
   ContextMenuRoot,
   ContextMenuTrigger,
-  SliderRange,
-  SliderRoot,
-  SliderThumb,
-  SliderTrack,
 } from "reka-ui";
 import { invoiceStore, invoiceActions, printUnits, selectInvoice } from "../invoiceStore.js";
 import { A4_RATIO, perPageCount, planSlots } from "../lib/print-layout";
@@ -26,8 +22,18 @@ const pages = computed(() => {
   return out;
 });
 
-function slotStyle(slot) {
-  return { left: `${slot.xPct}%`, top: `${slot.yPct}%`, width: `${slot.wPct}%`, height: `${slot.hPct}%` };
+const sheetGrid=computed(()=>{
+ const slotsOnPage=slots.value, first=slotsOnPage[0];
+ function tracks(axis,size){
+  const starts=[...new Set(slotsOnPage.map(s=>s[axis]))].sort((a,b)=>a-b);
+  let cursor=0;const result=[];
+  for(const start of starts){result.push((start-cursor)+'%',first[size]+'%');cursor=start+first[size];}
+  return result.join(' ');
+ }
+ return {aspectRatio:'1 / '+A4_RATIO,gridTemplateColumns:tracks('xPct','wPct'),gridTemplateRows:tracks('yPct','hPct')};
+});
+function slotStyle(slot){
+ return {gridColumn:slot.xPct===slots.value[0].xPct?2:4,gridRow:slot.yPct===slots.value[0].yPct?2:4};
 }
 
 /* ---------- 左栏内放大：复用已渲染图秒开 + 指针拖动平移 + 后台缓存高清 + 左右旋 ---------- */
@@ -42,11 +48,7 @@ const zoomSrc = computed(() => {
   return u.inv.renderedPages?.[u.page] || u.image;
 });
 const zoomWidth = computed(() => `${Math.round(zoomLevel.value * 100)}%`);
-// reka Slider 用数组；映射到 zoomLevel(100~400 -> 1~4)
-const zoomPct = computed({
-  get: () => [Math.round(zoomLevel.value * 100)],
-  set: (v) => { zoomLevel.value = (v?.[0] ?? 100) / 100; },
-});
+const zoomPct=computed({get:()=>Math.round(zoomLevel.value*100),set:value=>{zoomLevel.value=Number(value)/100;}});
 
 function enterZoom(unit) {
   pan.cancel();
@@ -113,18 +115,7 @@ const menuItemCls = "flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cu
         <button class="btn px-2.5 py-1.5" title="右旋 90°" @click="rotateZoom(1)">⟳ 右旋</button>
         <div class="flex items-center gap-2 ml-1">
           <span class="text-xs text-ink-soft">缩放</span>
-          <SliderRoot
-            v-model="zoomPct"
-            :min="100"
-            :max="400"
-            :step="1"
-            class="relative flex items-center select-none touch-none w-36 h-5"
-          >
-            <SliderTrack class="relative grow rounded-full bg-line h-1.5">
-              <SliderRange class="absolute rounded-full bg-brand h-full" />
-            </SliderTrack>
-            <SliderThumb class="block w-3.5 h-3.5 rounded-full bg-white border-2 border-brand shadow-card cursor-grab" />
-          </SliderRoot>
+          <input v-model.number="zoomPct" type="range" min="100" max="400" step="1" class="w-36" aria-label="打印预览缩放比例" />
           <span class="min-w-10 text-xs font-700 text-ink-soft tabular-nums">{{ Math.round(zoomLevel * 100) }}%</span>
         </div>
         <span class="ml-auto text-xs text-ink-soft truncate max-w-44">
@@ -132,7 +123,7 @@ const menuItemCls = "flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cu
           · {{ zoomUnit.inv.fields.seller || "未识别销售方" }}
         </span>
       </div>
-      <div class="relative">
+      <div class="zoom-stage">
       <div
         ref="viewport"
         class="relative h-[64vh] overflow-auto rounded-card border border-line bg-[#eef1f5] touch-none"
@@ -174,11 +165,11 @@ const menuItemCls = "flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cu
       </div>
 
       <div v-for="(page, pageIndex) in pages" :key="pageIndex" class="mb-3.5">
-        <div class="relative w-full bg-white border border-line shadow-card" :style="{ aspectRatio: `1 / ${A4_RATIO}` }">
+        <div class="print-sheet w-full bg-white border border-line shadow-card" :style="sheetGrid">
           <ContextMenuRoot v-for="(unit, unitIndex) in page" :key="`${unit.invId}-${unit.page}`">
             <ContextMenuTrigger as-child>
               <button
-                class="absolute p-0 overflow-hidden bg-white cursor-pointer border"
+                class="print-slot p-0 overflow-hidden bg-white cursor-pointer border"
                 :class="[
                   invoiceStore.selectedId === unit.invId ? 'border-brand z-2 shadow-[0_0_0_2px_rgba(37,99,235,0.22)]' : 'border-line-strong',
                   unit.needsReview ? '!border-warn' : '',
@@ -189,10 +180,10 @@ const menuItemCls = "flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cu
                 @dblclick="enterZoom(unit)"
                 title="右键：放大 / 左旋 / 右旋；双击放大"
               >
-                <span class="absolute z-3 top-1.25 left-1.25 chip bg-ink text-white px-1.5 py-1">
+                <span class="slot-index z-3 chip bg-ink text-white px-1.5 py-1">
                   {{ unit.seq }}<template v-if="unit.pageCount > 1">-{{ unit.page + 1 }}</template>
                 </span>
-                <span v-if="unit.needsReview" class="absolute z-3 top-1.25 right-1.25 chip bg-[#fff7ed] text-[#b45309] border border-[#fed7aa] px-1.5 py-0.75">待复核</span>
+                <span v-if="unit.needsReview" class="slot-warning z-3 chip bg-[#fff7ed] text-[#b45309] border border-[#fed7aa] px-1.5 py-0.75">待复核</span>
                 <img v-if="unit.image" :src="unit.image" class="w-full h-full object-contain block" alt="" />
                 <div v-else class="h-full flex flex-col items-start justify-center gap-1.5 px-3.5 pt-5.5 pb-3.5 text-left text-ink">
                   <strong class="text-[13px] leading-snug">{{ unit.inv.fields.seller || "电子发票 PDF" }}</strong>
@@ -216,3 +207,7 @@ const menuItemCls = "flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cu
     </template>
   </section>
 </template>
+
+<style scoped>
+.zoom-stage,.print-sheet,.print-slot{display:grid;min-width:0;min-height:0}.zoom-stage{grid-template-columns:minmax(0,1fr)}.zoom-stage>*,.print-slot>*{grid-area:1/1;min-width:0;min-height:0}.slot-index,.slot-warning{align-self:start;margin:5px}.slot-index{justify-self:start}.slot-warning{justify-self:end}
+</style>

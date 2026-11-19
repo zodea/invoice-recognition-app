@@ -14,6 +14,6 @@ const boxes = computed(() => keyFieldRegions(props.fields, props.regions, props.
 </template>
 
 <style scoped>
-.recognition-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.recognition-overlay { grid-area:1 / 1; align-self:stretch; z-index:1; width: 100%; height: 100%; pointer-events: none; }
 .recognition-overlay rect { fill: #2563eb12; stroke: #2563eb; stroke-width: 1.5px; pointer-events: auto; }
 </style>

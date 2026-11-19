@@ -36,9 +36,5 @@ const icon = { success: "✓", error: "✕", info: "ℹ", warn: "!" };
   opacity: 0;
   transform: translateX(16px);
 }
-.toast-leave-active {
-  position: absolute;
-  right: 0;
-  width: 100%;
-}
+
 </style>

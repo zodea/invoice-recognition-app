@@ -35,7 +35,7 @@ onBeforeUnmount(close);
       <div v-for="{c,index,hint,choice} in choices" :key="index" class="choice">
         <label><input type="checkbox" :checked="!!choice" @change="check(index,c,$event.target.checked)" />{{ c.file.webkitRelativePath || c.file.name }}</label>
         <button type="button" class="text-action" @click="open(c.file)">查看原件</button>
-        <small>{{ hint || '手动选择' }} · {{ c.fields?.date || '日期未知' }} · {{ c.fields?.seller || '收款方未知' }} · {{ c.fields?.total === '' || c.fields?.total == null ? '实付未知' : c.fields.total+' 元' }}</small>
+        <small>{{ choice?.reason || hint || '手动选择' }} · {{ c.fields?.date || '日期未知' }} · {{ c.fields?.seller || '收款方未知' }} · {{ c.fields?.total === '' || c.fields?.total == null ? '实付未知' : c.fields.total+' 元' }}</small>
         <small v-if="c.fields?.transactionId || c.fields?.orderId">交易号 {{ c.fields.transactionId || '未知' }} · 订单号 {{ c.fields.orderId || '未知' }}</small>
         <small v-if="c.duplicateHint">{{ c.duplicateHint }}</small>
         <label v-if="choice">保存为

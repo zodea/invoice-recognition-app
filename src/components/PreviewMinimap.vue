@@ -1,14 +1,10 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { onBeforeUnmount, ref, watch } from 'vue';
 import { centerPreviewAt, visiblePreviewRegion } from '../lib/preview-navigation.js';
 
 const props = defineProps({ viewport: Object, page: Object, src: String, enabled: Boolean });
 const map = ref(null);
 const region = ref(null);
-const frameStyle = computed(() => region.value ? {
-  left: `${region.value.x * 100}%`, top: `${region.value.y * 100}%`,
-  width: `${region.value.width * 100}%`, height: `${region.value.height * 100}%`,
-} : {});
 let observer, observedViewport, animation, pointerId = null;
 
 function measure() {
@@ -81,17 +77,17 @@ onBeforeUnmount(disconnect);
     <span class="minimap-heading">鸟瞰 <small>当前区域</small></span>
     <button ref="map" type="button" class="minimap-map" aria-label="鸟瞰定位：点击或拖动查看区域，方向键平移" @pointerdown.stop="down" @pointermove.stop="move" @pointerup.stop="up" @pointercancel="up" @lostpointercapture="up" @keydown="keydown" @click="keyboardClick">
       <img :src="src" alt="整张票面缩略图" draggable="false" @dragstart.prevent @load="schedule" />
-      <span class="minimap-frame" :style="frameStyle" />
+      <svg class="minimap-frame" viewBox="0 0 1 1" preserveAspectRatio="none"><rect :x="region.x" :y="region.y" :width="region.width" :height="region.height" vector-effect="non-scaling-stroke"/></svg>
     </button>
   </aside>
 </template>
 
 <style scoped>
-.preview-minimap { position: absolute; right: 20px; bottom: 20px; z-index: 3; padding: 6px; border: 1px solid #cbd5e1; border-radius: 7px; background: #fffffff2; box-shadow: 0 2px 10px #0f172a24; }
+.preview-minimap { grid-area:1/1;place-self:end;margin:12px; z-index: 3; padding: 6px; border: 1px solid #cbd5e1; border-radius: 7px; background: #fffffff2; box-shadow: 0 2px 10px #0f172a24; }
 .minimap-heading { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-size: 11px; color: #334155; }
 .minimap-heading small { color: #2563eb; font-size: 10px; }
-.minimap-map { position: relative; display: block; margin: auto; padding: 0; border: 0; background: white; cursor: crosshair; touch-action: none; }
+.minimap-map { display:grid; margin: auto; padding: 0; border: 0; background: white; cursor: crosshair; touch-action: none; }
 .minimap-map img { display: block; max-width: 128px; max-height: 100px; width: auto; height: auto; user-select: none; -webkit-user-drag: none; }
-.minimap-frame { position: absolute; box-sizing: border-box; border: 2px solid #2563eb; background: #2563eb1a; pointer-events: none; }
+.minimap-map>*{grid-area:1/1}.minimap-frame{width:100%;height:100%;min-width:0;min-height:0;fill:#2563eb1a;stroke:#2563eb;stroke-width:2px;pointer-events:none}
 .minimap-map:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
 </style>

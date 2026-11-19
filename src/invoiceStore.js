@@ -5,7 +5,7 @@ import { fileHash, isPdf } from './lib/file-utils.js';
 import { paymentStore, savePayments } from './lib/payment-store.js';
 import { getLedgerAttachment, saveLedgerAttachment, saveLedgerAttachmentIfMissing, appendInvoiceSupplement } from './lib/ledger-attachments.js';
 import { withProjectAllocation, isMultiProject, projectAllocationState } from './lib/invoice-allocation.js';
-import { directory } from './lib/expense-directory.js';
+import { directory, saveDirectory } from './lib/expense-directory.js';
 import { planTrashPurge, persistTrashPurge, readTrashCleanupQueue, cleanupPurgedAttachments } from './lib/ledger-trash-purge.js';
 import { deleteUnusedLedgerAttachments } from './lib/ledger-attachments.js';
 import { loadLedgerTrash, readLedgerTrashForChange, moveLedgerToTrash, restoreLedgerFromTrash, persistLedgerTransition } from './lib/ledger-trash.js';
@@ -478,10 +478,18 @@ export const invoiceActions = {
   },
 
   intakeDecision(inv) { return intakeDecision(inv, directory.buyers, invoiceStore.ledger); },
-  applyAssignmentImport(review,selected){
+  applyAssignmentImport(review,selected,newProjects=[]){
     if(invoiceStore.savingIntake)throw new Error('正在保存，请稍候');
-    const result=applyAssignmentReview(review,selected,invoiceStore.ledger,paymentStore.rows,directory);
+    const selectedIds=new Set(selected);
+    const used=new Set(review.filter(item=>selectedIds.has(item.id)).map(item=>item.patch?.project));
+    const additions=newProjects.filter(name=>used.has(name)&&!directory.projects.includes(name));
+    const previousProjects=[...directory.projects];
+    const projects=[...new Set([...previousProjects,...additions])];
+    const result=applyAssignmentReview(review,selected,invoiceStore.ledger,paymentStore.rows,{...directory,projects});
+    if(additions.length)saveDirectory({...directory,projects});
+    try {
     persistAssignmentImport(result,{previousLedger:invoiceStore.ledger,previousPayments:paymentStore.rows,writeBackup:data=>appStorage.setItem('expenseAssignmentBackup.v1',JSON.stringify(data)),writeLedger:saveLedger,writePayments:rows=>appStorage.setItem('paymentRecords.v1',JSON.stringify(rows))});
+    } catch(error) { if(additions.length)saveDirectory({...directory,projects:previousProjects});throw error; }
     invoiceStore.ledger=result.ledger;paymentStore.rows=result.payments;refreshHistory();return result;
   },
   markDraftEdited(inv){inv.manualEditPending=true;},

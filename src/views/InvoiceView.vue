@@ -8,6 +8,7 @@ import InvoiceBuyerCheck from '../components/InvoiceBuyerCheck.vue';
 import { useBuyerCheck } from '../composables/useBuyerCheck.js';
 import { matchesBuyerCheck, buyerCheckLabels } from '../lib/invoice-buyer-check.js';
 import InvoiceUpload from "../components/InvoiceUpload.vue";
+import ExpenseAssignmentImport from '../components/ExpenseAssignmentImport.vue';
 import InvoicePreview from "../components/InvoicePreview.vue";
 import InvoiceRow from "../components/InvoiceRow.vue";
 import InvoiceList from "../components/InvoiceList.vue";
@@ -148,7 +149,7 @@ function invertSelect() {
 
 <template>
   <div class="invoice-workspace">
-    <div class="workspace-top"><div><h1>发票管理</h1></div><label class="invoice-search"><span aria-hidden="true">⌕</span><input v-model="search" type="search" placeholder="搜索发票号码、销售方或购买方" aria-label="搜索发票" /></label><InvoiceUpload ref="upload" /></div>
+    <div class="workspace-top"><div><h1>发票管理</h1></div><label class="invoice-search"><span aria-hidden="true">⌕</span><input v-model="search" type="search" placeholder="搜索发票号码、销售方或购买方" aria-label="搜索发票" /></label><ExpenseAssignmentImport label="按清单分配工地" /><InvoiceUpload ref="upload" /></div>
     <div v-if="dragging" class="file-drag-notice" role="status">{{ dragRejected ? '请拖入 PDF、图片或文件夹' : '松开文件，即可导入并识别' }}</div>
     <InvoiceBuyerCheck v-model="buyerCheckFilter" :configured="buyersConfigured" :counts="buyerCounts" @scan="scanBuyers" />
     <details class="work-disclosure"><summary>筛选与报销 </summary>

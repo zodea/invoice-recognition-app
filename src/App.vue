@@ -31,6 +31,8 @@ const ledgerBuyerCheck = ref('all');
 function inspectBuyerIssues() { ledgerBuyerCheck.value = 'issues'; view.value = 'ledger'; }
 const view = ref("invoice"); // 默认展示发票页
 watch(view, value => { if (value !== 'ledger') ledgerBuyerCheck.value = 'all'; });
+const paymentsVisited=ref(false);
+watch(view,value=>{if(value==='payments')paymentsVisited.value=true;});
 const tabCls = "app-nav-item";
 </script>
 
@@ -58,7 +60,7 @@ const tabCls = "app-nav-item";
         <InvoiceView />
       </TabsContent>
       <TabsContent value="ledger" class="outline-none ledger-tab"><InvoiceLedgerView :initial-buyer-check="ledgerBuyerCheck" /></TabsContent>
-      <TabsContent value="expense-directory"><ExpenseDirectoryView @inspect-buyers="inspectBuyerIssues" /></TabsContent><TabsContent value="payments"><PaymentRecordsView /></TabsContent>
+      <TabsContent value="expense-directory"><ExpenseDirectoryView @inspect-buyers="inspectBuyerIssues" /></TabsContent><TabsContent v-if="paymentsVisited" value="payments" force-mount v-show="view==='payments'"><PaymentRecordsView /></TabsContent>
       <TabsContent value="delivery" class="outline-none">
         <DeliveryView />
       </TabsContent>

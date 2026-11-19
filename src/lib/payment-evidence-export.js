@@ -60,13 +60,18 @@ export async function writePaymentEvidenceCopies(record,items,write){
  for(const file of plan.files)paths.push(await write(['付款凭证整理',plan.folder],file.name,file.blob));
  return {folder:plan.folder,paths};
 }
-export async function exportPaymentEvidenceCopies(record,items){
- paymentEvidenceExportPlan(record,items);
+export async function pickPaymentExportWriter(){
  if(isTauri()){
-  const root=await invokeTauri('pick_export_dir');if(!root)return {canceled:true};
-  return writePaymentEvidenceCopies(record,items,async(parts,fileName,blob)=>invokeTauri('write_export_file',{root,parts,fileName,dataBase64:bytesToBase64(await blob.arrayBuffer())}));
+  const root=await invokeTauri('pick_export_dir');if(!root)return null;
+  return async(parts,fileName,blob)=>invokeTauri('write_export_file',{root,parts,fileName,dataBase64:bytesToBase64(await blob.arrayBuffer())});
  }
  if(typeof window==='undefined'||typeof window.showDirectoryPicker!=='function')throw new Error('当前环境不支持选择目录导出，请使用桌面版或支持目录选择的浏览器');
- let root;try{root=await window.showDirectoryPicker({mode:'readwrite'});}catch(e){if(e?.name==='AbortError')return {canceled:true};throw e;}
- return writePaymentEvidenceCopies(record,items,(parts,name,blob)=>browserWrite(root,parts,name,blob));
+ let root;try{root=await window.showDirectoryPicker({mode:'readwrite'});}catch(e){if(e?.name==='AbortError')return null;throw e;}
+ return (parts,name,blob)=>browserWrite(root,parts,name,blob);
+}
+
+export async function exportPaymentEvidenceCopies(record,items){
+ paymentEvidenceExportPlan(record,items);
+ const write=await pickPaymentExportWriter();
+ return write?writePaymentEvidenceCopies(record,items,write):{canceled:true};
 }

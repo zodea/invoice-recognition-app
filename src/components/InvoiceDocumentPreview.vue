@@ -70,8 +70,8 @@ onBeforeUnmount(pan.cancel);
 </template>
 
 <style scoped>
-.document-page { position: relative; flex: none; margin: auto; }
-.document-stage { position: relative; }
+.document-page { display:grid;grid-template-columns:minmax(0,1fr); flex: none; margin: auto; }
+.document-page > *, .document-stage > * { grid-area:1 / 1;min-width:0;min-height:0 } .document-stage { display:grid;grid-template-columns:minmax(0,1fr) }
 .document-zoom { display: flex; align-items: center; gap: 8px; padding: 6px 12px; color: #64748b; font-size: 12px; }
 .document-zoom input { flex: 1; min-width: 50px; height: 22px; padding: 0; accent-color: #2563eb; cursor: ew-resize; }
 .document-zoom output { min-width: 35px; font-variant-numeric: tabular-nums; }
