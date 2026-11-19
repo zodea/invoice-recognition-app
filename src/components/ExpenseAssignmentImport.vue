@@ -1,4 +1,5 @@
 <script setup>
+import FileDropInput from './FileDropInput.vue';
 import { computed, ref, shallowRef } from 'vue';
 import {DialogRoot,DialogPortal,DialogOverlay,DialogContent,DialogTitle,DialogDescription} from 'reka-ui';
 import {invoiceStore,invoiceActions} from '../invoiceStore.js';
@@ -8,12 +9,12 @@ import {parseAssignmentWorkbook,reviewAssignmentImport,buildAssignmentTemplate} 
 import {downloadBytes} from '../lib/file-utils.js';
 defineProps({label:{type:String,default:'批量导入归属'}});
 const opened=ref(false), loading=ref(false), source=shallowRef(null), selected=ref([]), message=ref('');
-const mappings=ref({}), newNames=ref([]), picker=ref(null), review=shallowRef([]);
+const mappings=ref({}), newNames=ref([]), review=shallowRef([]);
 const groups=computed(()=>[...new Set((source.value?.invoices||[]).filter(r=>r.fromInvoiceList).map(r=>r.project))]);
 const newProjects=computed(()=>groups.value.filter(name=>name && newNames.value.includes(name) && !mappings.value[name] && !directory.projects.includes(name)));
 const usable=computed(()=>review.value.filter(i=>i.canApply));
-async function load(event){
- const files=Array.from(event.target.files||[]);event.target.value='';if(!files.length)return;
+async function load(files){
+ if(loading.value || !files.length)return;
  loading.value=true;source.value=null;review.value=[];selected.value=[];mappings.value={};newNames.value=[];message.value='';
  try {
   const batch={invoices:[],payments:[],allocations:[]};
@@ -47,8 +48,7 @@ function template(){downloadBytes(buildAssignmentTemplate(directory),'归属导�
    <header><DialogTitle>按清单批量分配工地</DialogTitle><button class="btn" @click="opened=false">关闭</button></header>
    <DialogDescription>选择原发票清单，按票号、日期和金额核对已保存发票。工地简称可一次对应整批。付款归属及多工地分摊也可使用专用模板。</DialogDescription>
    <div class="assignment-tools">
-    <input ref="picker" type="file" accept=".xlsx,.xls" multiple hidden @change="load"/>
-    <button class="btn-primary" :disabled="loading" @click="picker.click()">{{ loading?'正在读取…':'选择发票清单 / 归属表' }}</button>
+    <FileDropInput label="选择发票清单 / 归属表" multiple :disabled="loading" @files="load" />
     <button class="btn" @click="template">下载空白模板</button><button v-if="source" class="btn" @click="preview">重新预览</button>
    </div>
    <div class="assignment-body">

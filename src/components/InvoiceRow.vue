@@ -40,7 +40,7 @@ const tagBase = "chip flex-none px-1.75 py-0.5 border";
     :data-inv="item.inv.id"
     @click="selectInvoice(item.inv.id)"
   >
-    <div class="flex items-start justify-between gap-2.5 max-md:flex-col">
+    <div class="invoice-row-heading">
       <div class="min-w-0 flex-1">
         <div class="min-w-0 flex items-center gap-1.75">
           <span class="flex-none min-w-6.5 h-6.5 inline-flex items-center justify-center rounded-full bg-ink text-white font-800 text-xs">{{ item.seq }}</span>
@@ -87,7 +87,7 @@ const tagBase = "chip flex-none px-1.75 py-0.5 border";
       <span v-if="item.inv.historyAutoExcluded" class="text-[#b45309]">已按历史记录默认取消勾选，可手动勾选</span>
     </div>
 
-    <div class="grid grid-cols-4 gap-2 max-md:grid-cols-2" @input="invoiceActions.markDraftEdited(item.inv)" @change="invoiceActions.markDraftEdited(item.inv)">
+    <div class="invoice-field-grid" @input="invoiceActions.markDraftEdited(item.inv)" @change="invoiceActions.markDraftEdited(item.inv)">
       <label class="field-label">发票号码<input class="field-input" v-model="item.inv.fields.number" /></label>
       <label class="field-label">开票日期<input class="field-input" v-model="item.inv.fields.date" placeholder="2026-03-09" @input="syncDate(item.inv)" /></label>
       <label class="field-label col-span-2">销售方<input class="field-input" v-model="item.inv.fields.seller" /><SupplierMatch v-model="item.inv.fields.seller" /></label>
@@ -102,3 +102,10 @@ const tagBase = "chip flex-none px-1.75 py-0.5 border";
     </div>
   </article>
 </template>
+<style scoped>
+.invoice-row-heading { display:flex; flex-wrap:wrap; align-items:start; gap:8px; }
+.invoice-row-heading>div:first-child { flex:1 1 15rem; min-width:0; }
+.invoice-field-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.invoice-field-grid label,.invoice-field-grid input,.invoice-field-grid select { min-width:0; max-width:100%; }
+@container (max-width:580px) { .invoice-field-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+</style>

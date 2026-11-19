@@ -40,8 +40,8 @@ export function usePaymentBatch(props,emit){
  function reset(){
   records.value=[];evidence.value=[];queue.value=[];recognitionIssues.value=[];loaded.value=false;excluded.value=[];confirmed.value=[];selections.value={};manualTarget.value='';emit('evidence',[]);
  }
- async function prepare(event){
-  const files=Array.from(event.target.files||[]);event.target.value='';if(!files.length||busy.value||props.saving)return;
+ async function prepare(files){
+  if(!files.length||busy.value||props.saving)return;
   busy.value=true;loaded.value=true;
   try{
    const pending=[],ids=new Set(records.value.map(r=>r.id));

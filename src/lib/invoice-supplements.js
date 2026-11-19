@@ -12,10 +12,21 @@ export function readInvoiceSupplements(storage=appStorage) {
  return records;
 }
 export function writeInvoiceSupplements(records,storage=appStorage){storage.setItem(supplementStorageKey,JSON.stringify(records));}
+export function searchSupplementInvoices(ledger, query) {
+ const term=normalize(query).toLowerCase();
+ return Object.entries(ledger).filter(([key,entry]) =>
+   !standaloneDocumentType(entry) && !supplementType(entry) &&
+   [key,entry.number,entry.seller,entry.buyer,entry.date,entry.total].some(value =>
+     String(value ?? '').normalize('NFKC').replace(/\s/g,'').toLowerCase().includes(term)))
+   .map(([key,entry])=>({...entry,key}));
+}
 export function supplementInvoiceCandidates(doc,ledger) {
  const fields=doc.fields||{},fallback=parseInvoiceFilename(doc.name),seller=normalize(fields.seller||fallback.seller),date=fields.date||fallback.date;
  const amount=fields.total!==''&&fields.total!=null?fields.total:fallback.total;
- const related=String(fields.relatedInvoiceNumber||fields.invoiceNumber||(String(doc.rawText||'').match(/(?:对应|关联)?发票号码\s*[:：]\s*(\d{18,25})/)||[])[1]||'').replace(/\s/g,'');
+ // Require an explicit invoice-number label. A bare trip or order number is not evidence of a match.
+ const raw=String(doc.rawText||'').normalize('NFKC');
+ const labeled=raw.match(/发\s*票\s*号\s*码\s*[:：]?\s*(\d(?:[ \t]*\d){7,24})(?![ \t]*\d)/);
+ const related=normalize(fields.relatedInvoiceNumber||fields.invoiceNumber||labeled?.[1]);
  return Object.entries(ledger).filter(([,e])=>!standaloneDocumentType(e)&&!supplementType(e)).flatMap(([key,entry])=>{
   const sameNumber=!!related&&related===String(entry.number||key);
   const sameDate=!!date&&date===entry.date;

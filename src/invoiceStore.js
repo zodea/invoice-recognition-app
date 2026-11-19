@@ -149,12 +149,18 @@ export const invoiceStore = reactive({
   attachmentSync: null,
   attachmentVersion: 0,
   supplements: readInvoiceSupplements(),
+  matchSupplementHash: "",
 });
 
 function supplementPorts() {
  return {getLedger:()=>invoiceStore.ledger,saveLedger:next=>{saveLedger(next);invoiceStore.ledger=next;},getRecords:()=>invoiceStore.supplements,saveRecords:next=>{writeInvoiceSupplements(next);invoiceStore.supplements=next;},saveOriginal:saveLedgerAttachment,getOriginal:async key=>(await getLedgerAttachment(key))?.blob,append:appendInvoiceSupplement,hashFile:fileHash};
 }
-function refreshSupplementLinks(){for(const inv of invoiceStore.invoices){const record=invoiceStore.supplements.find(r=>r.hash===inv.supplementHash);if(record?.ledgerKey)inv.linkedLedgerKey=record.ledgerKey;}}
+function refreshSupplementLinks(){
+  const links=new Map(invoiceStore.supplements.filter(r=>r.ledgerKey).map(r=>[r.hash,r.ledgerKey]));
+  for(const inv of invoiceStore.invoices) if(links.has(inv.supplementHash)) inv.linkedLedgerKey=links.get(inv.supplementHash);
+  if(paymentStore.rows.some(r=>r.supplementOnly && links.has(r.evidenceHash) && r.linkedLedgerKey!==links.get(r.evidenceHash)))
+    savePayments(paymentStore.rows.map(r=>r.supplementOnly && links.has(r.evidenceHash)?{...r,linkedLedgerKey:links.get(r.evidenceHash)}:r));
+}
 
 let matchQueue = Promise.resolve();
 function syncMatchedAttachments() {

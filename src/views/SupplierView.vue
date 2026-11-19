@@ -1,4 +1,5 @@
 <script setup>
+import ImportFileDialog from '../components/ImportFileDialog.vue';
 import { computed, reactive, ref } from "vue";
 import { invoiceStore } from "../invoiceStore.js";
 import {
@@ -29,7 +30,7 @@ const {confirmation,requestConfirmation,answerConfirmation}=useConfirmation();
 const db=supplierStore;
 const typeOpen=ref(false),selectedType=ref(SUPPLIER_TYPES[0]),typeFilter=ref(''),importResult=ref(null);
 const query = ref("");
-const importInput = ref(null);
+
 
 // 编辑状态：editingId = 行 id；新增时先 push 草稿再编辑
 const editingId = ref("");
@@ -104,9 +105,7 @@ async function exportExcel() {
   }
 }
 
-async function onImportPick(e) {
-  const file = Array.from(e.target.files || []).find((f) => /\.(xlsx|xls)$/i.test(f.name));
-  e.target.value = "";
+async function onImportPick([file]) {
   if (!file) {
     toastWarn("请选择 .xlsx / .xls 文件。");
     return;
@@ -136,9 +135,8 @@ async function onImportPick(e) {
         <button class="btn-primary px-2.75 py-1.5" @click="startAdd">＋ 新增分供方</button>
         <button class="btn px-2.75 py-1.5" @click="collectNow">从已识别发票收集</button>
         <button class="btn px-2.75 py-1.5" @click="downloadTemplate">下载导入模板</button>
-        <button class="btn px-2.75 py-1.5" @click="importInput.click()">导入 Excel</button>
+        <ImportFileDialog label="导入 Excel" @files="onImportPick" />
         <button class="btn px-2.75 py-1.5" :disabled="!db.list.length" @click="exportExcel">导出 Excel</button>
-        <input ref="importInput" type="file" accept=".xlsx,.xls" hidden @change="onImportPick" />
       </div>
     </div>
 

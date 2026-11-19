@@ -53,7 +53,7 @@ function recheckInvoice() {
   </div>
 </template>
 <style>
-.intake-review{display:flex;align-items:center;gap:6px;flex-shrink:0;margin-left:auto}
+.intake-review{display:flex;align-items:center;gap:6px;min-width:0;max-width:100%;flex-wrap:wrap}
 .intake-tag,.intake-more{font:inherit;font-size:12px;line-height:20px;padding:2px 7px;border-radius:4px;cursor:pointer;white-space:nowrap}
 .intake-tag{color:#38618c;background:#edf3fa;border:1px solid #dce7f3}
 .intake-tag.issue{color:#98600e;background:#fff7e5;border-color:#f0dbb0}

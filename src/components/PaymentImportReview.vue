@@ -1,4 +1,5 @@
 <script setup>
+import FileDropInput from './FileDropInput.vue';
 import { computed, ref } from 'vue';
 import AppIcon from './AppIcon.vue';
 import PaymentEvidencePicker from './PaymentEvidencePicker.vue';
@@ -10,7 +11,7 @@ import { paymentRange } from '../lib/payment-transactions.js';
 const props=defineProps({existingRows:Array,period:String,saving:Boolean});
 const emit=defineEmits(['commit','evidence','error']);
 const {queue,records,evidence,recognitionIssues,busy,loaded,progress,selections,excluded,confirmed,manualTarget,reviewed,importable,plan,selectedFor,reset:clearBatch,prepare,commit}=usePaymentBatch(props,emit);
-const editing=ref(''),batchStatus=ref('沿用清单'),fileInput=ref(null),folderInput=ref(null);
+const editing=ref(''),batchStatus=ref('沿用清单');
 const issues=computed(()=>reviewed.value.filter(i=>!i.canImport));
 function reset(){clearBatch();editing.value='';batchStatus.value='沿用清单';}
 function invalidate(id){ confirmed.value=confirmed.value.filter(v=>v!==id); }
@@ -36,8 +37,7 @@ function addLine(r){r.lines.push({purpose:'',unit:'',quantity:'',unitPrice:'',li
     <div class="finance-toolbar">
       <div><h2 id="payment-review-title">付款清单核对</h2><p class="field-hint">选择整个批次文件夹可同时读取 Excel 和链接的附件。核对分配结果后统一保存。</p></div>
       <div class="toolbar-actions">
-        <input ref="fileInput" type="file" hidden multiple accept=".xlsx,.xls,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.gif,.tif,.tiff" @change="prepare"><button class="btn-primary" :disabled="busy||saving" @click="fileInput.click()"><AppIcon name="upload" :size="17"/>选择清单 / 凭证</button>
-        <input ref="folderInput" type="file" hidden webkitdirectory multiple @change="prepare"><button class="btn" :disabled="busy||saving" @click="folderInput.click()"><AppIcon name="folder" :size="17"/>选择文件夹</button>
+        <FileDropInput label="选择清单 / 凭证" accept=".xlsx,.xls,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.gif,.tif,.tiff" multiple folders :disabled="busy||saving" @files="prepare" />
       </div>
     </div>
     <slot />

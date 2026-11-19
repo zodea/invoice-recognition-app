@@ -1,4 +1,5 @@
 <script setup>
+import SupplementMatchDialog from './components/SupplementMatchDialog.vue';
 import { defineAsyncComponent, getCurrentInstance, ref, watch } from "vue";
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from "reka-ui";
 import { pendingPaymentCount } from "./lib/payment-store";
@@ -72,13 +73,15 @@ const tabCls = "app-nav-item";
       </TabsContent>
     </main>
 
+    <SupplementMatchDialog />
     <ToastHost />
     <SettingsDialog v-model:open="settingsOpen" />
   </TabsRoot>
 </template>
 
 <style scoped>
-.ledger-app { height: 100vh; min-height: 0; overflow: hidden; }
-.ledger-main { min-height: 0; overflow: hidden; }
-.ledger-tab { height: 100%; min-height: 0; }
+.app-shell.ledger-app { height:100dvh; min-height:0; grid-template-rows:minmax(0,1fr); align-items:stretch; overflow:hidden; }
+.ledger-main { display:flex; flex-direction:column; min-height:0; overflow:auto; box-sizing:border-box; }
+.ledger-tab { flex:1 0 0; min-height:320px; display:flex; flex-direction:column; }
+@media(max-width:760px) { .app-shell.ledger-app { grid-template-rows:auto minmax(0,1fr); } }
 </style>

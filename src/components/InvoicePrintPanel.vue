@@ -2,7 +2,7 @@
 import { appStorage } from '../lib/app-storage.js';
 
 import { invoiceProblems } from "../lib/invoice-review";
-import { ref, computed, nextTick, onMounted, onBeforeUnmount } from "vue";
+import { ref, computed, nextTick } from "vue";
 import {
   PopoverContent,
   PopoverPortal,
@@ -31,37 +31,16 @@ const filenameTemplate = ref(appStorage.getItem("invoiceFilenameTemplate") || "{
 const exportSort = ref(appStorage.getItem("invoiceExportSort") || "original");
 const exportDirection = ref(appStorage.getItem("invoiceExportDirection") || "asc");
 const busy = ref(false);
-const dockRef = ref(null);
 const activePanel = ref("");
 const runningAction = ref(false);
 function closeDockPanels() {
   activePanel.value = "";
   dimsOpen.value = false;
 }
-function toggleDockPanel(panel) {
-  dimsOpen.value = false;
-  activePanel.value = activePanel.value === panel ? "" : panel;
+function setPanel(panel, open) {
+  if (open) { dimsOpen.value = false; activePanel.value = panel; }
+  else if (activePanel.value === panel) closeDockPanels();
 }
-function onOutsideInteraction(event) {
-  if (dockRef.value?.contains(event.target)) return;
-  if (event.target?.closest?.('[data-print-dimensions]')) return;
-  closeDockPanels();
-}
-function onEscape(event) {
-  if (event.key !== "Escape") return;
-  if (dimsOpen.value) dimsOpen.value = false;
-  else closeDockPanels();
-}
-onMounted(() => {
-  document.addEventListener("pointerdown", onOutsideInteraction, true);
-  document.addEventListener("focusin", onOutsideInteraction);
-  document.addEventListener("keydown", onEscape);
-});
-onBeforeUnmount(() => {
-  document.removeEventListener("pointerdown", onOutsideInteraction, true);
-  document.removeEventListener("focusin", onOutsideInteraction);
-  document.removeEventListener("keydown", onEscape);
-});
 async function runDockAction(action) {
   if (runningAction.value || busy.value) return;
   closeDockPanels();
@@ -252,10 +231,12 @@ async function exportPackage() {
 </script>
 
 <template>
-  <section ref="dockRef" class="print-dock" aria-label="打印与导出">
+  <section class="print-dock" aria-label="打印与导出">
     <div class="print-dock-summary"><span>已勾选 <strong>{{ summary.count }}</strong> 张</span><span>价税合计 <strong class="print-total">¥{{ summary.total.toFixed(2) }}</strong></span><span class="print-tax">税额 ¥{{ summary.tax.toFixed(2) }}</span></div>
     <div class="print-dock-actions">
-      <details class="dock-popover print-options" :open="activePanel === 'settings'"><summary class="dock-button" :aria-expanded="activePanel === 'settings'" @click.prevent="toggleDockPanel('settings')">打印与导出设置</summary><div class="dock-popover-content print-options-content">
+      <PopoverRoot :open="activePanel === 'settings'" @update:open="setPanel('settings', $event)">
+        <PopoverTrigger class="dock-button">打印与导出设置</PopoverTrigger>
+        <PopoverPortal><PopoverContent class="dock-popover-content print-options-content" side="top" align="end" :side-offset="6" :collision-padding="12">
         <div class="print-options-heading"><strong>打印与导出设置</strong><span>调整后对当前选中发票生效</span></div>
         <div class="print-options-grid">
           <div class="print-option"><span class="print-option-label">每页张数</span><RadioGroupRoot v-model="perPageStr" class="print-page-options"><label v-for="n in [1, 2, 4]" :key="n"><RadioGroupItem :value="String(n)" class="print-page-radio"><RadioGroupIndicator class="print-page-indicator" /></RadioGroupItem>{{ n }} 张</label></RadioGroupRoot></div>
@@ -265,10 +246,14 @@ async function exportPackage() {
           <label class="print-option"><span class="print-option-label">排序方向</span><select v-model="exportDirection" class="field-input"><option value="asc">升序</option><option value="desc">降序</option></select></label>
         </div>
         <p class="print-option-hint">文件名可用：{销售方} {日期} {金额} {购买方} {发票号码}。</p>
-      </div></details>
+      </PopoverContent></PopoverPortal>
+      </PopoverRoot>
       <button class="btn-primary" :disabled="busy || runningAction || !included.length" @click="runDockAction(printNow)">打印</button>
       <button class="btn" :disabled="busy || runningAction || !included.length || !hasRecognized" :title="!hasRecognized ? '请先识别后再导出' : ''" @click="runDockAction(exportExcel)">导出 Excel</button>
-      <details class="dock-popover export-menu" :open="activePanel === 'export'"><summary class="dock-button" :aria-expanded="activePanel === 'export'" @click.prevent="toggleDockPanel('export')">更多导出 ▾</summary><div class="dock-popover-content export-menu-content"><button class="export-menu-item" :disabled="busy || runningAction || !included.length || !hasRecognized" @click="runDockAction(downloadPdf)">导出打印版 PDF</button><button class="export-menu-item" :disabled="busy || runningAction || !included.length || !hasRecognized" @click="runDockAction(exportPackage)">整理导出原文件</button><button class="export-menu-item" :disabled="busy || runningAction || !included.length || !hasRecognized" @click="runDockAction(exportReimburse)">导出财务费用报销表</button></div></details>
+      <PopoverRoot :open="activePanel === 'export'" @update:open="setPanel('export', $event)">
+        <PopoverTrigger class="dock-button">更多导出 ▾</PopoverTrigger>
+        <PopoverPortal><PopoverContent class="dock-popover-content export-menu-content" side="top" align="end" :side-offset="6" :collision-padding="12"><button class="export-menu-item" :disabled="busy || runningAction || !included.length || !hasRecognized" @click="runDockAction(downloadPdf)">导出打印版 PDF</button><button class="export-menu-item" :disabled="busy || runningAction || !included.length || !hasRecognized" @click="runDockAction(exportPackage)">整理导出原文件</button><button class="export-menu-item" :disabled="busy || runningAction || !included.length || !hasRecognized" @click="runDockAction(exportReimburse)">导出财务费用报销表</button></PopoverContent></PopoverPortal>
+      </PopoverRoot>
     </div>
     <div v-if="busy && msg" class="print-dock-notice" role="status">{{ msg }}</div>
     <div v-if="pendingPrintedCount" class="print-dock-confirm"><span>本次 {{ pendingPrintedCount }} 张是否均已打印？</span><button class="btn" :disabled="busy" @click="confirmPrinted">确认已打印</button><button class="btn" :disabled="busy" @click="cancelPrinted">暂不标记</button></div>

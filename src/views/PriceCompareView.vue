@@ -1,4 +1,5 @@
 <script setup>
+import ImportFileDialog from '../components/ImportFileDialog.vue';
 // 单价对比（issue #7）：行=材料（归一化+手动并组），列=供应商，单元格=最近价(+区间)，高亮最低价。
 // 数据源：store 当前已识别明细 + 导入的历史「送货单整理汇总.xlsx」。
 import { computed, ref } from "vue";
@@ -23,7 +24,7 @@ const importedObs = ref([]); // 历史 Excel 导入的观测点
 const manualGroups = ref(loadManualGroups());
 const siteFilter = ref(""); // "" = 全部工地汇总
 const tableRef = ref(null);
-const importInput = ref(null);
+
 
 const siteOptions = computed(() => [{ value: "", label: "全部工地（汇总）" }, ...[...new Set([...directory.projects,...store.partitions.map(p=>p.name),...importedObs.value.map(o=>o.site)].filter(Boolean))].map(name=>({value:name,label:name}))]);
 const obs = computed(() => [...aggregateItems(store.files, store.partitions), ...importedObs.value].map(o=>({...o,supplier:matchSupplierExact(supplierStore.list,o.supplier)?.supplier.name||o.supplier})));
@@ -50,9 +51,7 @@ function splitRow(row) {
   toastInfo(`已拆分「${row.name}」。`);
 }
 
-async function onImportPick(e) {
-  const file = Array.from(e.target.files || []).find((f) => /\.(xlsx|xls)$/i.test(f.name));
-  e.target.value = "";
+async function onImportPick([file]) {
   if (!file) {
     toastWarn("请选择 .xlsx / .xls（送货单整理汇总）。");
     return;
@@ -100,9 +99,8 @@ async function exportExcel() {
           <option v-for="o in siteOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
         </select>
         <button class="btn px-2.75 py-1.5" :disabled="!compare.rows.length" @click="mergeSelected">并组所选</button>
-        <button class="btn px-2.75 py-1.5" @click="importInput.click()">导入历史 Excel</button>
+        <ImportFileDialog label="导入历史 Excel" @files="onImportPick" />
         <button class="btn px-2.75 py-1.5" :disabled="!compare.rows.length" @click="exportExcel">导出 Excel</button>
-        <input ref="importInput" type="file" accept=".xlsx,.xls" hidden @change="onImportPick" />
       </div>
     </div>
 

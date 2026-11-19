@@ -1,4 +1,5 @@
 <script setup>
+import ImportFileDialog from './ImportFileDialog.vue';
 import ExpenseAssignmentImport from './ExpenseAssignmentImport.vue';
 import ConfirmAction from './ConfirmAction.vue';
 import { useConfirmation } from '../composables/useConfirmation.js';
@@ -18,16 +19,11 @@ defineProps({ ledgerPage: Boolean });
 const emit = defineEmits(["open-ledger"]);
 const reconciliationOpen = ref(false);
 
-const fileRef = ref(null);
-const expenseRef = ref(null);
 const busy = ref(false);
 const dragging = ref(false);
 const msg = ref("");
 const stats = computed(() => ledgerStats(invoiceStore.ledger));
 
-function chooseFile() {
-  fileRef.value?.click();
-}
 
 async function importLedgerFiles(files) {
   const excel = Array.from(files || []).filter(f => /\.(xlsx|xls)$/i.test(f.name) && !f.name.startsWith("~$"));
@@ -72,27 +68,6 @@ async function exportCurrentInputStatus() {
   await saveLedgerBytes(buildCurrentInputInvoiceReportBytes(invoiceStore.invoices, invoiceStore.ledger), currentInputReportName(), "已保存当前进项发票状态", "已导出当前进项发票状态。");
 }
 
-async function importReport(e) {
-  const files = Array.from(e.target.files || []);
-  e.target.value = "";
-  await importLedgerFiles(files);
-}
-async function importExpenses(e) {
-  const files = Array.from(e.target.files || []);
-  e.target.value = "";
-  busy.value = true;
-  let added = 0, updated = 0, conflicts = 0, skipped = 0, failed = 0;
-  try {
-    for (const file of files) {
-      msg.value = `正在读取：${file.name}`;
-      try { const r = await invoiceActions.importExpenseReport(file); added += r.added; updated += r.updated; conflicts += r.conflicts; skipped += r.skipped; }
-      catch (err) { failed++; console.error(file.name, err); }
-    }
-    const result = `报销表导入：新增 ${added} 条，补充 ${updated} 条；${conflicts} 条冲突、${skipped} 条号码不完整需核对${failed ? `，${failed} 个文件读取失败` : ""}。`;
-    if (conflicts || skipped || failed) toastWarn(result); else toast(result);
-    msg.value = result;
-  } finally { busy.value = false; }
-}
 async function onDrop(e) {
   dragging.value = false;
   if (!busy.value) await importLedgerFiles(e.dataTransfer?.files);
@@ -115,12 +90,10 @@ async function clearLedger() {
     class="panel ledger-panel p-2.5 transition-colors"
     :class="dragging ? '!border-brand bg-brand-soft shadow-[0_0_0_2px_rgba(37,99,235,0.16)]' : ''"
     @dragenter.prevent="dragging = true"
-    @dragover.prevent="dragging = true"
+    @dragover.stop.prevent="dragging = true"
     @dragleave.prevent="dragging = false"
-    @drop.prevent="onDrop"
+    @drop.stop.prevent="onDrop"
   >
-    <input ref="fileRef" class="hidden" type="file" accept=".xlsx,.xls" multiple @change="importReport" />
-    <input ref="expenseRef" class="hidden" type="file" accept=".xlsx,.xls" multiple @change="importExpenses" />
     <div class="ledger-heading">
       <div>
         <h2 class="m-0 text-[15px] font-700">历史进项台账</h2>
@@ -140,7 +113,7 @@ async function clearLedger() {
       {{ dragging ? "松开即可导入进项 Excel" : "可拖拽 .xlsx / .xls 到这里导入" }}
     </div>
     <div class="ledger-panel-actions">
-      <button class="btn-primary px-2.5 py-1.75" :disabled="busy" @click="chooseFile">导入进项 Excel</button>
+      <ImportFileDialog label="导入进项 Excel" multiple primary :disabled="busy" @files="importLedgerFiles" />
 
       <button v-if="!ledgerPage" class="btn px-2.5 py-1.75" @click="emit('open-ledger')">打开台账页面</button>
       <button class="btn" @click="expenseImportOpen = true">导入报销记录</button>

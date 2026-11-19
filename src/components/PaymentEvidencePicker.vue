@@ -1,4 +1,5 @@
 <script setup>
+import { PopoverRoot, PopoverTrigger, PopoverPortal, PopoverContent } from 'reka-ui';
 import { computed, ref, onBeforeUnmount } from 'vue';
 import { suggestedEvidenceKind } from '../lib/payment-attachments.js';
 import { reconcileEvidenceTransactions } from '../lib/payment-transactions.js';
@@ -30,7 +31,7 @@ onBeforeUnmount(close);
 </script>
 <template>
   <div v-if="files.length" class="evidence-picker">
-    <details><summary>{{ item.candidates.length }} 份候选 · 已选 {{ modelValue.length }} 份</summary>
+    <PopoverRoot><PopoverTrigger class="btn">{{ item.candidates.length }} 份候选 · 已选 {{ modelValue.length }} 份</PopoverTrigger><PopoverPortal><PopoverContent class="record-action-popup" align="start" :side-offset="5" :collision-padding="10">
       <label><input v-model="showAll" type="checkbox" />列出全部已读文件</label>
       <div v-for="{c,index,hint,choice} in choices" :key="index" class="choice">
         <label><input type="checkbox" :checked="!!choice" @change="check(index,c,$event.target.checked)" />{{ c.file.webkitRelativePath || c.file.name }}</label>
@@ -49,7 +50,7 @@ onBeforeUnmount(close);
           </label>
         </template>
       </div>
-    </details>
+    </PopoverContent></PopoverPortal></PopoverRoot>
     <small v-if="stage && modelValue.length">可核实 {{ result.unique.length }} 笔，合计 {{ result.total }} 元；重叠 {{ result.duplicates.length }} 条，待核 {{ result.unresolved.length }} 条。{{ result.matches ? '与清单相符' : '尚未核平' }}</small>
     <Teleport to="body"><div v-if="preview" class="original-overlay" role="dialog" aria-modal="true" aria-label="凭证预览">
       <div><header>{{ preview.name }} <button class="btn" @click="close">关闭原件</button></header>

@@ -71,6 +71,7 @@ watch(sorted, items => {
 function hasFiles(event) { return Array.from(event.dataTransfer?.types || []).includes("Files"); }
 function onDragOver(event) {
   if (!hasFiles(event)) return;
+  if (event.target?.closest?.('[role="dialog"], .ledger-panel')) { event.preventDefault(); dragging.value = false; return; }
   event.preventDefault();
   dragging.value = true;
   dragRejected.value = !dragHasSupported(event.dataTransfer);
@@ -79,6 +80,7 @@ function onDragOver(event) {
 function onDragLeave(event) { if (!event.relatedTarget) dragging.value = false; }
 async function onDrop(event) {
   if (!hasFiles(event)) return;
+  if (event.target?.closest?.('[role="dialog"], .ledger-panel')) { event.preventDefault(); dragging.value = false; return; }
   event.preventDefault();
   dragging.value = false;
   const files = await filesFromDrop(event.dataTransfer);
@@ -171,11 +173,14 @@ function invertSelect() {
     <div v-if="invoiceStore.invoices.length" class="invoice-columns">
       <InvoiceList :items="sorted" :active-id="activeItem?.inv.id" @select-all="selectAll" @select-none="selectNone" @invert="invertSelect" />
       <div class="invoice-middle"><InvoiceDocumentPreview :invoice="activeItem?.inv" /><DialogRoot v-model:open="printPreviewOpen"><DialogTrigger as-child><button class="print-layout-trigger" type="button"><strong>打印排版预览</strong><span>查看每页打印效果 ↗</span></button></DialogTrigger><DialogPortal><DialogOverlay class="print-layout-overlay" /><DialogContent class="print-layout-modal"><header class="print-layout-header"><div><DialogTitle class="print-layout-title">打印排版预览</DialogTitle><DialogDescription class="print-layout-description">双击票面放大，可拖动、缩放和旋转；打印设置在主页面底部。</DialogDescription></div><DialogClose class="btn" aria-label="关闭打印排版预览">关闭</DialogClose></header><div class="print-layout-content"><InvoicePreview /></div></DialogContent></DialogPortal></DialogRoot></div>
-      <section class="work-panel invoice-detail"><div class="panel-heading"><div><h2>发票详情 <span>（可编辑核对）</span></h2><p>选择发票后可修改识别结果</p></div><InvoiceIntakeReview v-if="activeItem" :key="activeItem.inv.id" :invoice="activeItem.inv" /></div><InvoiceRow v-if="activeItem" :key="activeItem.inv.id" :item="activeItem" :reimbursement-selected="reimbursementSelection.includes(activeItem.inv.id)" @select-reimbursement="selectReimbursement" /><div v-else class="work-empty">请选择一张发票</div></section>
+      <section class="work-panel invoice-detail"><div class="panel-heading detail-heading"><div><h2>发票详情 <span>（可编辑核对）</span></h2><p>选择发票后可修改识别结果</p></div><InvoiceIntakeReview v-if="activeItem" :key="activeItem.inv.id" :invoice="activeItem.inv" /></div><InvoiceRow v-if="activeItem" :key="activeItem.inv.id" :item="activeItem" :reimbursement-selected="reimbursementSelection.includes(activeItem.inv.id)" @select-reimbursement="selectReimbursement" /><div v-else class="work-empty">请选择一张发票</div></section>
     </div>
     <div v-else class="work-empty invoice-welcome"><strong>还没有发票</strong><span>将 PDF、图片或文件夹拖入窗口，或使用上方按钮选择。</span></div>
     <InvoicePrintPanel />
   </div>
 </template>
 
-<style scoped>.intake-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;padding:7px 10px;background:#fff;border:1px solid #dfe5ed;border-radius:6px}.intake-toolbar label{display:flex;align-items:center;gap:7px}.intake-toolbar select{width:190px;height:30px;font-size:12px}.intake-toolbar button{min-height:30px;font-size:12px;padding:5px 9px}.intake-toolbar>span{color:#64748b}</style>
+<style scoped>.intake-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;padding:7px 10px;background:#fff;border:1px solid #dfe5ed;border-radius:6px}.intake-toolbar label{display:flex;align-items:center;gap:7px}.intake-toolbar select{width:190px;height:30px;font-size:12px}.intake-toolbar button{min-height:30px;font-size:12px;padding:5px 9px}.intake-toolbar>span{color:#64748b}.invoice-detail { container-type:inline-size; }
+.detail-heading { display:flex; flex-wrap:wrap; gap:8px; }
+@container (max-width:480px) { .detail-heading { align-items:flex-start; flex-direction:column; } }
+</style>

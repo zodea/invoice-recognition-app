@@ -1,4 +1,5 @@
 <script setup>
+import ImportFileDialog from './ImportFileDialog.vue';
 import { formatMoney as money } from "../lib/format.js";
 import DocumentImage from './DocumentImage.vue';
 import InvoiceProjectAllocationDialog from './InvoiceProjectAllocationDialog.vue';
@@ -21,7 +22,7 @@ const allocationOpen = ref(false);
 const props = defineProps({ entry: { type: Object, required: true }, version: { type: Number, default: 0 }, editInitially: Boolean, initialSupplement:{type:String,default:''} });
 const emit = defineEmits(["close", "attachment-change"]);
 watch(() => props.entry.key, () => { editing.value = props.editInitially; }, { immediate: true });
-const fileInput = ref(null);
+
 const attachment = ref(null);
 const attachmentBundle = ref(null), selectedAttachment = ref(props.initialSupplement);
 const images = ref([]);
@@ -76,8 +77,7 @@ watch(() => props.entry.key, () => { selectedAttachment.value=props.initialSuppl
 watch([() => props.entry.key, () => props.version, selectedAttachment], loadAttachment, { immediate: true });
 watch(() => props.entry.key, () => { formMessage.value = ""; zoom.value = 100; });
 onBeforeUnmount(() => { generation++; clearImages(); });
-async function attach(event) {
-  const file = event.target.files?.[0]; event.target.value = "";
+async function attach([file]) {
   if (!file) return;
   const key = props.entry.key;
   try { await saveLedgerAttachment(key, file); emit("attachment-change"); }
@@ -100,10 +100,10 @@ function update(key, event) {
     <header class="detail-heading"><div><div class="detail-eyebrow">发票对照</div><strong>{{ entry.number || '无号码' }}</strong></div><button class="btn" aria-label="关闭详情" @click="emit('close')">关闭</button></header>
     <div class="comparison-body">
       <section class="preview-pane" aria-label="发票原件预览">
-        <div class="preview-toolbar"><div class="preview-title"><strong>{{ selectedAttachment ? '发票附件' : '发票原件' }}</strong><span>{{ attachment?.name || '尚未关联原件' }}</span></div><div class="preview-actions"><button class="btn" :disabled="zoom <= 75" aria-label="缩小发票" @click="zoom = Math.max(75, zoom - 25)">−</button><span>{{ zoom }}%</span><button class="btn" :disabled="zoom >= 200" aria-label="放大发票" @click="zoom = Math.min(200, zoom + 25)">＋</button><button class="btn" @click="fileInput?.click()">{{ attachmentBundle?.blob ? '更换发票原件' : '关联发票原件' }}</button><input ref="fileInput" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.bmp" class="hidden" @change="attach" /></div></div>
+        <div class="preview-toolbar"><div class="preview-title"><strong>{{ selectedAttachment ? '发票附件' : '发票原件' }}</strong><span>{{ attachment?.name || '尚未关联原件' }}</span></div><div class="preview-actions"><button class="btn" :disabled="zoom <= 75" aria-label="缩小发票" @click="zoom = Math.max(75, zoom - 25)">−</button><span>{{ zoom }}%</span><button class="btn" :disabled="zoom >= 200" aria-label="放大发票" @click="zoom = Math.min(200, zoom + 25)">＋</button><ImportFileDialog :label="attachmentBundle?.blob ? '更换发票原件' : '关联发票原件'" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.bmp" @files="attach" /></div></div>
         <div class="attachment-selector"><label>查看原件 / 附件 <select v-model="selectedAttachment" class="field-input"><option value="">发票原件{{ attachmentBundle?.blob ? '' : '（尚未关联）' }}</option><option v-for="(file, index) in attachmentBundle?.supplements || []" :key="file.hash" :value="selectedAttachment === 'first' && index === 0 ? 'first' : file.hash">{{ file.type || '附件' }} · {{ file.name }}</option></select></label><small>行程或邮寄明细只作附件，不重复计费。</small></div>
         <div class="preview-scroll" :aria-busy="loading" tabindex="0" aria-label="发票原件，可滚动查看">
-          <div v-if="!loading && !attachment && !message" class="preview-empty"><strong>还没有关联发票原件</strong><p>识别发票后可自动匹配，也可以手动选择 PDF 或图片。</p><button class="btn" @click="fileInput?.click()">关联发票原件</button></div>
+          <div v-if="!loading && !attachment && !message" class="preview-empty"><strong>还没有关联发票原件</strong><p>识别发票后可自动匹配，也可以手动选择 PDF 或图片。</p><ImportFileDialog label="关联发票原件" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.bmp" @files="attach" /></div>
           <p v-if="loading || message" class="preview-loading" role="status">{{ message || '正在加载预览…' }}</p>
           <div v-for="(url, index) in images" :key="index" class="preview-page" :style="{ width: `${zoom}%` }"><DocumentImage :file="attachment?.blob" :name="attachment?.name" :src="url" :page-number="index + 1" :alt="`发票原件第 ${index + 1} 页`" /></div>
           <p v-if="isPdf && images.length === 20" class="preview-note">预览最多显示前 20 页。</p>
