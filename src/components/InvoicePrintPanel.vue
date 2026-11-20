@@ -27,6 +27,7 @@ import {
 } from "../lib/invoice-export-package";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 
+const emit = defineEmits(['preview']);
 const filenameTemplate = ref(appStorage.getItem("invoiceFilenameTemplate") || "{销售方}：{日期}={金额}元");
 const exportSort = ref(appStorage.getItem("invoiceExportSort") || "original");
 const exportDirection = ref(appStorage.getItem("invoiceExportDirection") || "asc");
@@ -248,6 +249,7 @@ async function exportPackage() {
         <p class="print-option-hint">文件名可用：{销售方} {日期} {金额} {购买方} {发票号码}。</p>
       </PopoverContent></PopoverPortal>
       </PopoverRoot>
+      <button class="dock-button" :disabled="!included.length" @click="emit('preview')">打印预览</button>
       <button class="btn-primary" :disabled="busy || runningAction || !included.length" @click="runDockAction(printNow)">打印</button>
       <button class="btn" :disabled="busy || runningAction || !included.length || !hasRecognized" :title="!hasRecognized ? '请先识别后再导出' : ''" @click="runDockAction(exportExcel)">导出 Excel</button>
       <PopoverRoot :open="activePanel === 'export'" @update:open="setPanel('export', $event)">

@@ -73,7 +73,11 @@ export function entriesHaveFolders(entries) {
 
 // 兼容旧调用：只要文件数组
 export async function filesFromDrop(dataTransfer) {
-  return (await collectDropEntries(dataTransfer)).map((e) => e.file);
+  return (await collectDropEntries(dataTransfer)).map(({file, relPath}) => {
+    if (relPath.includes('/') && !file.webkitRelativePath)
+      Object.defineProperty(file, 'webkitRelativePath', {value:relPath, configurable:true});
+    return file;
+  });
 }
 
 // 统一分拣：返回 { supported, ignored }

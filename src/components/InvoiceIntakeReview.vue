@@ -8,6 +8,7 @@ import ConfirmAction from './ConfirmAction.vue';
 import InvoiceSupplementLink from './InvoiceSupplementLink.vue';
 import {supplementType} from '../lib/invoice-supplements.js';
 import { useConfirmation } from '../composables/useConfirmation.js';
+const emit=defineEmits(['open-payment','match-payment']);
 const props = defineProps({ invoice: { type: Object, required: true } });
 const { confirmation, requestConfirmation, answerConfirmation } = useConfirmation();
 const decision = computed(() => invoiceActions.intakeDecision(props.invoice));
@@ -23,7 +24,7 @@ async function markOther() {
   props.invoice.include = false;
 }
 async function transfer() {
-  try { const result = await invoiceActions.transferOtherReceipt(props.invoice); toast(result.existing?'该原件已在付款凭证中，未重复新增':'已转入付款凭证，请核对原件和费用归属'); }
+  try { const result = await invoiceActions.transferOtherReceipt(props.invoice); toast(result.existing?'已找到这份原件的付款记录':'付款凭证已保存');emit('open-payment',result.row.id); }
   catch (error) { toastError(error.message); }
 }
 function recheckInvoice() {
@@ -35,6 +36,10 @@ function recheckInvoice() {
   <div class="intake-review" aria-label="票据入账检查">
     <ConfirmAction :request="confirmation" @answer="answerConfirmation" />
     <button v-if="decision.state==='ready'" type="button" class="btn-primary" :disabled="invoiceStore.savingIntake" @click="saveInvoice">确认保存</button>
+    <button v-if="decision.state==='receipt' && !invoice.paymentMatchNote" class="btn-primary" :disabled="invoiceStore.savingIntake" @click="transfer">保存付款凭证</button>
+    <button v-if="decision.state==='receipt' && invoice.blob" class="btn" @click="emit('match-payment',[invoice.blob])">核对付款清单</button>
+    <span v-if="decision.state==='receipt' && invoice.paymentMatchNote" role="status">{{ invoice.paymentMatchNote }}</span>
+    <button v-if="decision.state==='payment-saved'" class="btn" @click="emit('open-payment',invoice.paymentId)">查看付款记录</button>
     <InvoiceSupplementLink v-if="supplementType(invoice.fields)" :invoice="invoice" :fields="invoice.fields" :file="invoice.blob" />
     <TooltipProvider :delay-duration="150">
       <TooltipRoot>
@@ -47,7 +52,7 @@ function recheckInvoice() {
       <PopoverPortal><PopoverContent class="intake-menu" side="bottom" align="end" :side-offset="7">
         <button v-if="['ready','review'].includes(decision.state)" class="btn" @click="invoice.fields.attachmentType='行程及费用明细';invoice.include=false">作为发票附件保存</button>
         <button v-if="['review','ready'].includes(decision.state)" class="btn" :disabled="invoiceStore.savingIntake" @click="markOther">标记为其他票据</button>
-        <template v-if="decision.state==='receipt'"><button class="btn-primary" :disabled="invoiceStore.savingIntake" @click="transfer">保存到付款凭证</button><button class="btn" @click="recheckInvoice">这是发票，重新核对</button></template>
+        <template v-if="decision.state==='receipt'"><button class="btn" @click="invoice.fields.attachmentType='付款凭证附件';invoice.include=false">作为附件关联主发票</button><button class="btn" @click="recheckInvoice">这是发票，重新核对</button></template>
       </PopoverContent></PopoverPortal>
     </PopoverRoot>
   </div>

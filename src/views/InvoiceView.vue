@@ -7,6 +7,8 @@ import InvoiceSupplementInbox from '../components/InvoiceSupplementInbox.vue';
 import InvoiceBuyerCheck from '../components/InvoiceBuyerCheck.vue';
 import { useBuyerCheck } from '../composables/useBuyerCheck.js';
 import { matchesBuyerCheck, buyerCheckLabels } from '../lib/invoice-buyer-check.js';
+import PaymentRecordsView from './PaymentRecordsView.vue';
+import { pendingPaymentCount } from '../lib/payment-store.js';
 import InvoiceUpload from "../components/InvoiceUpload.vue";
 import ExpenseAssignmentImport from '../components/ExpenseAssignmentImport.vue';
 import InvoicePreview from "../components/InvoicePreview.vue";
@@ -19,7 +21,14 @@ import { inferExpenseTag } from "../lib/invoice-tags";
 import { toast, toastInfo } from "../lib/toast";
 import { filesFromDrop, dragHasSupported } from "../lib/upload";
 
-const intakeFilter = ref('pending');
+const props=defineProps({active:{type:Boolean,default:true}});
+const paymentOpen=ref(false), paymentPanel=ref(null);
+function reviewPaymentFiles(files) {
+  paymentOpen.value=true;
+  return paymentPanel.value?.reviewFiles(files);
+}
+function openPayment(id) { paymentOpen.value=true; paymentPanel.value?.openById(id); }
+const intakeFilter = ref('all');
 const intakeCounts = computed(() => invoiceStore.invoices.reduce((counts, inv) => { const state = invoiceActions.intakeDecision(inv).state; counts[state] = (counts[state] || 0) + 1; return counts; }, {}));
 const intakePending = computed(() => ['unrecognized','ready','review','receipt','supplement'].reduce((sum,key)=>sum+(intakeCounts.value[key]||0),0));
 async function saveSupplements(){let saved=0;const errors=[];for(const inv of invoiceStore.invoices.filter(inv=>invoiceActions.intakeDecision(inv).state==='supplement')){try{await invoiceActions.saveSupplement({invoice:inv});saved++;}catch(error){errors.push(error.message);}}toastInfo(`已保存 ${saved} 份附件，不增加费用。${errors.join('；')}`);}
@@ -27,7 +36,6 @@ async function saveMatched() {
   try {
     const result = await invoiceActions.saveRecognizedInvoices();
     toastInfo('已保存 '+result.saved+' 张；留下 '+result.pending+' 张待处理。'+(result.failed?'保存失败 '+result.failed+' 张：'+result.errors.join('；'):''));
-    intakeFilter.value = 'pending';
   } catch(error) { toastInfo('保存失败：'+error.message); }
 }
 const search = ref("");
@@ -70,17 +78,17 @@ watch(sorted, items => {
 
 function hasFiles(event) { return Array.from(event.dataTransfer?.types || []).includes("Files"); }
 function onDragOver(event) {
-  if (!hasFiles(event)) return;
-  if (event.target?.closest?.('[role="dialog"], .ledger-panel')) { event.preventDefault(); dragging.value = false; return; }
+  if (!props.active || !hasFiles(event)) return;
+  if (event.target?.closest?.('[role="dialog"], .ledger-panel, .payment-records-panel')) { event.preventDefault(); dragging.value = false; return; }
   event.preventDefault();
   dragging.value = true;
-  dragRejected.value = !dragHasSupported(event.dataTransfer);
+  dragRejected.value = !dragHasSupported(event.dataTransfer) && !Array.from(event.dataTransfer.items || []).some(item=>/spreadsheet|excel/.test(item.type));
   if (event.dataTransfer) event.dataTransfer.dropEffect = dragRejected.value ? "none" : "copy";
 }
 function onDragLeave(event) { if (!event.relatedTarget) dragging.value = false; }
 async function onDrop(event) {
-  if (!hasFiles(event)) return;
-  if (event.target?.closest?.('[role="dialog"], .ledger-panel')) { event.preventDefault(); dragging.value = false; return; }
+  if (!props.active || !hasFiles(event)) return;
+  if (event.target?.closest?.('[role="dialog"], .ledger-panel, .payment-records-panel')) { event.preventDefault(); dragging.value = false; return; }
   event.preventDefault();
   dragging.value = false;
   const files = await filesFromDrop(event.dataTransfer);
@@ -151,7 +159,7 @@ function invertSelect() {
 
 <template>
   <div class="invoice-workspace">
-    <div class="workspace-top"><div><h1>发票管理</h1></div><label class="invoice-search"><span aria-hidden="true">⌕</span><input v-model="search" type="search" placeholder="搜索发票号码、销售方或购买方" aria-label="搜索发票" /></label><ExpenseAssignmentImport label="按清单分配工地" /><InvoiceUpload ref="upload" /></div>
+    <div class="workspace-top"><div><h1>发票与付款</h1></div><label class="invoice-search"><span aria-hidden="true">⌕</span><input v-model="search" type="search" placeholder="搜索票号、销售方、收款方或购买方" aria-label="搜索发票" /></label><ExpenseAssignmentImport label="按清单分配工地" /><InvoiceUpload ref="upload" @payment-batch="reviewPaymentFiles" /></div>
     <div v-if="dragging" class="file-drag-notice" role="status">{{ dragRejected ? '请拖入 PDF、图片或文件夹' : '松开文件，即可导入并识别' }}</div>
     <InvoiceBuyerCheck v-model="buyerCheckFilter" :configured="buyersConfigured" :counts="buyerCounts" @scan="scanBuyers" />
     <details class="work-disclosure"><summary>筛选与报销 </summary>
@@ -169,14 +177,18 @@ function invertSelect() {
       <label>入账检查<select v-model="intakeFilter" class="field-input"><option value="pending">尚未保存（{{ intakePending }}）</option><option value="review">需要核对（{{ intakeCounts.review || 0 }}）</option><option value="receipt">其他票据 / 附件（{{ (intakeCounts.receipt || 0) + (intakeCounts.supplement || 0) }}）</option><option value="saved">已保存 / 已关联</option><option value="all">本批全部</option></select></label>
       <button class="btn-primary" :disabled="invoiceStore.busy || invoiceStore.savingIntake || !intakeCounts.ready" @click="saveMatched">确认保存可入账发票（{{ intakeCounts.ready || 0 }}）</button><button v-if="intakeCounts.supplement" class="btn" :disabled="invoiceStore.busy||invoiceStore.savingIntake" @click="saveSupplements">保存附件并自动匹配（{{ intakeCounts.supplement }}）</button><span>修改字段后点击“确认保存”才入账。附件单独保存，不增加费用。</span>
     </div>
+    <details class="work-disclosure payment-records-panel" :open="paymentOpen" @toggle="paymentOpen=$event.target.open">
+      <summary>付款清单与已存记录 <span v-if="pendingPaymentCount">· {{ pendingPaymentCount }} 笔待补凭证</span></summary>
+      <PaymentRecordsView ref="paymentPanel" />
+    </details>
     <InvoiceSupplementInbox />
     <div v-if="invoiceStore.invoices.length" class="invoice-columns">
       <InvoiceList :items="sorted" :active-id="activeItem?.inv.id" @select-all="selectAll" @select-none="selectNone" @invert="invertSelect" />
       <div class="invoice-middle"><InvoiceDocumentPreview :invoice="activeItem?.inv" /><DialogRoot v-model:open="printPreviewOpen"><DialogTrigger as-child><button class="print-layout-trigger" type="button"><strong>打印排版预览</strong><span>查看每页打印效果 ↗</span></button></DialogTrigger><DialogPortal><DialogOverlay class="print-layout-overlay" /><DialogContent class="print-layout-modal"><header class="print-layout-header"><div><DialogTitle class="print-layout-title">打印排版预览</DialogTitle><DialogDescription class="print-layout-description">双击票面放大，可拖动、缩放和旋转；打印设置在主页面底部。</DialogDescription></div><DialogClose class="btn" aria-label="关闭打印排版预览">关闭</DialogClose></header><div class="print-layout-content"><InvoicePreview /></div></DialogContent></DialogPortal></DialogRoot></div>
-      <section class="work-panel invoice-detail"><div class="panel-heading detail-heading"><div><h2>发票详情 <span>（可编辑核对）</span></h2><p>选择发票后可修改识别结果</p></div><InvoiceIntakeReview v-if="activeItem" :key="activeItem.inv.id" :invoice="activeItem.inv" /></div><InvoiceRow v-if="activeItem" :key="activeItem.inv.id" :item="activeItem" :reimbursement-selected="reimbursementSelection.includes(activeItem.inv.id)" @select-reimbursement="selectReimbursement" /><div v-else class="work-empty">请选择一张发票</div></section>
+      <section class="work-panel invoice-detail"><div class="panel-heading detail-heading"><div><h2>识别详情 <span>（可编辑核对）</span></h2><p>选择发票后可修改识别结果</p></div><InvoiceIntakeReview v-if="activeItem" :key="activeItem.inv.id" :invoice="activeItem.inv" @open-payment="openPayment" @match-payment="reviewPaymentFiles" /></div><InvoiceRow v-if="activeItem" :key="activeItem.inv.id" :item="activeItem" :reimbursement-selected="reimbursementSelection.includes(activeItem.inv.id)" @select-reimbursement="selectReimbursement" /><div v-else class="work-empty">请选择一张发票</div></section>
     </div>
-    <div v-else class="work-empty invoice-welcome"><strong>还没有发票</strong><span>将 PDF、图片或文件夹拖入窗口，或使用上方按钮选择。</span></div>
-    <InvoicePrintPanel />
+    <div v-else class="work-empty invoice-welcome"><strong>还没有导入票据</strong><span>将 PDF、图片或文件夹拖入窗口，或使用上方按钮选择。</span></div>
+    <InvoicePrintPanel @preview="printPreviewOpen=true" />
   </div>
 </template>
 

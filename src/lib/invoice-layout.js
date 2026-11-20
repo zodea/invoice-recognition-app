@@ -28,7 +28,7 @@ function placeRotated(d, s, rot) {
 
 // invoices: [{ name, blob, rotation }]，已是要打印的子集、且已排好序
 // 返回打印版 PDF 的 Uint8Array
-export async function buildPrintLayout(invoices, { perPage = 2, margin = 18, gap = 12 } = {}) {
+export async function buildPrintLayout(invoices, { perPage = 2, margin = 18, gap = 12, onLayout } = {}) {
   const out = await PDFDocument.create();
 
   // 收集所有“可绘制单元”（发票通常 1 页，但也支持多页）。
@@ -67,6 +67,7 @@ export async function buildPrintLayout(invoices, { perPage = 2, margin = 18, gap
     else page.drawImage(d.img, opts);
   });
 
+  onLayout?.({ skipped, pages: out.getPageCount() });
   if (!drawables.length) out.addPage([A4.w, A4.h]); // 避免空文档报错
   return out.save();
 }

@@ -8,7 +8,7 @@ function conflict(row,f){
   (f.seller && row.seller && norm(f.seller)!==norm(row.seller)) ||
   (f.kind==='payment' && moneyCents(f.total)!==null && moneyCents(row.total)!==moneyCents(f.total));
 }
-export function planPaymentAttachments(records,files,existing=[]){
+export function planPaymentAttachments(records,files,existing=[],{onClaims}={}){
  const plan=new Map(),claims=new Map(),groups=new Map();
  const findReference=indexUploadedPaths(files),paymentsByIdentity=new Map(),orders=new Map();
  const identity=(date,seller,total)=>JSON.stringify([date,norm(seller),moneyCents(total)]);
@@ -62,5 +62,6 @@ export function planPaymentAttachments(records,files,existing=[]){
    result.notes.push(files[choice.index].file.name+'：多笔付款指向同一附件');return false;
   });
  }
+ onClaims?.(claims);
  return plan;
 }

@@ -1,3 +1,4 @@
+import { standaloneDocumentType } from './document-kind.js';
 function normText(v) {
   return String(v || "")
     .normalize("NFKC")
@@ -60,6 +61,7 @@ export function confirmedDuplicateInvoices(invoices) {
   const originals = [];
   const duplicates = [];
   for (const inv of invoices) {
+    if (inv.fields?.attachmentType || standaloneDocumentType(inv.fields) || inv.otherReceiptConfirmed) continue;
     const number = invoiceNumber(inv);
     if (inv.status !== "done" || !/^\d{18,25}$/.test(number)) continue;
     const original = originals.find((item) => invoiceNumber(item) === number && isDuplicateInvoice(inv, item));

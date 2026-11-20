@@ -1,3 +1,6 @@
+import { planPaymentAttachments } from './lib/payment-batch-matching.js';
+import { linkPaymentFile } from './lib/payment-attachments.js';
+import { parsePaymentEvidence, parsePaymentTransactions } from './lib/payment-evidence.js';
 import { appStorage } from './lib/app-storage.js';
 import { intakeDecision, intakeFingerprint, canEnterLedger, planRecognizedInvoice, receiptType } from './lib/invoice-intake.js';
 import { transferReceipt } from './lib/receipt-transfer.js';
@@ -21,12 +24,12 @@ import { applyParsedInvoiceFields } from "./lib/invoice-fields";
 import { applyInvoiceFilenameFallback } from "./lib/invoice-filename";
 import { confirmedDuplicateInvoices, markInvoiceDuplicates } from "./lib/invoice-dedupe";
 import { invoiceFolderParts } from "./lib/invoice-export-package";
-import { loadLedger, saveLedger, recordInvoices, markVerified, parseVerifiedNumbers, historyStatus, importInputInvoiceWorkbookBytes, markPrintedInvoices, shouldDefaultExcludeByHistory, missingReimbursementFields } from "./lib/invoice-ledger";
+import { ledgerKey, loadLedger, saveLedger, recordInvoices, markVerified, parseVerifiedNumbers, historyStatus, importInputInvoiceWorkbookBytes, markPrintedInvoices, shouldDefaultExcludeByHistory, missingReimbursementFields } from "./lib/invoice-ledger";
 import { importExpenseWorkbook } from "./lib/expense-import";
 import { markReimbursedBatch, updateCurrentReimbursements } from "./lib/invoice-ledger";
 import { inferExpenseTag } from "./lib/invoice-tags";
 import { syncLedgerMatches } from "./lib/ledger-matching.js";
-import {supplementType,readInvoiceSupplements,writeInvoiceSupplements,saveInvoiceSupplement,reconcileInvoiceSupplements,linkInvoiceSupplement} from './lib/invoice-supplements.js';
+import {uniqueSupplementMatch,supplementType,readInvoiceSupplements,writeInvoiceSupplements,saveInvoiceSupplement,reconcileInvoiceSupplements,linkInvoiceSupplement} from './lib/invoice-supplements.js';
 import {applyAssignmentReview,persistAssignmentImport} from './lib/expense-assignment-import.js';
 
 let seq = 0;
@@ -152,14 +155,110 @@ export const invoiceStore = reactive({
   matchSupplementHash: "",
 });
 
+function supplementMatchLedger() {
+  const candidates = { ...invoiceStore.ledger };
+  for (const inv of invoiceStore.invoices) {
+    const f = inv.fields;
+    if (!f || inv.removed || inv.status !== 'done' || inv.otherReceiptConfirmed || receiptType(f) || supplementType(f) || !/^\d{8,25}$/.test(String(f.number).replace(/\s/g,''))) continue;
+    const key = ledgerKey(inv);
+    if (!candidates[key]) candidates[key] = f;
+    else if (['date','seller','buyer','total'].some(field => f[field] && candidates[key][field] && String(f[field]) !== String(candidates[key][field]) && (field !== 'total' || Number(f.total) !== Number(candidates[key].total)))) {
+      candidates['draft:'+inv.id] = f;
+    }
+  }
+  return candidates;
+}
 function supplementPorts() {
- return {getLedger:()=>invoiceStore.ledger,saveLedger:next=>{saveLedger(next);invoiceStore.ledger=next;},getRecords:()=>invoiceStore.supplements,saveRecords:next=>{writeInvoiceSupplements(next);invoiceStore.supplements=next;},saveOriginal:saveLedgerAttachment,getOriginal:async key=>(await getLedgerAttachment(key))?.blob,append:appendInvoiceSupplement,hashFile:fileHash};
+ return {getMatchLedger:supplementMatchLedger,getLedger:()=>invoiceStore.ledger,saveLedger:next=>{saveLedger(next);invoiceStore.ledger=next;},getRecords:()=>invoiceStore.supplements,saveRecords:next=>{writeInvoiceSupplements(next);invoiceStore.supplements=next;},saveOriginal:saveLedgerAttachment,getOriginal:async key=>(await getLedgerAttachment(key))?.blob,append:appendInvoiceSupplement,hashFile:fileHash};
 }
 function refreshSupplementLinks(){
   const links=new Map(invoiceStore.supplements.filter(r=>r.ledgerKey).map(r=>[r.hash,r.ledgerKey]));
   for(const inv of invoiceStore.invoices) if(links.has(inv.supplementHash)) inv.linkedLedgerKey=links.get(inv.supplementHash);
   if(paymentStore.rows.some(r=>r.supplementOnly && links.has(r.evidenceHash) && r.linkedLedgerKey!==links.get(r.evidenceHash)))
     savePayments(paymentStore.rows.map(r=>r.supplementOnly && links.has(r.evidenceHash)?{...r,linkedLedgerKey:links.get(r.evidenceHash)}:r));
+}
+
+async function storeSupplement({invoice,file,fields,name,rawText,paymentId}, {reconcile=true, automatic=false, attachmentType=''}={}) {
+  const source=invoice?{file:invoice.blob,fields:invoice.fields,name:invoice.name,rawText:invoice.rawText}:{file,fields,name:name||file?.name,rawText};
+  if (attachmentType) source.fields = {...source.fields, attachmentType};
+  const legacyPaymentId=paymentId||invoice?.paymentId;
+  if(!source.file)throw new Error('缺少附件原件');
+  const hash=await fileHash(source.file);
+  if (automatic && paymentStore.rows.some(r=>!r.supplementOnly && (r.evidenceHash===hash || r.evidenceOriginalHash===hash))) return null;
+  const previous=paymentStore.rows.filter(r=>r.id===legacyPaymentId||r.sourceKind==='receipt'&&r.evidenceHash===hash);
+  if(legacyPaymentId&&!previous.some(r=>r.id===legacyPaymentId))throw new Error('原付款记录不存在，请重新核对');
+  if(previous.some(r=>r.evidenceConfirmed||r.reimbursement==='已报销'))throw new Error('旧付款记录已经确认或报销，先核对其费用状态，附件原件不会丢失');
+  const result=await saveInvoiceSupplement(source,supplementPorts(),{reconcile});
+  if(invoice){if(attachmentType)invoice.fields.attachmentType=attachmentType;invoice.supplementHash=result.record.hash;invoice.linkedLedgerKey=result.record.ledgerKey;invoice.include=false;}
+  if(previous.length)savePayments(paymentStore.rows.map(r=>previous.some(old=>old.id===r.id)?{...r,supplementOnly:true,linkedLedgerKey:result.record.ledgerKey,evidenceConfirmed:false}:r));
+  if (!automatic) invoiceStore.attachmentVersion++;
+  return result;
+}
+
+async function collectRecognizedSupplements() {
+  const pool = supplementMatchLedger();
+  const errors = [], payments = [];
+  const drafts = invoiceStore.invoices.filter(inv => inv.status === 'done' && !inv.removed && !inv.paymentId && !inv.supplementHash && inv.blob);
+  for (const inv of drafts) {
+    if (supplementType(inv.fields)) {
+      try { await storeSupplement({ invoice:inv }, { automatic:true, reconcile:false }); }
+      catch (error) { errors.push(inv.name+'：'+error.message); }
+      continue;
+    }
+    if (inv.fields.docType !== '付款凭证') continue;
+    inv.paymentMatchNote = '';
+    try {
+      const hash = await fileHash(inv.blob);
+      const archived = invoiceStore.supplements.find(record => record.hash === hash);
+      if (archived) {
+        inv.supplementHash = hash; inv.linkedLedgerKey = archived.ledgerKey;
+        inv.fields.attachmentType = supplementType(archived.fields); inv.include = false;
+        continue;
+      }
+      const owner = paymentStore.rows.find(row => row.evidenceHash === hash || row.evidenceOriginalHash === hash || row.evidenceSelection?.some(file => file.hash === hash));
+      if (owner) { inv.paymentId = owner.id; inv.include = false; continue; }
+      const evidence = parsePaymentEvidence(inv.rawText);
+      if (evidence.kind !== 'payment' || evidence.direction !== 'expense' || evidence.paymentStatus !== 'success' || parsePaymentTransactions(inv.rawText).length > 1) continue;
+      const fields = { ...inv.fields, ...evidence, date:evidence.date || inv.fields.date, seller:evidence.seller || inv.fields.seller, total:evidence.total === '' ? inv.fields.total : evidence.total };
+      payments.push({ inv, file:inv.blob, hash, fields, normalized:String(inv.rawText || '').replace(/\s/g,'') });
+    } catch (error) { errors.push(inv.name+'：'+error.message); }
+  }
+  const targets = new Map();
+  let claims;
+  const plans = planPaymentAttachments(paymentStore.rows, payments, paymentStore.rows, {onClaims: value => { claims = value; }});
+  for (const [id,plan] of plans) {
+    for (const choice of plan.choices) targets.set(choice.index,id);
+  }
+  for (const [index,candidate] of payments.entries()) {
+    const inv = candidate.inv;
+    const invoiceMatch = uniqueSupplementMatch({ ...inv, fields:candidate.fields },pool);
+    const row = paymentStore.rows.find(item => item.id === targets.get(index));
+    if (!row && claims?.has(index)) {
+      inv.paymentMatchNote = '付款清单有候选记录，请核对后分配凭证。';
+      continue;
+    }
+    if (row && invoiceMatch) {
+      inv.paymentMatchNote = '已匹配付款清单和主发票，请选择附件归属。';
+      continue;
+    }
+    try {
+      if (row) {
+        if (row.evidenceConfirmed || row.evidenceHash || row.reimbursement === '已报销' || row.pendingCopies?.length) {
+          inv.paymentMatchNote = '已找到付款记录，请核对已有凭证。';
+          continue;
+        }
+        const patch = await linkPaymentFile(row,candidate,'付款凭证');
+        savePayments(paymentStore.rows.map(current => current.id === row.id ? { ...current,...patch } : current));
+        inv.paymentId = row.id; inv.include = false;
+      } else if (invoiceMatch) {
+        await storeSupplement({ invoice:inv },{ automatic:true,reconcile:false,attachmentType:'付款凭证附件' });
+      }
+    } catch (error) { errors.push(inv.name+'：'+error.message); }
+  }
+  const result = await reconcileInvoiceSupplements(supplementPorts());
+  refreshSupplementLinks();
+  invoiceStore.attachmentVersion++;
+  return { ...result, errors };
 }
 
 let matchQueue = Promise.resolve();
@@ -457,7 +556,11 @@ export const invoiceActions = {
         invoiceStore.msg = duplicateCount ? `识别完成，已自动移除 ${duplicateCount} 张重复发票。` : "识别完成，请核对。";
       }
       applyHistoryToInvoice(inv); // 历史台账查重/认证/已打印默认不勾选
-      if (!skipDedupe) await syncMatchedAttachments();
+      if (!skipDedupe) {
+        await syncMatchedAttachments();
+        const result = await invoiceActions.matchRecognizedAttachments();
+        if (result.errors.length) invoiceStore.msg += ' 附件需重试：'+result.errors.join('；');
+      }
     } catch (e) {
       inv.status = "error";
       inv.error = String((e && e.message) || e);
@@ -479,10 +582,22 @@ export const invoiceActions = {
       const reused = invoiceStore.invoices.filter((i) => i.history && i.history.usedBefore).length;
       const unfinished = invoiceStore.invoices.filter((i) => i.status !== "done").length;
       const matched = await syncMatchedAttachments();
+      const attachments = await invoiceActions.matchRecognizedAttachments();
       invoiceStore.msg = `本批识别结束${unfinished ? `，${unfinished} 张未识别成功` : ""}${duplicateCount ? `，已自动移除 ${duplicateCount} 张本批重复` : ""}${reused ? `，⚠ ${reused} 张有历史勾选或使用记录` : ""}；匹配台账 ${matched.matched} 张，新增原件 ${matched.saved} 张${matched.needsReview ? `，${matched.needsReview} 张需人工核对` : ""}${matched.failed ? `，${matched.failed} 张原件保存失败` : ""}。`;
+      if (attachments.linked || attachments.pending) invoiceStore.msg += ' 附件已关联 '+attachments.linked+' 份，待匹配 '+attachments.pending+' 份。';
+      if (attachments.errors.length || attachments.failed) invoiceStore.msg += ' 附件需重试：'+(attachments.errors.join('；') || attachments.failed+' 份关联失败');
     } finally { invoiceStore.busy = false; }
   },
-
+  async matchRecognizedAttachments() {
+    if (invoiceStore.savingIntake) return {linked:0,pending:0,failed:0,errors:['正在保存，请稍后重试匹配']};
+    invoiceStore.savingIntake=true;
+    try { return await collectRecognizedSupplements(); }
+    finally { invoiceStore.savingIntake=false; }
+  },
+  matchingDraftNumber(doc) {
+    const match=uniqueSupplementMatch(doc,supplementMatchLedger());
+    return match && !invoiceStore.ledger[match.entry.key] ? match.entry.number : '';
+  },
   intakeDecision(inv) { return intakeDecision(inv, directory.buyers, invoiceStore.ledger); },
   applyAssignmentImport(review,selected,newProjects=[]){
     if(invoiceStore.savingIntake)throw new Error('正在保存，请稍候');
@@ -501,19 +616,9 @@ export const invoiceActions = {
   markDraftEdited(inv){inv.manualEditPending=true;},
   async saveSupplement({invoice,file,fields,name,rawText,paymentId}={}) {
     if(invoiceStore.savingIntake)throw new Error('正在保存，请稍候');
-    const source=invoice?{file:invoice.blob,fields:invoice.fields,name:invoice.name,rawText:invoice.rawText}:{file,fields,name:name||file?.name,rawText};
-    const legacyPaymentId=paymentId||invoice?.paymentId;
     invoiceStore.savingIntake=true;
     try{
-      if(!source.file)throw new Error('缺少附件原件');
-      const hash=await fileHash(source.file);
-      const previous=paymentStore.rows.filter(r=>r.id===legacyPaymentId||r.sourceKind==='receipt'&&r.evidenceHash===hash);
-      if(legacyPaymentId&&!previous.some(r=>r.id===legacyPaymentId))throw new Error('原付款记录不存在，请重新核对');
-      if(previous.some(r=>r.evidenceConfirmed||r.reimbursement==='已报销'))throw new Error('旧付款记录已经确认或报销，先核对其费用状态，附件原件不会丢失');
-      const result=await saveInvoiceSupplement(source,supplementPorts());
-      if(invoice){invoice.supplementHash=result.record.hash;invoice.linkedLedgerKey=result.record.ledgerKey;invoice.include=false;}
-      if(previous.length)savePayments(paymentStore.rows.map(r=>previous.some(old=>old.id===r.id)?{...r,supplementOnly:true,linkedLedgerKey:result.record.ledgerKey,evidenceConfirmed:false}:r));
-      invoiceStore.attachmentVersion++;return result;
+      return await storeSupplement({invoice,file,fields,name,rawText,paymentId});
     }finally{invoiceStore.savingIntake=false;}
   },
   async retrySupplementMatches(){if(invoiceStore.savingIntake)throw new Error('正在保存，请稍候');invoiceStore.savingIntake=true;try{const result=await reconcileInvoiceSupplements(supplementPorts());refreshSupplementLinks();invoiceStore.attachmentVersion++;return result;}finally{invoiceStore.savingIntake=false;}},
@@ -538,12 +643,15 @@ export const invoiceActions = {
         } catch (error) { failed++; errors.push(inv.name+'：'+error.message); }
       }
       refreshHistory(); invoiceStore.attachmentVersion++;
-      await reconcileInvoiceSupplements(supplementPorts());refreshSupplementLinks();
+      const attachments=await collectRecognizedSupplements();
+      errors.push(...attachments.errors);
+      failed += attachments.errors.length + attachments.failed;
       return { saved, failed, errors, pending: invoiceStore.invoices.filter(inv => ['review','receipt','supplement','unrecognized','ready'].includes(intakeDecision(inv,directory.buyers,invoiceStore.ledger).state)).length };
     } finally { invoiceStore.savingIntake = false; }
   },
   async transferOtherReceipt(inv) {
     if (invoiceStore.savingIntake) throw new Error('正在保存，请稍候');
+    if (inv.paymentMatchNote) throw new Error(inv.paymentMatchNote);
     if (intakeDecision(inv, directory.buyers, invoiceStore.ledger).state !== 'receipt') throw new Error('请先确认标记为其他票据');
     if (inv.fields?.number && invoiceStore.ledger[String(inv.fields.number).replace(/\s/g,'')]) throw new Error('同号码已存在于历史台账，请先核对并移入回收站，再转存为其他票据，避免重复计费。');
     invoiceStore.savingIntake = true;

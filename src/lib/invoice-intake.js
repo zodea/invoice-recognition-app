@@ -8,7 +8,7 @@ export function receiptType(fields = {}) {
   return standaloneDocumentType(fields) || ([fields.docType, fields.type].find(value => ['货物运输凭证', '收款凭证', '其他票据'].includes(value)) || '');
 }
 export function intakeFingerprint(inv) {
-  return JSON.stringify([inv.fields, inv.expenseTag || '', !!inv.expenseTagSet]);
+  return JSON.stringify([inv.fields, inv.assignmentDraft || null, inv.expenseTag || '', !!inv.expenseTagSet]);
 }
 export function intakeDecision(inv, buyers, ledger = {}) {
   if (inv.linkedLedgerKey) return { state: 'linked', label: '已关联主发票', reason: '作为附件保留，不重复计入费用。' };
@@ -17,6 +17,8 @@ export function intakeDecision(inv, buyers, ledger = {}) {
   if (inv.status !== 'done') return { state: 'unrecognized', label: '待识别', reason: '请先完成识别。' };
   if (inv.fields?.direction === 'income') return { state: 'review', label: '收款记录待核对', reason: '原件为收款或退款入账，不能作为付款支出，请核对对应业务。' };
   if (supplementType(inv.fields)) return {state:'supplement',label:'发票附件',reason:'保存原件并自动匹配主发票，附件不另计费；没有主票时先保留等待。'};
+  if (inv.assignmentDraft?.allocation === '指定工地' && !inv.assignmentDraft.project)
+    return { state:'review',label:'请选择工地',reason:'费用归属为指定工地，请在识别详情选择工地。' };
   if (inv.otherReceiptConfirmed || receiptType(inv.fields)) return { state: 'receipt', label: '其他票据', reason: '保存到付款凭证，不进入历史进项台账。' };
   const match = createBuyerChecker(buyers)(inv.fields);
   if (match !== 'matched') return { state: 'review', label: '需要核对', reason: buyerCheckLabels[match]+'，请核对购买方或标记为其他票据。' };
@@ -39,6 +41,10 @@ export function planRecognizedInvoice(ledger, inv, buyers) {
   const base = { ...fields, key, number: String(fields.number).replace(/\s/g, ''), service: fields.service || fields.category || '', firstSeen: new Date().toISOString().slice(0,10), verified: false, printed: false, batches: [], reimbursement: '未核对' };
   // 保存识别结果不表示已经打印、抵税或报销；已有人工/官方字段优先。
   const entry = previous ? { ...base, ...Object.fromEntries(Object.entries(previous).filter(([,value]) => value !== '' && value != null)) } : base;
+  if (inv.assignmentDraft) {
+    if (previous?.allocation === '多工地分配') throw Error('此票已按多工地分摊，请在历史台账核对分配。');
+    Object.assign(entry, inv.assignmentDraft);
+  }
   if (inv.expenseTagSet || !entry.expenseTagSet) { entry.expenseTag = inv.expenseTag || entry.expenseTag || ''; entry.expenseTagSet = !!inv.expenseTagSet; }
   return { ledger: { ...ledger, [key]: entry }, key };
 }

@@ -23,6 +23,8 @@ function workbook(format, epoch=false) {
 }
 const originalTZ=process.env.TZ;
 try {
+  // SheetJS writes a Date fixture in the writer's local time. Fix the fixture, then test each reader timezone.
+  process.env.TZ='UTC';
   const fixtures=[workbook('xlsx'),workbook('xls'),workbook('xlsx',true),workbook('xls',true)];
   for(const tz of ['Asia/Shanghai','UTC','America/Los_Angeles']){
     process.env.TZ=tz;

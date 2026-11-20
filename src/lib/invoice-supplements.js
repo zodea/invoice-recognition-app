@@ -4,7 +4,7 @@ import {standaloneDocumentType} from './document-kind.js';
 const normalize=value=>String(value||'').normalize('NFKC').replace(/\s/g,'');
 export const supplementStorageKey='invoiceSupplements.v1';
 export function supplementType(fields={}) {
- return [fields.attachmentType,fields.docType,fields.type].find(value=>['行程单','快递邮寄明细','邮寄明细','寄件明细','快递明细','行程及费用明细'].includes(value))||'';
+ return [fields.attachmentType,fields.docType,fields.type].find(value=>['行程单','快递邮寄明细','邮寄明细','寄件明细','快递明细','行程及费用明细','付款凭证附件'].includes(value))||'';
 }
 export function readInvoiceSupplements(storage=appStorage) {
  const records=JSON.parse(storage?.getItem(supplementStorageKey)||'[]');
@@ -26,6 +26,7 @@ export function supplementInvoiceCandidates(doc,ledger) {
  // Require an explicit invoice-number label. A bare trip or order number is not evidence of a match.
  const raw=String(doc.rawText||'').normalize('NFKC');
  const labeled=raw.match(/发\s*票\s*号\s*码\s*[:：]?\s*(\d(?:[ \t]*\d){7,24})(?![ \t]*\d)/);
+ const tripBrand = supplementType(fields)==='行程单' && (raw+' '+doc.name).match(/滴滴|曹操|如祺|享道|首汽约车/)?.[0];
  const related=normalize(fields.relatedInvoiceNumber||fields.invoiceNumber||labeled?.[1]);
  return Object.entries(ledger).filter(([,e])=>!standaloneDocumentType(e)&&!supplementType(e)).flatMap(([key,entry])=>{
   const sameNumber=!!related&&related===String(entry.number||key);
@@ -35,10 +36,12 @@ export function supplementInvoiceCandidates(doc,ledger) {
   const sameSeller=!!seller&&seller===normalize(entry.seller);
   const sameBuyer=!!fields.buyer&&normalize(fields.buyer)===normalize(entry.buyer);
   const buyerConflict=!!fields.buyer&&!!entry.buyer&&!sameBuyer;
-  const conflict=(sameNumber&&known&&!sameTotal)||((sameNumber||sameDate&&sameTotal&&sameSeller)&&buyerConflict);
-  const strong=!conflict&&(related?sameNumber:sameDate&&sameTotal&&sameSeller);
+  const samePlatform = !!tripBrand && !seller && normalize(entry.seller).includes(tripBrand);
+  const sameTransaction = sameDate && sameTotal && (sameSeller || samePlatform);
+  const conflict = (sameNumber && known && !sameTotal) || ((sameNumber || sameTransaction) && buyerConflict);
+  const strong = !conflict && (related ? sameNumber : sameTransaction);
   if(!sameNumber&&!sameTotal&&!sameDate)return [];
-  return [{entry:{...entry,key},strong,conflict,score:(sameNumber?20:0)+(sameTotal?4:0)+(sameDate?2:0)+(sameSeller?3:0)+(sameBuyer?1:0),hint:conflict?'关联票号存在，但金额或购买方冲突':sameNumber?'关联发票号码一致':strong?'日期、金额、销售方一致':sameDate&&sameTotal?'日期金额一致，需确认销售方':sameTotal?'仅金额一致，需进一步核对':'仅日期一致，需进一步核对'}];
+  return [{entry:{...entry,key},strong,conflict,score:(sameNumber?20:0)+(sameTotal?4:0)+(sameDate?2:0)+(sameSeller?3:0)+(sameBuyer?1:0),hint:conflict?'关联票号存在，但金额或购买方冲突':sameNumber?'关联发票号码一致':strong?(sameSeller?'日期、金额、销售方一致':'行程平台、日期、金额一致'):sameDate&&sameTotal?'日期金额一致，需确认销售方':sameTotal?'仅金额一致，需进一步核对':'仅日期一致，需进一步核对'}];
  }).sort((a,b)=>b.score-a.score);
 }
 export async function linkInvoiceSupplement(record,key,ports) {
@@ -55,16 +58,22 @@ export async function linkInvoiceSupplement(record,key,ports) {
  const linked={...record,ledgerKey:key,matchedBy:record.matchedBy||'用户确认关联',linkedAt:new Date().toISOString()};
  ports.saveRecords(ports.getRecords().map(r=>r.hash===record.hash?linked:r));return linked;
 }
+export function uniqueSupplementMatch(doc, ledger) {
+ const candidates=supplementInvoiceCandidates(doc,ledger);
+ const strong=candidates.filter(candidate=>candidate.strong);
+ return strong.length===1 && !candidates.some(candidate=>candidate.conflict) ? strong[0] : null;
+}
 export async function reconcileInvoiceSupplements(ports) {
  let linked=0,failed=0;
  for(const record of [...ports.getRecords()].filter(r=>!r.ledgerKey)){
-  const candidates=supplementInvoiceCandidates(record,ports.getLedger()),strong=candidates.filter(c=>c.strong);
-  if(strong.length!==1||candidates.some(c=>c.conflict))continue;
-  try{await linkInvoiceSupplement({...record,matchedBy:strong[0].hint},strong[0].entry.key,ports);linked++;}catch{failed++;}
+  const ledger=ports.getLedger();
+  const match=uniqueSupplementMatch(record,ports.getMatchLedger?.() || ledger);
+  if(!match || !ledger[match.entry.key])continue;
+  try{await linkInvoiceSupplement({...record,matchedBy:match.hint},match.entry.key,ports);linked++;}catch{failed++;}
  }
  return {linked,failed,pending:ports.getRecords().filter(r=>!r.ledgerKey).length};
 }
-export async function saveInvoiceSupplement(doc,ports) {
+export async function saveInvoiceSupplement(doc,ports,{reconcile=true}={}) {
  if(!doc.file)throw new Error('缺少附件原件');
  if(!supplementType(doc.fields))throw new Error('请确认附件类型');
  const hash=await ports.hashFile(doc.file);let record=ports.getRecords().find(r=>r.hash===hash);
@@ -75,6 +84,7 @@ export async function saveInvoiceSupplement(doc,ports) {
  }else if(!record.ledgerKey){
   record={...record,fields:{...record.fields,...doc.fields},rawText:doc.rawText||record.rawText};ports.saveRecords(ports.getRecords().map(r=>r.hash===hash?record:r));
  }
- await reconcileInvoiceSupplements(ports);record=ports.getRecords().find(r=>r.hash===hash);
+ if(reconcile) await reconcileInvoiceSupplements(ports);
+ record=ports.getRecords().find(r=>r.hash===hash);
  return {record,candidates:supplementInvoiceCandidates(record,ports.getLedger())};
 }

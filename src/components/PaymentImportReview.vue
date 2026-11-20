@@ -11,6 +11,7 @@ import { paymentRange } from '../lib/payment-transactions.js';
 const props=defineProps({existingRows:Array,period:String,saving:Boolean});
 const emit=defineEmits(['commit','evidence','error']);
 const {queue,records,evidence,recognitionIssues,busy,loaded,progress,selections,excluded,confirmed,manualTarget,reviewed,importable,plan,selectedFor,reset:clearBatch,prepare,commit}=usePaymentBatch(props,emit);
+defineExpose({prepare});
 const editing=ref(''),batchStatus=ref('沿用清单');
 const issues=computed(()=>reviewed.value.filter(i=>!i.canImport));
 function reset(){clearBatch();editing.value='';batchStatus.value='沿用清单';}

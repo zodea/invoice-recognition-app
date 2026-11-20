@@ -4,11 +4,16 @@ import { invoiceActions, invoiceStore } from "../invoiceStore.js";
 import { partitionFiles, SUPPORTED_HINT } from "../lib/upload";
 import { toastWarn } from "../lib/toast";
 
+const emit = defineEmits(['payment-batch']);
 const input = ref(null);
 const folderInput = ref(null);
 
 async function intake(files) {
   if (invoiceStore.busy) { toastWarn("正在识别发票，请等待本批完成后再导入。"); return; }
+  if (Array.from(files).some(file => /\.xlsx?$/i.test(file.name) && !file.name.startsWith('~$'))) {
+    emit('payment-batch', Array.from(files));
+    return;
+  }
   const { supported, ignored } = partitionFiles(files);
   if (supported.length) {
     await invoiceActions.addFiles(supported);
@@ -29,9 +34,9 @@ function onPick(e) {
 
 <template>
   <div class="invoice-upload-actions">
-    <input ref="input" type="file" multiple accept=".pdf,image/*" hidden @change="onPick" />
+    <input ref="input" type="file" multiple accept=".pdf,image/*,.xlsx,.xls" hidden @change="onPick" />
     <input ref="folderInput" type="file" webkitdirectory multiple hidden @change="onPick" />
-    <button type="button" class="btn-primary" :disabled="invoiceStore.busy" @click="input.click()">＋ 导入发票</button>
+    <button type="button" class="btn-primary" :disabled="invoiceStore.busy" @click="input.click()">＋ 导入发票 / 付款凭证</button>
     <button type="button" class="btn" :disabled="invoiceStore.busy" @click="folderInput.click()">选择文件夹</button>
   </div>
 </template>

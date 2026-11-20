@@ -1,4 +1,8 @@
 <script setup>
+import { computed } from 'vue';
+import { supplementType } from '../lib/invoice-supplements.js';
+import { allocationKind } from '../lib/payment-records.js';
+import { isMultiProject, projectNames } from '../lib/invoice-allocation.js';
 import SupplierMatch from './SupplierMatch.vue';
 import { CheckboxIndicator, CheckboxRoot } from "reka-ui";
 import { invoiceStore, invoiceActions, selectInvoice, groupPath } from "../invoiceStore.js";
@@ -9,9 +13,20 @@ import SearchSelect from './SearchSelect.vue';
 import { directory } from '../lib/expense-directory.js';
 import MiddleEllipsis from "./MiddleEllipsis.vue";
 
-defineProps({ item: Object, reimbursementSelected: Boolean });
+const props = defineProps({ item: Object, reimbursementSelected: Boolean });
 const emit = defineEmits(["select-reimbursement"]);
 
+const previous = computed(() => props.item.inv.history?.entry);
+const assignment = computed(() => props.item.inv.assignmentDraft || previous.value || props.item.inv.fields);
+const allocations = computed(() => [...new Set(['指定工地','公司开支','加油','个人报账','待确认',...directory.allocations,allocationKind(assignment.value)])]);
+const projects = computed(() => [...new Set([...directory.projects,assignment.value.project].filter(Boolean))]);
+function setAssignment(key,value) {
+  const inv=props.item.inv;
+  const project=key==='project'?value:assignment.value.project||'';
+  const allocation=key==='allocation'?value:(value?'指定工地':(allocationKind(assignment.value)==='指定工地'?'待确认':allocationKind(assignment.value)));
+  inv.assignmentDraft={project,allocation};
+  invoiceActions.markDraftEdited(inv);
+}
 function syncDate(inv) {
   inv.fields.dateText = inv.fields.date;
 }
@@ -92,6 +107,13 @@ const tagBase = "chip flex-none px-1.75 py-0.5 border";
       <label class="field-label">开票日期<input class="field-input" v-model="item.inv.fields.date" placeholder="2026-03-09" @input="syncDate(item.inv)" /></label>
       <label class="field-label col-span-2">销售方<input class="field-input" v-model="item.inv.fields.seller" /><SupplierMatch v-model="item.inv.fields.seller" /></label>
       <label class="field-label col-span-2">购买方<SearchSelect v-model="item.inv.fields.buyer" :options="directory.buyers" label="购买方" placeholder="选择已添加的购买方公司" /></label>
+      <template v-if="!supplementType(item.inv.fields) && !item.inv.linkedLedgerKey && !item.inv.paymentId">
+        <p v-if="isMultiProject(previous)" class="col-span-full">已按多工地分配：{{ projectNames(previous) }}。可在历史台账调整分摊。</p>
+        <template v-else>
+          <label class="field-label col-span-2">使用工地<select class="field-input" :value="assignment.project || ''" @change="setAssignment('project',$event.target.value)"><option value="">未指定工地</option><option v-for="p in projects" :key="p">{{ p }}</option></select></label>
+          <label class="field-label col-span-2">费用归属<select class="field-input" :value="allocationKind(assignment)" @change="setAssignment('allocation',$event.target.value)"><option v-for="kind in allocations" :key="kind">{{ kind }}</option></select></label>
+        </template>
+      </template>
       <label class="field-label">金额<input class="field-input" v-model="item.inv.fields.amount" inputmode="decimal" /></label>
       <label class="field-label">税额<input class="field-input" v-model="item.inv.fields.tax" inputmode="decimal" /></label>
       <label class="field-label">价税合计<input class="field-input" v-model="item.inv.fields.total" inputmode="decimal" /></label>
@@ -103,8 +125,8 @@ const tagBase = "chip flex-none px-1.75 py-0.5 border";
   </article>
 </template>
 <style scoped>
-.invoice-row-heading { display:flex; flex-wrap:wrap; align-items:start; gap:8px; }
-.invoice-row-heading>div:first-child { flex:1 1 15rem; min-width:0; }
+.invoice-row-heading { display:grid; grid-template-columns:minmax(0,1fr); align-content:start; gap:8px; }
+.invoice-row-heading>div:first-child { min-width:0; }
 .invoice-field-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
 .invoice-field-grid label,.invoice-field-grid input,.invoice-field-grid select { min-width:0; max-width:100%; }
 @container (max-width:580px) { .invoice-field-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }

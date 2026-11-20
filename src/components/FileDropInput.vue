@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue';
-import { collectDropEntries } from '../lib/upload.js';
+import { filesFromDrop } from '../lib/upload.js';
 import { toastWarn } from '../lib/toast.js';
 
 const props = defineProps({
@@ -36,13 +36,7 @@ async function drop(event) {
   if (props.disabled || reading.value) return;
   reading.value = true;
   try {
-    const entries = await collectDropEntries(event.dataTransfer);
-    const files = entries.map(({ file, relPath }) => {
-      if (relPath.includes('/') && !file.webkitRelativePath)
-        Object.defineProperty(file, 'webkitRelativePath', { value: relPath, configurable: true });
-      return file;
-    });
-    submit(files);
+    submit(await filesFromDrop(event.dataTransfer));
   } catch (error) { toastWarn('读取拖入的文件失败：' + error.message); }
   finally { reading.value = false; }
 }

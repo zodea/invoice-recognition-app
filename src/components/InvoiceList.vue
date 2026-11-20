@@ -13,10 +13,10 @@ function setIncluded(inv, checked) {
 </script>
 
 <template>
-  <aside class="work-panel invoice-list" aria-label="发票列表">
-    <div class="panel-heading"><div><h2>发票列表 <span>（{{ items.length }}）</span></h2><p>勾选用于打印和导出</p></div></div>
+  <aside class="work-panel invoice-list" aria-label="票据列表">
+    <div class="panel-heading"><div><h2>票据列表 <span>（{{ items.length }}）</span></h2><p>勾选用于打印和导出</p></div></div>
     <div class="invoice-list-actions"><button type="button" @click="emit('select-all')">全选</button><button type="button" @click="emit('invert')">反选</button><button type="button" @click="emit('select-none')">全不选</button></div>
-    <div v-if="!items.length" class="work-empty">没有符合条件的发票</div>
+    <div v-if="!items.length" class="work-empty">没有符合条件的票据</div>
     <div v-for="item in items" :key="item.inv.id" class="invoice-list-row" :class="{ selected: activeId === item.inv.id }" :data-inv-list="item.inv.id">
       <input type="checkbox" :checked="item.inv.include" :aria-label="`选择 ${item.inv.name} 用于打印`" @change="setIncluded(item.inv, $event.target.checked)" />
       <button class="invoice-list-select" type="button" :aria-pressed="activeId === item.inv.id" @click="selectInvoice(item.inv.id)">

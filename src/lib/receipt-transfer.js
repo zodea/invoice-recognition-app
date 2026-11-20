@@ -7,7 +7,7 @@ export function buildReceiptPayment(inv, hash) {
   return {
     id: 'receipt:'+hash, source: '票据识别 / '+inv.name, sourceKind: 'receipt', receiptType: f.docType || f.type || '其他票据',
     date: f.date || '', seller: f.seller || '', buyer: f.buyer || '', total: f.total === '' || f.total == null ? '' : Number(f.total),
-    payer: f.payer || '', project: f.project || '', purpose: f.service || f.category || '', note: f.remark || '',
+    payer: f.payer || '', allocation: inv.assignmentDraft?.allocation ?? f.allocation ?? '', project: inv.assignmentDraft?.project ?? f.project ?? '', purpose: f.service || f.category || '', note: f.remark || '',
     tags: [...new Set(['其他票据', inv.otherReceiptTag || '', inv.expenseTag || ''].filter(Boolean))].join('、'),
     receiptFields: { ...f }, receiptNumber: f.number || '', lines: [], reimbursement: '未核对',
     evidenceHash: hash, evidenceName: inv.name, evidenceConfirmed: false, linkedLedgerKey: '',
