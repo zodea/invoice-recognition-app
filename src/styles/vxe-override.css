@@ -1,0 +1,10 @@
+.app-shell {
+  --vxe-ui-font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  --vxe-ui-font-size-default: 13px;
+  --vxe-ui-font-color: #1f2329;
+  --vxe-ui-font-primary-color: #1867c0;
+  --vxe-ui-table-border-color: #e3e6ea;
+  --vxe-ui-table-header-background-color: #f9fafb;
+  --vxe-ui-table-row-height-default: 36px;
+  --vxe-ui-table-row-current-background-color: #e7f1fb;
+}

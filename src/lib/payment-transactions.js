@@ -7,6 +7,16 @@ export function paymentRange(value) {
   return { start, end, label: parts.length === 2 ? (parts[0] || '未知')+'至'+(parts[1] || '未知') :
     value ? value+'（起止未明确）' : '日期范围未知' };
 }
+export function coveredTruncatedTransactions(transactions, corroborating) {
+  const covered = new Set();
+  for (const [index, item] of transactions.entries()) {
+    if (item.complete !== false || item.orderId || item.transactionId || !item.date || !item.sourceGroup || item.total === '' || item.total == null) continue;
+    const matches = corroborating.filter(candidate => candidate.complete && candidate.date === item.date && Math.round(Number(candidate.total) * 100) === Math.round(Number(item.total) * 100) && (!item.seller || item.seller === candidate.seller) && item.sourceGroup === candidate.sourceGroup);
+    const ids = new Set(matches.map(candidate => candidate.transactionId || candidate.orderId).filter(Boolean));
+    if (ids.size === 1) covered.add(index);
+  }
+  return covered;
+}
 export function reconcileEvidenceTransactions(items, expected, dateRange = '') {
   const { start, end } = paymentRange(dateRange);
   const observations = items.map(item => ({item, t:item.fields || item}));

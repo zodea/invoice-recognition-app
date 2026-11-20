@@ -1,4 +1,5 @@
 import { standaloneDocumentType } from './document-kind.js';
+import { supplementType } from './invoice-supplements.js';
 function normText(v) {
   return String(v || "")
     .normalize("NFKC")
@@ -78,6 +79,7 @@ export function markInvoiceDuplicates(invoices) {
   for (const inv of invoices) {
     inv.duplicateOfId = "";
     inv.duplicateReason = "";
+    if (supplementType(inv.fields)) continue;
 
     const original = originals.find((x) => isDuplicateInvoice(inv, x));
     if (original) {

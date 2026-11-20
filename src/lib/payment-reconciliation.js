@@ -1,4 +1,5 @@
 import { paymentRange } from './payment-transactions.js';
+import { paymentAmountDifference, paymentSellerMatch } from './paymentFileMatcher.js';
 
 const normalize = v => String(v ?? '').normalize('NFKC').replace(/\s+/g,'');
 const hasAmount = v => v !== '' && v != null && Number.isFinite(Number(v));
@@ -11,7 +12,8 @@ export function paymentEvidenceCandidates(record, files) {
   for (const file of files) {
     const fields = file.fields || {};
     if (fields.direction==='income' || ['failed','pending'].includes(fields.paymentStatus)) continue;
-    const sameSeller = !!normalize(record.seller) && normalize(fields.seller)===normalize(record.seller);
+    const sellerMatch = paymentSellerMatch(record.seller, fields.seller);
+    const sameSeller = !!sellerMatch;
     const sameDate = !!record.date && fields.date===record.date;
     const sameTotal = fields.kind!=='order' && sameAmount(record.total,fields.total);
     const content = normalize((file.pages || []).map(p=>p.text).join(' '));
@@ -26,10 +28,15 @@ export function paymentEvidenceCandidates(record, files) {
         return (t.date && (range.start || range.end)) || (record.seller && normalize(t.seller)===normalize(record.seller)) || clues.length;
       })) continue;
     } else {
-      if ((record.date && fields.date && !sameDate) || (fields.kind!=='order' && hasAmount(fields.total) && hasAmount(record.total) && !sameTotal)) continue;
+      if (record.date && fields.date && !sameDate) continue;
+      if (fields.kind !== 'order' && hasAmount(fields.total) && hasAmount(record.total) && !sameTotal) {
+        const difference = paymentAmountDifference(record.total, fields.total);
+        if (sameDate && (sameSeller || clues.length) && Math.abs(difference) <= 10) candidates.push({ file, sameSeller, score: 0, hint: `同日差额候选：${difference > 0 ? '+' : '−'}${Math.abs(difference).toFixed(2)} 元，需手动核对` });
+        continue;
+      }
       if (!(sameDate && sameTotal) && !(sameSeller && (sameTotal || sameDate || clues.length)) && !(clues.length && (sameTotal || sameDate))) continue;
     }
-    const reasons=[sameDate && '日期',sameTotal && '金额',sameSeller && '收款方',clues.length && '用途、项目或备注'].filter(Boolean);
+    const reasons=[sameDate && '日期',sameTotal && '金额',sameSeller && (sellerMatch === 'alias' ? '收款方别名' : '收款方'),clues.length && '用途、项目或备注'].filter(Boolean);
     const hint = reasons.length ? reasons.join('、')+'相符' : '符合阶段范围，请核对逐笔交易';
     candidates.push({file,sameSeller,score:reasons.length,hint});
     if (fields.orderId && sameSeller && sameTotal && sameDate && fields.kind==='payment') linkedOrders.add(fields.orderId);

@@ -23,13 +23,14 @@ import { parseInvoice, isProbablyInvoiceText } from "./lib/invoice-parse";
 import { applyParsedInvoiceFields } from "./lib/invoice-fields";
 import { applyInvoiceFilenameFallback } from "./lib/invoice-filename";
 import { confirmedDuplicateInvoices, markInvoiceDuplicates } from "./lib/invoice-dedupe";
+import { identifyIntakeFile, intakeFile, supplementFolder } from './lib/fileIntake.js';
 import { invoiceFolderParts } from "./lib/invoice-export-package";
 import { ledgerKey, loadLedger, saveLedger, recordInvoices, markVerified, parseVerifiedNumbers, historyStatus, importInputInvoiceWorkbookBytes, markPrintedInvoices, shouldDefaultExcludeByHistory, missingReimbursementFields } from "./lib/invoice-ledger";
 import { importExpenseWorkbook } from "./lib/expense-import";
 import { markReimbursedBatch, updateCurrentReimbursements } from "./lib/invoice-ledger";
 import { inferExpenseTag } from "./lib/invoice-tags";
 import { syncLedgerMatches } from "./lib/ledger-matching.js";
-import {uniqueSupplementMatch,supplementType,readInvoiceSupplements,writeInvoiceSupplements,saveInvoiceSupplement,reconcileInvoiceSupplements,linkInvoiceSupplement} from './lib/invoice-supplements.js';
+import {uniqueSupplementMatch,supplementType,readInvoiceSupplements,writeInvoiceSupplements,saveInvoiceSupplement,reconcileInvoiceSupplements,linkInvoiceSupplement,unlinkInvoiceSupplement} from './lib/invoice-supplements.js';
 import {applyAssignmentReview,persistAssignmentImport} from './lib/expense-assignment-import.js';
 
 let seq = 0;
@@ -172,7 +173,7 @@ function supplementPorts() {
  return {getMatchLedger:supplementMatchLedger,getLedger:()=>invoiceStore.ledger,saveLedger:next=>{saveLedger(next);invoiceStore.ledger=next;},getRecords:()=>invoiceStore.supplements,saveRecords:next=>{writeInvoiceSupplements(next);invoiceStore.supplements=next;},saveOriginal:saveLedgerAttachment,getOriginal:async key=>(await getLedgerAttachment(key))?.blob,append:appendInvoiceSupplement,hashFile:fileHash};
 }
 function refreshSupplementLinks(){
-  const links=new Map(invoiceStore.supplements.filter(r=>r.ledgerKey).map(r=>[r.hash,r.ledgerKey]));
+  const links=new Map(invoiceStore.supplements.map(r=>[r.hash,r.ledgerKey]));
   for(const inv of invoiceStore.invoices) if(links.has(inv.supplementHash)) inv.linkedLedgerKey=links.get(inv.supplementHash);
   if(paymentStore.rows.some(r=>r.supplementOnly && links.has(r.evidenceHash) && r.linkedLedgerKey!==links.get(r.evidenceHash)))
     savePayments(paymentStore.rows.map(r=>r.supplementOnly && links.has(r.evidenceHash)?{...r,linkedLedgerKey:links.get(r.evidenceHash)}:r));
@@ -308,6 +309,8 @@ export const invoiceActions = {
         id: uid("inv"),
         name: file.name,
         blob: file,
+        sourcePath: intakeFile(file).relativePath,
+        sha256Short: '',
         kind: /\.pdf$/i.test(file.name) ? "pdf" : "image",
         pages: [],
         recognitionRegions: [],
@@ -334,6 +337,7 @@ export const invoiceActions = {
         historyAutoExcluded: false,
       });
       invoiceStore.invoices.push(inv);
+      identifyIntakeFile(file).then(record => { inv.sha256Short = record.sha256Short; }).catch(() => {});
       if (!invoiceStore.selectedId) invoiceStore.selectedId = inv.id;
       renderFileToPages(file)
         .then(async (r) => {
@@ -544,6 +548,10 @@ export const invoiceActions = {
         if (inv.fields.docType === "医疗票据") inv.systemNote = inv.systemNote || "医疗票据 OCR 识别，请重点核对";
       }
       applyFilenameFallback(inv);
+      if (supplementFolder(intakeFile(inv.blob).parentFolder)) {
+        inv.fields.attachmentType ||= /行程单/.test(intakeFile(inv.blob).parentFolder) ? '行程单' : '行程及费用明细';
+        inv.include = false;
+      }
       inv.status = "done";
       // 自动分类只更新本批草稿，不借助标签写入台账。
       if (!inv.expenseTagSet) inv.expenseTag = inferExpenseTag(inv);
@@ -623,6 +631,14 @@ export const invoiceActions = {
   },
   async retrySupplementMatches(){if(invoiceStore.savingIntake)throw new Error('正在保存，请稍候');invoiceStore.savingIntake=true;try{const result=await reconcileInvoiceSupplements(supplementPorts());refreshSupplementLinks();invoiceStore.attachmentVersion++;return result;}finally{invoiceStore.savingIntake=false;}},
   async confirmSupplementLink(hash,key){if(invoiceStore.savingIntake)throw new Error('正在保存，请稍候');const record=invoiceStore.supplements.find(r=>r.hash===hash);if(!record)throw new Error('附件未保存');invoiceStore.savingIntake=true;try{await linkInvoiceSupplement(record,key,supplementPorts());refreshSupplementLinks();invoiceStore.attachmentVersion++;}finally{invoiceStore.savingIntake=false;}},
+  unlinkSupplement(hash) {
+    if (invoiceStore.savingIntake) throw new Error('正在保存，请稍候');
+    const record = invoiceStore.supplements.find(item => item.hash === hash);
+    if (!record?.ledgerKey) return;
+    unlinkInvoiceSupplement(record, supplementPorts());
+    refreshSupplementLinks();
+    invoiceStore.attachmentVersion++;
+  },
   async saveRecognizedInvoices(invoices = invoiceStore.invoices) {
     if (invoiceStore.savingIntake) throw new Error('正在保存，请稍候');
     invoiceStore.savingIntake = true;

@@ -79,6 +79,7 @@ export function parseInvoice(rawText) {
     text = text.replace(new RegExp(label.split('').join('[ \\t]*'), 'g'), label);
   }
   text = text.replace(/([（(])[ \t]*(小写|大写)[ \t]*([）)])/g, '$1$2$3');
+  const compactText = text.replace(/\s+/g, '');
   const f = { code: "", number: "", date: "", dateText: "", buyer: "", seller: "", amount: "", tax: "", total: "", rate: "", type: "", taxKind: "", docType: "", remark: "", service: "", category: "" };
 
   // 单据大类（发票 / 行程单 / 货物运输凭证 / 未识别），按原始文本判定一次
@@ -102,7 +103,9 @@ export function parseInvoice(rawText) {
   // 发票号码（数电 20 位；旧版 8 位）
   const num = text.match(/发\s*票\s*号\s*码[:：]?\s*([0-9]{8,25})/) ||
     text.match(/票\s*据\s*号\s*码[:：]?\s*([0-9]{8,25})/);
-  if (num) f.number = num[1];
+  const compactNumber = compactText.match(/发票号码[:：]?(\d{20})(?!\d)/);
+  if (compactNumber && f.docType !== '医疗票据') f.number = compactNumber[1];
+  else if (num) f.number = num[1];
   // 医疗票据 OCR 常将“票据”误读为“桑据/垂据/栗据/承接”。仅在医疗票据标题下容错。
   if (!f.number && f.docType === "医疗票据") {
     const receipt = text.match(/(?:^|\n)\s*(?:[桑垂栗景]据|承接)\s*号\s*码\s*[:：]\s*([0-9]{8,12})(?![0-9])/);
@@ -134,8 +137,8 @@ export function parseInvoice(rawText) {
     if (receiptDate) f.date = validDate(receiptDate[1], receiptDate[2], receiptDate[3]);
     if (f.date) f.dateText = f.date;
   }
-  const d = text.match(/开票日期[:：]?\s*([0-9]{4})\s*年\s*([0-9]{1,2})\s*月\s*([0-9]{1,2})\s*日/) ||
-    text.match(/([0-9]{4})\s*年\s*([0-9]{1,2})\s*月\s*([0-9]{1,2})\s*日/);
+  const d = text.match(/开票日期[:：]?\s*([0-9]{4})\s*年\s*([0-9]{1,2})\s*月\s*([0-9]{1,2})\s*[日号]/) ||
+    text.match(/([0-9]{4})\s*年\s*([0-9]{1,2})\s*月\s*([0-9]{1,2})\s*[日号]/);
   if (!f.date && d) {
     f.date = validDate(d[1], d[2], d[3]);
     if (f.date) f.dateText = f.date;

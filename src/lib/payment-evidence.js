@@ -57,7 +57,8 @@ export function parsePaymentEvidence(rawText) {
   const failed = /支付失败|交易失败|已关闭|已取消|退款成功|已退款/.test(text);
   const pending = /待支付|未支付|待付款/.test(text);
   const paymentStatus = failed ? 'failed' : pending ? 'pending' : success ? 'success' : 'unknown';
-  return { date: uniqueDates.length === 1 ? uniqueDates[0] : '', seller: income ? '' : seller, total: kind === 'payment' && totals.length === 1 ? totals[0] : '', direction: income ? 'income' : 'expense', counterparty, kind, paymentStatus, transactionId, orderId };
+  const message = text.match(/(?:付款留言|转账说明|付款说明|收款留言)[:：]?[^\S\r\n]*(?:\r?\n[^\S\r\n]*)?([^\r\n]+)/)?.[1]?.trim() || '';
+  return { date: uniqueDates.length === 1 ? uniqueDates[0] : '', seller: income ? '' : seller, total: kind === 'payment' && totals.length === 1 ? totals[0] : '', direction: income ? 'income' : 'expense', counterparty, kind, paymentStatus, transactionId, orderId, ...(message ? { message } : {}) };
 }
 
 // Recognize repeated utility-payment cards as separate, reviewable observations.

@@ -1,4 +1,5 @@
 <script setup>
+import UiDisclosure from './UiDisclosure.vue';
 import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
 import { getLedgerAttachment } from '../lib/ledger-attachments.js';
@@ -70,10 +71,10 @@ watch([output, page], async ([bytes, number], _, onCleanup) => {
         <button class="btn" :disabled="page >= pages" @click="page++">下一页</button>
         <button class="btn-primary" :disabled="!output || !image" @click="openForPrint(output)">打印 {{ files ? files.length - skipped.length : 0 }} 张发票</button>
       </div>
-      <details v-if="missing.length || skipped.length" class="ledger-print-warning"><summary>有 {{ missing.length + skipped.length }} 张未排入打印，查看原因</summary>
+      <UiDisclosure v-if="missing.length || skipped.length" class="ledger-print-warning"><template #label>有 {{ missing.length + skipped.length }} 张未排入打印，查看原因</template>
         <p v-if="missing.length">缺少可读取的发票原件（可在详情中补传）：{{ missing.join('、') }}</p>
         <p v-if="skipped.length">无法排版的文件：{{ skipped.join('、') }}</p>
-      </details>
+      </UiDisclosure>
       <div class="ledger-print-paper" aria-live="polite"><img v-if="image" :src="image" :alt="'打印排版第 '+page+' 页'" />
         <p v-else>{{ notice || (loading || output ? '正在生成打印预览…' : '所选发票均无可打印的原件。') }}</p></div>
     </DialogContent>

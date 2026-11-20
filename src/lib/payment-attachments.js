@@ -42,5 +42,5 @@ export async function linkPaymentFile(record, candidate, kind) {
   if (!found) await appendInvoiceSupplement(key,file,metadata);
   const payment=activePaymentAttachments(record,items).find(item=>item.kind==='付款凭证') || (!found && kind==='付款凭证' ? metadata : null);
   return {evidenceName:items[0].name,evidenceKind:items[0].kind,evidenceOriginalHash:items[0].hash||await fileHash(items[0].blob),
-    evidenceHash:payment ? payment.hash || await fileHash(payment.blob) : '',evidenceConfirmed:false};
+    evidenceCount:items.length+Number(!found),evidenceHash:payment ? payment.hash || await fileHash(payment.blob) : '',evidenceConfirmed:false};
 }

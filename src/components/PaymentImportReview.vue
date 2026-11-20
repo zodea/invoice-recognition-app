@@ -1,4 +1,5 @@
 <script setup>
+import UiDisclosure from './UiDisclosure.vue';
 import FileDropInput from './FileDropInput.vue';
 import { computed, ref } from 'vue';
 import AppIcon from './AppIcon.vue';
@@ -45,7 +46,7 @@ function addLine(r){r.lines.push({purpose:'',unit:'',quantity:'',unitPrice:'',li
     <button v-if="loaded" type="button" class="text-action" :disabled="busy||saving" @click="reset">清空本次预览</button><p v-if="progress" class="field-hint" role="status">{{ progress }}</p><template v-if="loaded">
       <PaymentRecognitionQueue v-if="queue.length" :queue="queue"/>
       <label v-if="evidence.length&&existingRows.length" class="existing-target">补充到已有付款<select v-model="manualTarget"><option value="">选择需要人工分配的记录</option><option v-for="r in existingRows.filter(r=>!r.linkedLedgerKey&&!r.duplicateOf&&!r.supplementOnly)" :key="r.id" :value="r.id">{{ r.date }} · {{ r.seller }} · {{ r.total }} 元 · {{ r.source }}</option></select></label>
-      <details v-if="recognitionIssues.length"><summary>{{ recognitionIssues.length }} 条凭证识别提示</summary><div v-for="(issue, i) in recognitionIssues" :key="i">{{ issue }}</div></details>
+      <UiDisclosure v-if="recognitionIssues.length"><template #label>{{ recognitionIssues.length }} 条凭证识别提示</template><div v-for="(issue, i) in recognitionIssues" :key="i">{{ issue }}</div></UiDisclosure>
       <div class="finance-filterbar"><span class="status-pill success">本次保存 {{ importable.length }}</span><span class="status-pill warning">待处理 {{ issues.length }}</span><span class="table-count">{{ evidence.length }} 份凭证 · {{ records.length }} 笔清单款项</span></div>
       <div class="finance-table-wrap">
         <table class="finance-table"><thead><tr><th>导入</th><th>核对结果</th><th>类型 / 日期范围</th><th>付款日期</th><th>付款名称</th><th>收款名称</th><th>实付合计</th><th>材料或费用</th><th>使用项目</th><th>凭证候选</th><th>问题说明</th><th>原始来源</th></tr></thead>
@@ -62,7 +63,7 @@ function addLine(r){r.lines.push({purpose:'',unit:'',quantity:'',unitPrice:'',li
               <label>项目<input v-model="records[index].project" @input="invalidate(item.record.id)" /></label>
               <label>备注<input v-model="records[index].note" @input="invalidate(item.record.id)" /></label>
             </div><div v-for="(line, lineIndex) in records[index].lines" :key="lineIndex" class="review-line"><input v-model="line.purpose" aria-label="明细名称" placeholder="名称" @input="updatePurpose(records[index])" /><input v-model="line.quantity" aria-label="数量" placeholder="数量" @input="invalidate(item.record.id)" /><input v-model="line.unit" aria-label="单位" placeholder="单位" @input="invalidate(item.record.id)" /><input v-model="line.unitPrice" aria-label="单价" placeholder="单价" @input="invalidate(item.record.id)" /><input v-model="line.lineAmount" aria-label="明细金额" placeholder="明细金额" @input="updateLines(records[index])" /><button class="btn" @click="removeLine(records[index], lineIndex)">删除明细</button></div><button class="btn" @click="addLine(records[index])">添加明细</button>
-              <details v-if="item.record.rawRows"><summary>查看 Excel 原始行</summary><pre>{{ JSON.stringify(item.record.rawRows, null, 2) }}</pre></details>
+              <UiDisclosure v-if="item.record.rawRows"><template #label>查看 Excel 原始行</template><pre>{{ JSON.stringify(item.record.rawRows, null, 2) }}</pre></UiDisclosure>
               <label v-if="item.status === '需人工核对' || item.status === '疑似重复' || item.status === '已人工核对' || (item.status === '信息不完整' && item.record.recordType === '阶段汇总' && !item.record.seller)" class="inline-check"><input type="checkbox" :checked="confirmed.includes(item.record.id)" @change="toggleConfirmed(item.record.id, $event.target.checked)" />我已对照原始行及可能重复的记录，确认分组和金额；若存在疑似重复，确认这是一笔不同的交易，同意导入。</label>
               <p v-if="item.status === '需人工核对'" class="field-hint">若实际属于多笔付款，请先在 Excel 调整后重新导入，不要确认成一笔。</p>
             </div></td></tr>
@@ -84,5 +85,5 @@ function addLine(r){r.lines.push({purpose:'',unit:'',quantity:'',unitPrice:'',li
 .review-line { display: flex; flex-wrap: wrap; gap: .4rem; margin: .6rem 0; }
 .review-line input { width: 8rem; }
 .review-editor pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-.existing-target{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px 20px}.existing-target select{max-width:100%}.payment-import-review .finance-table-wrap{max-height:52vh}.payment-import-review .finance-table td{white-space:normal;overflow-wrap:anywhere}.payment-import-review .finance-table td:nth-child(8){min-width:12rem}.payment-import-review>details,.payment-import-review>.text-action,.payment-import-review>p{margin-inline:20px}
+.existing-target{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px 20px}.existing-target select{max-width:100%}.payment-import-review .finance-table-wrap{max-height:52vh}.payment-import-review .finance-table td{white-space:normal;overflow-wrap:anywhere}.payment-import-review .finance-table td:nth-child(8){min-width:12rem}.payment-import-review>.ui-disclosure,.payment-import-review>.text-action,.payment-import-review>p{margin-inline:20px}
 </style>

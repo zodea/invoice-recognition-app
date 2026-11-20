@@ -3,6 +3,7 @@ import * as legacy from './legacy-ledger-attachments.js';
 import { isTauri, invokeTauri } from './platform.js';
 import { bytesToBase64 } from './file-utils.js';
 import { beginFileWrite, flushLocalData } from './local-data.js';
+import { readInvoiceSupplements, visibleInvoiceSupplements } from './invoice-supplements.js';
 
 export async function encodeFile(file) {
   return { name: file.name || '原件', type: file.type || '', lastModified: file.lastModified || 0, dataBase64: bytesToBase64(await file.arrayBuffer()) };
@@ -18,14 +19,21 @@ export async function encodeAttachment(record) {
   return next;
 }
 export async function getLedgerAttachment(key) {
-  if (!isTauri()) return legacy.getLedgerAttachment(key);
-  const record = await invokeTauri('local_data_get_attachment', { key });
+  const desktop = isTauri();
+  const record = desktop ? await invokeTauri('local_data_get_attachment', { key }) : await legacy.getLedgerAttachment(key);
   if (!record) return undefined;
-  if (record.blob) record.blob = decodeFile(record.blob);
-  if (record.supplements) record.supplements = record.supplements.map(item => ({ ...item, blob: decodeFile(item.blob) }));
+  if (desktop && record.blob) record.blob = decodeFile(record.blob);
+  if (record.supplements?.length) {
+    record.supplements = visibleInvoiceSupplements(record.supplements, key, readInvoiceSupplements());
+    if (desktop) record.supplements = record.supplements.map(item => ({ ...item, blob: decodeFile(item.blob) }));
+  }
   return record;
 }
-export const listLedgerAttachmentMetadata = () => isTauri() ? invokeTauri('local_data_list_attachments') : legacy.listLedgerAttachmentMetadata();
+export async function listLedgerAttachmentMetadata() {
+  const records = readInvoiceSupplements();
+  const rows = await (isTauri() ? invokeTauri('local_data_list_attachments') : legacy.listLedgerAttachmentMetadata());
+  return rows.map(row => ({ ...row, supplements: visibleInvoiceSupplements(row.supplements || [], row.key, records) }));
+}
 export const listLedgerAttachmentKeys = async () => (await listLedgerAttachmentMetadata()).filter(item => item.hasOriginal).map(item => item.key);
 async function put(key, file, mode, metadata = {}) {
   if (!key || !file) throw new Error('缺少原件标识或文件');

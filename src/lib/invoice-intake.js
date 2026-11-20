@@ -3,6 +3,7 @@ import { standaloneDocumentType } from './document-kind.js';
 import { invoiceProblems } from './invoice-review.js';
 import { historyStatus, ledgerKey } from './invoice-ledger.js';
 import {supplementType} from './invoice-supplements.js';
+import {isMultiProject, projectAllocationState} from './invoice-allocation.js';
 
 export function receiptType(fields = {}) {
   return standaloneDocumentType(fields) || ([fields.docType, fields.type].find(value => ['货物运输凭证', '收款凭证', '其他票据'].includes(value)) || '');
@@ -19,6 +20,10 @@ export function intakeDecision(inv, buyers, ledger = {}) {
   if (supplementType(inv.fields)) return {state:'supplement',label:'发票附件',reason:'保存原件并自动匹配主发票，附件不另计费；没有主票时先保留等待。'};
   if (inv.assignmentDraft?.allocation === '指定工地' && !inv.assignmentDraft.project)
     return { state:'review',label:'请选择工地',reason:'费用归属为指定工地，请在识别详情选择工地。' };
+  if (isMultiProject(inv.assignmentDraft)) {
+    const { errors } = projectAllocationState({ ...inv.assignmentDraft, total: inv.fields.total });
+    if (errors.length) return { state:'review',label:'工地分摊待核对',reason:errors.join('；') };
+  }
   if (inv.otherReceiptConfirmed || receiptType(inv.fields)) return { state: 'receipt', label: '其他票据', reason: '保存到付款凭证，不进入历史进项台账。' };
   const match = createBuyerChecker(buyers)(inv.fields);
   if (match !== 'matched') return { state: 'review', label: '需要核对', reason: buyerCheckLabels[match]+'，请核对购买方或标记为其他票据。' };
@@ -42,7 +47,7 @@ export function planRecognizedInvoice(ledger, inv, buyers) {
   // 保存识别结果不表示已经打印、抵税或报销；已有人工/官方字段优先。
   const entry = previous ? { ...base, ...Object.fromEntries(Object.entries(previous).filter(([,value]) => value !== '' && value != null)) } : base;
   if (inv.assignmentDraft) {
-    if (previous?.allocation === '多工地分配') throw Error('此票已按多工地分摊，请在历史台账核对分配。');
+    if (previous?.allocation === '多工地分配' && ('allocation' in inv.assignmentDraft || 'project' in inv.assignmentDraft)) throw Error('此票已按多工地分摊，请在历史台账核对分配。');
     Object.assign(entry, inv.assignmentDraft);
   }
   if (inv.expenseTagSet || !entry.expenseTagSet) { entry.expenseTag = inv.expenseTag || entry.expenseTag || ''; entry.expenseTagSet = !!inv.expenseTagSet; }

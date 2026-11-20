@@ -5,11 +5,11 @@ import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRo
 import SearchSelect from './SearchSelect.vue';
 import { directory } from '../lib/expense-directory.js';
 import { invoiceActions } from '../invoiceStore.js';
-import { isMultiProject, moneyCents, projectAllocationState } from '../lib/invoice-allocation.js';
+import { isMultiProject, moneyCents, projectAllocationState, withProjectAllocation } from '../lib/invoice-allocation.js';
 import { toast } from '../lib/toast.js';
 
-const props = defineProps({ entry: { type: Object, required: true } });
-const emit = defineEmits(['close']);
+const props = defineProps({ entry: { type: Object, required: true }, draft: Boolean });
+const emit = defineEmits(['close', 'apply']);
 const mode = shallowRef('single');
 const project = shallowRef('');
 const rows = ref([]);
@@ -35,7 +35,14 @@ function percentage(row) {
 function save() {
   try {
     if (snapshot(props.entry) !== original.value) { message.value = '发票金额或分配已发生变化，请关闭后重新打开核对。'; return; }
-    const result = invoiceActions.saveProjectAllocation(props.entry.key, { mode: mode.value, project: project.value, rows: rows.value });
+    const selection = { mode: mode.value, project: project.value, rows: rows.value };
+    if (props.draft) {
+      const { allocation, project, projectAllocations } = withProjectAllocation(props.entry, selection);
+      emit('apply', { allocation, project, projectAllocations });
+      emit('close');
+      return;
+    }
+    const result = invoiceActions.saveProjectAllocation(props.entry.key, selection);
     if (!result.ok) { message.value = result.message; return; }
     toast(mode.value === 'multi' && !state.value.complete ? '已保存，剩余金额待分配' : '工地分配已保存');
     emit('close');

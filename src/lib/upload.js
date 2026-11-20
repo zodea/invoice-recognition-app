@@ -1,3 +1,5 @@
+import { intakeFile, isSystemFile } from './fileIntake.js';
+
 // 上传相关：可识别类型判断、拖拽（含文件夹递归）取文件、拖拽时的禁用判断。issue #3
 export const SUPPORTED_RE = /\.(pdf|png|jpe?g|bmp|webp|gif|tiff?)$/i;
 export const SUPPORTED_HINT = "可识别：PDF、图片（PNG / JPG / JPEG / BMP / WEBP / GIF / TIFF）。也可以直接拖入文件夹。";
@@ -13,7 +15,7 @@ export function dragHasSupported(dataTransfer) {
   const items = dataTransfer && dataTransfer.items ? Array.from(dataTransfer.items) : [];
   if (!items.length) return true; // 信息不足时不禁用，避免误拦
   return items.some(
-    (it) => it.kind === "file" && (it.type === "" || it.type === "application/pdf" || it.type.startsWith("image/"))
+    (it) => it.kind === "file" && (it.type === "" || it.type === "application/pdf" || it.type.startsWith("image/") || /(?:spreadsheetml|ms-excel)/.test(it.type))
   );
 }
 
@@ -36,7 +38,7 @@ async function walkEntry(entry, out) {
     await new Promise((res) =>
       entry.file((f) => {
         // entry.fullPath 形如 "/根文件夹/子/文件.pdf"，去掉首斜杠作相对路径
-        out.push({ file: f, relPath: String(entry.fullPath || f.name).replace(/^\/+/, "") });
+        if (!isSystemFile(f.name)) out.push({ file: f, relPath: intakeFile(f, entry.fullPath || f.name).relativePath });
         res();
       }, () => res())
     );
@@ -63,7 +65,7 @@ export async function collectDropEntries(dataTransfer) {
 
 // input[webkitdirectory] / 普通 input 的 FileList → [{ file, relPath }]
 export function entriesFromFileList(fileList) {
-  return Array.from(fileList || []).map((f) => ({ file: f, relPath: f.webkitRelativePath || f.name }));
+  return Array.from(fileList || []).filter(file => !isSystemFile(file.name)).map(file => ({ file, relPath: intakeFile(file).relativePath }));
 }
 
 // 这批文件里是否带文件夹层级（决定走整理树还是直接入列表）

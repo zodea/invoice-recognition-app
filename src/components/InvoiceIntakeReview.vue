@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import { invoiceActions, invoiceStore } from '../invoiceStore.js';
 import { receiptType } from '../lib/invoice-intake.js';
-import { TooltipProvider, TooltipRoot, TooltipTrigger, TooltipPortal, TooltipContent, PopoverRoot, PopoverTrigger, PopoverPortal, PopoverContent } from 'reka-ui';
+import { PopoverRoot, PopoverTrigger, PopoverPortal, PopoverContent } from 'reka-ui';
 import { toast, toastError, toastWarn } from '../lib/toast.js';
 import ConfirmAction from './ConfirmAction.vue';
 import InvoiceSupplementLink from './InvoiceSupplementLink.vue';
@@ -38,15 +38,8 @@ function recheckInvoice() {
     <button v-if="decision.state==='ready'" type="button" class="btn-primary" :disabled="invoiceStore.savingIntake" @click="saveInvoice">确认保存</button>
     <button v-if="decision.state==='receipt' && !invoice.paymentMatchNote" class="btn-primary" :disabled="invoiceStore.savingIntake" @click="transfer">保存付款凭证</button>
     <button v-if="decision.state==='receipt' && invoice.blob" class="btn" @click="emit('match-payment',[invoice.blob])">核对付款清单</button>
-    <span v-if="decision.state==='receipt' && invoice.paymentMatchNote" role="status">{{ invoice.paymentMatchNote }}</span>
     <button v-if="decision.state==='payment-saved'" class="btn" @click="emit('open-payment',invoice.paymentId)">查看付款记录</button>
     <InvoiceSupplementLink v-if="supplementType(invoice.fields)" :invoice="invoice" :fields="invoice.fields" :file="invoice.blob" />
-    <TooltipProvider :delay-duration="150">
-      <TooltipRoot>
-        <TooltipTrigger class="intake-tag" :class="{ issue: decision.state==='review', finished }" :aria-label="decision.state==='review' ? '问题：'+decision.reason : decision.label+'：'+decision.reason">{{ decision.state==='review' ? '问题' : decision.label }}</TooltipTrigger>
-        <TooltipPortal><TooltipContent class="intake-tooltip" side="bottom" align="end" :side-offset="7">{{ decision.reason }}</TooltipContent></TooltipPortal>
-      </TooltipRoot>
-    </TooltipProvider>
     <PopoverRoot v-if="!finished">
       <PopoverTrigger class="intake-more" aria-label="更多票据处理操作">更多 ▾</PopoverTrigger>
       <PopoverPortal><PopoverContent class="intake-menu" side="bottom" align="end" :side-offset="7">

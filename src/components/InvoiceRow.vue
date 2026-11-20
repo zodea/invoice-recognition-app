@@ -1,133 +1,102 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui';
 import { supplementType } from '../lib/invoice-supplements.js';
 import { allocationKind } from '../lib/payment-records.js';
 import { isMultiProject, projectNames } from '../lib/invoice-allocation.js';
-import SupplierMatch from './SupplierMatch.vue';
-import { CheckboxIndicator, CheckboxRoot } from "reka-ui";
-import { invoiceStore, invoiceActions, selectInvoice, groupPath } from "../invoiceStore.js";
-import { invoiceExportFileName } from "../lib/invoice-export-package";
-import { EXPENSE_TAGS, inferExpenseTag } from "../lib/invoice-tags";
-import { toastWarn } from "../lib/toast";
-import SearchSelect from './SearchSelect.vue';
+import { invoiceStore, invoiceActions } from '../invoiceStore.js';
 import { directory } from '../lib/expense-directory.js';
-import MiddleEllipsis from "./MiddleEllipsis.vue";
+import { EXPENSE_TAGS, inferExpenseTag } from '../lib/invoice-tags.js';
+import { invoiceTypes, recentInvoiceProjects } from '../lib/invoice-workspace-fields.js';
+import { toastWarn } from '../lib/toast.js';
+import InvoiceMoneyField from './InvoiceMoneyField.vue';
+import InvoiceProjectAllocationDialog from './InvoiceProjectAllocationDialog.vue';
+import SearchSelect from './SearchSelect.vue';
+import SupplierMatch from './SupplierMatch.vue';
 
-const props = defineProps({ item: Object, reimbursementSelected: Boolean });
-const emit = defineEmits(["select-reimbursement"]);
+const props = defineProps({ item: { type: Object, required: true }, reimbursementSelected: Boolean });
+const emit = defineEmits(['select-reimbursement']);
+const invoice = computed(() => props.item.inv);
+const fields = computed(() => invoice.value.fields);
+const previous = computed(() => invoice.value.history?.entry);
+const assignment = computed(() => ({ ...(previous.value || fields.value), ...invoice.value.assignmentDraft }));
+const allocationOpen = ref(false);
+const allocationEntry = computed(() => previous.value || { ...fields.value, ...assignment.value, total: fields.value.total, key: invoice.value.id });
+const allocations = computed(() => [...new Set(['指定工地', '公司开支', '加油', '个人报账', '待确认', ...directory.allocations, allocationKind(assignment.value)])]);
+const projects = computed(() => [...new Set([...directory.projects, assignment.value.project].filter(Boolean))]);
+const recent = computed(() => recentInvoiceProjects(Object.values(invoiceStore.ledger), directory.projects));
+const kinds = computed(() => [...new Set([...invoiceTypes, fields.value.type].filter(Boolean))]);
+const extraFields = [['payer', '付款人'], ['reimburser', '报销人'], ['paymentDate', '支付日期'], ['assignmentNote', '归属备注']];
+const filledCount = computed(() => extraFields.filter(([key]) => String(assignment.value[key] || '').trim()).length + Number(!!fields.value.remark?.trim()));
+const expenseTag = computed(() => invoice.value.expenseTagSet ? invoice.value.expenseTag : previous.value?.expenseTagSet ? previous.value.expenseTag : (invoice.value.expenseTag || previous.value?.expenseTag || inferExpenseTag(invoice.value)));
 
-const previous = computed(() => props.item.inv.history?.entry);
-const assignment = computed(() => props.item.inv.assignmentDraft || previous.value || props.item.inv.fields);
-const allocations = computed(() => [...new Set(['指定工地','公司开支','加油','个人报账','待确认',...directory.allocations,allocationKind(assignment.value)])]);
-const projects = computed(() => [...new Set([...directory.projects,assignment.value.project].filter(Boolean))]);
-function setAssignment(key,value) {
-  const inv=props.item.inv;
-  const project=key==='project'?value:assignment.value.project||'';
-  const allocation=key==='allocation'?value:(value?'指定工地':(allocationKind(assignment.value)==='指定工地'?'待确认':allocationKind(assignment.value)));
-  inv.assignmentDraft={project,allocation};
-  invoiceActions.markDraftEdited(inv);
+function markEdited() { invoiceActions.markDraftEdited(invoice.value); }
+function applyAllocation(draft) {
+  invoice.value.assignmentDraft = { ...invoice.value.assignmentDraft, ...draft };
+  markEdited();
 }
-function syncDate(inv) {
-  inv.fields.dateText = inv.fields.date;
+function setAssignment(key, value) {
+  const draft = { ...invoice.value.assignmentDraft, [key]: value };
+  if (key === 'project') draft.allocation = value ? '指定工地' : '待确认';
+  if (key === 'allocation' && value !== '指定工地') draft.project = '';
+  invoice.value.assignmentDraft = draft;
+  markEdited();
 }
-function setIncluded(inv, checked) {
-  if (checked && inv.history?.entry?.reimbursement === "已报销" && !window.confirm(`这张发票已报销${inv.history.entry.reimbursementDate ? '（' + inv.history.entry.reimbursementDate + '）' : ''}，可能重复报销。仍要加入打印和汇总吗？`)) return;
-  inv.include = checked;
-  inv.includeTouched = true;
+function changeType(value) {
+  fields.value.type = value;
+  if (invoiceTypes.includes(value)) {
+    fields.value.taxKind = /专用/.test(value) ? '专用发票' : /普通/.test(value) ? '普通发票' : '';
+    fields.value.docType = value === '医疗收费电子票据' ? '医疗票据' : value === '其他票据' ? '未识别' : '增值税发票';
+  }
+  markEdited();
 }
-function changeTag(inv, event) {
+function changeTag(event) {
   try {
-    const result = invoiceActions.setInvoiceExpenseTag(inv, event.target.value);
-    if (!result.ok) { toastWarn(result.message); event.target.value = inv.history?.entry?.expenseTag || inferExpenseTag(inv); }
-  } catch (err) { toastWarn(`标签保存失败：${err.message || err}`); }
+    const result = invoiceActions.setInvoiceExpenseTag(invoice.value, event.target.value);
+    if (!result.ok) { toastWarn(result.message); event.target.value = expenseTag.value; }
+  } catch (error) { toastWarn(`标签保存失败：${error.message || error}`); }
 }
-const tagBase = "chip flex-none px-1.75 py-0.5 border";
 </script>
 
 <template>
-  <article
-    class="bg-white border rounded-lg p-2.5 shadow-card"
-    :class="[
-      invoiceStore.selectedId === item.inv.id ? 'border-brand shadow-[0_0_0_2px_rgba(37,99,235,0.18)]' : 'border-line',
-      !item.inv.include ? 'opacity-58' : '',
-      item.needsReview && invoiceStore.selectedId !== item.inv.id ? '!border-[#fed7aa]' : '',
-    ]"
-    :data-inv="item.inv.id"
-    @click="selectInvoice(item.inv.id)"
-  >
-    <div class="invoice-row-heading">
-      <div class="min-w-0 flex-1">
-        <div class="min-w-0 flex items-center gap-1.75">
-          <span class="flex-none min-w-6.5 h-6.5 inline-flex items-center justify-center rounded-full bg-ink text-white font-800 text-xs">{{ item.seq }}</span>
-          <label class="inline-flex items-center gap-1 text-xs flex-none" @click.stop><input type="checkbox" :checked="reimbursementSelected" :aria-label="`选择 ${item.inv.name} 用于报销操作`" @change="emit('select-reimbursement', item.inv.id, $event.target.checked)" />报销选择</label>
-          <MiddleEllipsis class="min-w-0 font-700" :text="item.inv.name" />
-          <span v-if="item.inv.duplicateReason" :class="tagBase" class="text-[#991b1b] bg-[#fef2f2] border-[#fecaca]">重复</span>
-          <span v-if="item.inv.history?.entry?.reimbursement === '已报销'" :class="tagBase" class="text-[#991b1b] bg-[#fef2f2] border-[#fecaca]">已报销{{ item.inv.history.entry.reimbursementDate ? ' · ' + item.inv.history.entry.reimbursementDate : ' · 日期未知' }}</span>
-          <span v-else-if="item.inv.history?.printed" :class="tagBase" class="text-[#166534] bg-[#f0fdf4] border-[#bbf7d0]">历史已打印</span>
-          <span v-else-if="item.inv.history?.verified" :class="tagBase" class="text-[#166534] bg-[#f0fdf4] border-[#bbf7d0]">历史已抵税</span>
-          <span v-else-if="item.inv.history?.entry" :class="tagBase" class="text-brand bg-brand-soft border-line">匹配台账</span>
-          <span v-else-if="item.inv.history?.needsReview" :class="tagBase" class="text-[#b45309] bg-[#fff7ed] border-[#fed7aa]">台账待核对</span>
-          <span v-else-if="item.needsReview" :class="tagBase" class="text-[#b45309] bg-[#fff7ed] border-[#fed7aa]">待复核</span>
-        </div>
-        <div class="mt-0.75 ml-8.25 text-brand text-[11px]">
-          整理后：<MiddleEllipsis :text="invoiceExportFileName(item.inv)" />
-        </div>
-        <div v-if="groupPath(item.inv).length" class="mt-0.5 ml-8.25 text-ink-soft text-[11px] truncate">📁 {{ groupPath(item.inv).join(" / ") }}</div>
+  <article class="review-workspace grid gap-3" :data-inv="invoice.id" @input="markEdited">
+    <section class="ui-section grid gap-2" aria-label="票面核心信息">
+      <div class="flex items-center justify-between gap-2"><h3 class="font-semibold">票面核心信息</h3><button class="ui-btn-danger h-7" type="button" @click="invoiceActions.removeInvoice(invoice.id)">移除</button></div>
+      <div class="grid grid-cols-2 gap-2">
+        <label class="ui-label col-span-2">发票号码<input v-model="fields.number" class="ui-input ui-money" /></label>
+        <label class="ui-label">开票日期<input v-model="fields.date" class="ui-input" placeholder="YYYY-MM-DD" @input="fields.dateText = $event.target.value" /></label>
+        <label class="ui-label col-span-2">销售方<input v-model="fields.seller" class="ui-input" /><SupplierMatch v-model="fields.seller" @update:model-value="markEdited" /></label>
+        <label class="ui-label col-span-2">购买方<SearchSelect v-model="fields.buyer" :options="directory.buyers" label="购买方" placeholder="搜索档案或输入新抬头" allow-custom @update:model-value="markEdited" /></label>
+        <label class="ui-label col-span-2">票种<select :value="fields.type" class="ui-input" @change="changeType($event.target.value)"><option value="">待识别</option><option v-for="kind in kinds" :key="kind">{{ kind }}</option></select></label>
+        <InvoiceMoneyField v-model="fields.amount" label="不含税金额" />
+        <InvoiceMoneyField v-model="fields.tax" label="税额" />
+        <InvoiceMoneyField v-model="fields.total" label="价税合计" />
+        <label class="ui-label">税率<input v-model="fields.rate" class="ui-input" placeholder="如 13%" /></label>
       </div>
-      <div class="flex items-center justify-end gap-1.5 flex-wrap">
-        <label class="inline-flex items-center gap-1 text-ink-soft text-xs cursor-pointer" @click.stop>
-          <CheckboxRoot
-            :model-value="item.inv.include"
-            @update:model-value="setIncluded(item.inv, $event)"
-            class="w-4 h-4 rounded border border-line-strong bg-white grid place-items-center data-[state=checked]:bg-brand data-[state=checked]:border-brand"
-          >
-            <CheckboxIndicator class="text-white text-[11px] leading-none">✓</CheckboxIndicator>
-          </CheckboxRoot>
-          打印/汇总
-        </label>
-        <button class="btn-danger px-2 py-1 text-xs" @click.stop="invoiceActions.removeInvoice(item.inv.id)">移除</button>
-      </div>
-    </div>
-
-    <div class="my-2 flex gap-2.5 flex-wrap text-ink-soft text-xs">
-      <span v-if="item.inv.rendering">读取中…</span>
-      <span v-else-if="item.inv.status === 'done'" class="text-ok">已识别</span>
-      <span v-else-if="item.inv.status === 'error'" class="text-danger">{{ item.inv.error }}</span>
-      <span v-else>未识别</span>
-      <span v-if="item.inv.systemNote" class="text-[#b45309]">{{ item.inv.systemNote }}</span>
-      <span v-if="item.inv.duplicateReason" class="text-[#b45309]">{{ item.inv.duplicateReason }}</span>
-      <span v-if="item.inv.history?.usedBefore" class="text-[#b45309]">
-        {{ item.inv.history.entry?.reimbursement === '已报销' ? '已报销，请勿重复报销' : '历史台账已记录，' + (item.inv.history.printed ? '已打印' : item.inv.history.verified ? '已抵税' : '有使用记录') }}
-      </span>
-      <span v-if="item.inv.historyAutoExcluded" class="text-[#b45309]">已按历史记录默认取消勾选，可手动勾选</span>
-    </div>
-
-    <div class="invoice-field-grid" @input="invoiceActions.markDraftEdited(item.inv)" @change="invoiceActions.markDraftEdited(item.inv)">
-      <label class="field-label">发票号码<input class="field-input" v-model="item.inv.fields.number" /></label>
-      <label class="field-label">开票日期<input class="field-input" v-model="item.inv.fields.date" placeholder="2026-03-09" @input="syncDate(item.inv)" /></label>
-      <label class="field-label col-span-2">销售方<input class="field-input" v-model="item.inv.fields.seller" /><SupplierMatch v-model="item.inv.fields.seller" /></label>
-      <label class="field-label col-span-2">购买方<SearchSelect v-model="item.inv.fields.buyer" :options="directory.buyers" label="购买方" placeholder="选择已添加的购买方公司" /></label>
-      <template v-if="!supplementType(item.inv.fields) && !item.inv.linkedLedgerKey && !item.inv.paymentId">
-        <p v-if="isMultiProject(previous)" class="col-span-full">已按多工地分配：{{ projectNames(previous) }}。可在历史台账调整分摊。</p>
-        <template v-else>
-          <label class="field-label col-span-2">使用工地<select class="field-input" :value="assignment.project || ''" @change="setAssignment('project',$event.target.value)"><option value="">未指定工地</option><option v-for="p in projects" :key="p">{{ p }}</option></select></label>
-          <label class="field-label col-span-2">费用归属<select class="field-input" :value="allocationKind(assignment)" @change="setAssignment('allocation',$event.target.value)"><option v-for="kind in allocations" :key="kind">{{ kind }}</option></select></label>
-        </template>
+    </section>
+    <section v-if="!supplementType(fields) && !invoice.linkedLedgerKey && !invoice.paymentId" class="ui-section grid gap-2" aria-label="费用归属">
+      <div class="flex items-center justify-between gap-2"><h3 class="font-semibold">费用归属</h3><button type="button" class="ui-btn-sm" @click="allocationOpen = true">工地分摊</button></div>
+      <p v-if="isMultiProject(assignment)" class="text-xs text-ink-secondary">多工地分摊：{{ projectNames(assignment) || '待分配' }}</p>
+      <template v-else>
+        <label class="ui-label">归属类型<select :value="allocationKind(assignment)" class="ui-input" @change="setAssignment('allocation', $event.target.value)"><option v-for="kind in allocations" :key="kind">{{ kind }}</option></select></label>
+        <label class="ui-label">使用工地<SearchSelect :model-value="assignment.project || ''" :options="projects" label="使用工地" @update:model-value="setAssignment('project', $event)" /></label>
+        <div v-if="recent.length" class="flex flex-wrap items-center gap-1.5"><span class="text-xs text-ink-soft">近期常用</span><button v-for="project in recent" :key="project" class="ui-btn-sm" :aria-pressed="assignment.project === project" @click="setAssignment('project', project)">{{ project }}</button></div>
       </template>
-      <label class="field-label">金额<input class="field-input" v-model="item.inv.fields.amount" inputmode="decimal" /></label>
-      <label class="field-label">税额<input class="field-input" v-model="item.inv.fields.tax" inputmode="decimal" /></label>
-      <label class="field-label">价税合计<input class="field-input" v-model="item.inv.fields.total" inputmode="decimal" /></label>
-      <label class="field-label">税点<input class="field-input" v-model="item.inv.fields.rate" placeholder="如 13%（混票留空）" /></label>
-      <label class="field-label">类型<input class="field-input" v-model="item.inv.fields.type" placeholder="未识别（留空）" /></label>
-      <label class="field-label">费用标签<select class="field-input" :value="item.inv.expenseTagSet ? item.inv.expenseTag : item.inv.history?.entry?.expenseTagSet ? item.inv.history.entry.expenseTag : (item.inv.expenseTag || item.inv.history?.entry?.expenseTag || inferExpenseTag(item.inv))" @change.stop="changeTag(item.inv, $event)"><option value="">未分类</option><option v-for="tag in EXPENSE_TAGS" :key="tag" :value="tag">{{ tag }}</option></select></label>
-      <label class="field-label col-span-full">票面备注<input class="field-input" v-model="item.inv.fields.remark" placeholder="发票备注栏内容" /></label>
-    </div>
+      <label class="ui-label">费用标签<select :value="expenseTag" class="ui-input" @change.stop="changeTag"><option value="">未分类</option><option v-for="tag in EXPENSE_TAGS" :key="tag">{{ tag }}</option></select></label>
+      <InvoiceProjectAllocationDialog v-if="allocationOpen" :entry="allocationEntry" :draft="!previous" @apply="applyAllocation" @close="allocationOpen = false" />
+    </section>
+    <CollapsibleRoot class="ui-section" :class="filledCount ? 'filled-section' : 'border-dashed'">
+      <CollapsibleTrigger class="ui-focus flex w-full items-center justify-between gap-2 text-left font-semibold">经手、付款与备注 <span :class="filledCount ? 'ui-badge-brand' : 'ui-badge-neutral'">{{ filledCount ? `已填 ${filledCount} 项` : '未填写' }} ▾</span></CollapsibleTrigger>
+      <CollapsibleContent class="mt-3 grid grid-cols-2 gap-2">
+        <label v-for="[key, label] in extraFields" :key="key" class="ui-label">{{ label }}<input :type="key === 'paymentDate' ? 'date' : 'text'" :value="assignment[key] || ''" class="ui-input" @change="setAssignment(key, $event.target.value)" /></label>
+        <label class="ui-label col-span-2">票面备注<textarea v-model="fields.remark" class="ui-textarea" /></label>
+      </CollapsibleContent>
+    </CollapsibleRoot>
+    <label class="flex items-center gap-2 text-xs text-ink-secondary"><input type="checkbox" :checked="reimbursementSelected" @input.stop @change="emit('select-reimbursement', invoice.id, $event.target.checked)" /> 加入批量报销操作</label>
   </article>
 </template>
+
 <style scoped>
-.invoice-row-heading { display:grid; grid-template-columns:minmax(0,1fr); align-content:start; gap:8px; }
-.invoice-row-heading>div:first-child { min-width:0; }
-.invoice-field-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
-.invoice-field-grid label,.invoice-field-grid input,.invoice-field-grid select { min-width:0; max-width:100%; }
-@container (max-width:580px) { .invoice-field-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+.filled-section { border-inline-start: 3px solid #1867c0; }
+.review-workspace :deep(.search-select-input input) { height: 30px; }
 </style>

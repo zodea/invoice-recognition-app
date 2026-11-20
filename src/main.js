@@ -1,7 +1,10 @@
 import { createApp } from "vue";
 import { initializeLocalData } from './lib/local-data.js';
 import { isTauri, invokeTauri } from './lib/platform.js';
+import "@unocss/reset/tailwind.css";
 import "virtual:uno.css";
+import "./styles/base-reset.css";
+import "./styles/vxe-override.css";
 import "./styles.css";
 import "./expense-ui.css";
 // Load store singletons only after migration/the disk snapshot is ready.

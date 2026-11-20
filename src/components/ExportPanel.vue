@@ -3,7 +3,10 @@ import { ref, computed } from "vue";
 import { store } from "../store";
 import { exportToDirectory, exportByDownload, fsAccessSupported } from "../lib/export";
 import { toast, toastError, toastInfo } from "../lib/toast";
+import ConfirmAction from "./ConfirmAction.vue";
+import { useConfirmation } from "../composables/useConfirmation.js";
 
+const { confirmation, requestConfirmation, answerConfirmation } = useConfirmation();
 const busy = ref(false);
 const logs = ref([]);
 const done = ref(false);
@@ -27,7 +30,7 @@ async function doExport() {
     return;
   }
   if (stats.value.noCompany > 0) {
-    if (!window.confirm(`有 ${stats.value.noCompany} 个文件未填公司名，会归到“未命名公司”。仍要导出吗？`)) return;
+    if (!await requestConfirmation('导出未填写公司名的文件', `有 ${stats.value.noCompany} 个文件未填公司名，会归到“未命名公司”。`, '仍要导出')) return;
   }
   busy.value = true;
   done.value = false;
@@ -55,6 +58,7 @@ async function doExport() {
 
 <template>
   <div class="panel p-3.5">
+    <ConfirmAction :request="confirmation" @answer="answerConfirmation" />
     <div class="flex gap-4 flex-wrap text-ink-soft mb-2.5">
       <div><b class="text-ink text-base">{{ stats.partitions }}</b> 个分区</div>
       <div><b class="text-ink text-base">{{ stats.files }}</b> 个文件</div>

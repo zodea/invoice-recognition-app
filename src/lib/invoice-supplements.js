@@ -55,8 +55,21 @@ export async function linkInvoiceSupplement(record,key,ports) {
  await ports.append(key,file,{hash:record.hash,type:supplementType(record.fields)||'附属明细',date:record.fields.date||'',total:record.fields.total});
  const current=ports.getLedger();if(!current[key])throw new Error('主票已被删除，附件仍保留待匹配');
  ports.saveLedger({...current,[key]:{...current[key],supplementHashes:[...new Set([...(current[key].supplementHashes||[]),record.hash])]}});
- const linked={...record,ledgerKey:key,matchedBy:record.matchedBy||'用户确认关联',linkedAt:new Date().toISOString()};
+ const linked={...record,ledgerKey:key,manualUnlinked:false,matchedBy:record.matchedBy||'用户确认关联',linkedAt:new Date().toISOString()};
  ports.saveRecords(ports.getRecords().map(r=>r.hash===record.hash?linked:r));return linked;
+}
+export function unlinkInvoiceSupplement(record, ports) {
+ const key = record.ledgerKey;
+ if (!key) return;
+ const ledger = ports.getLedger(), entry = ledger[key];
+ const next = { ...record, ledgerKey: '', matchedBy: '', linkedAt: '', manualUnlinked: true, previousLedgerKeys: [...new Set([...(record.previousLedgerKeys || []), key])] };
+ if (entry) ports.saveLedger({ ...ledger, [key]: { ...entry, supplementHashes: (entry.supplementHashes || []).filter(hash => hash !== record.hash) } });
+ try { ports.saveRecords(ports.getRecords().map(item => item.hash === record.hash ? next : item)); }
+ catch (error) { if (entry) ports.saveLedger(ledger); throw error; }
+}
+export function visibleInvoiceSupplements(supplements, ledgerKey, records) {
+ const hidden = new Set(records.filter(record => record.ledgerKey !== ledgerKey && record.previousLedgerKeys?.includes(ledgerKey)).map(record => record.hash));
+ return supplements.filter(supplement => !hidden.has(supplement.hash));
 }
 export function uniqueSupplementMatch(doc, ledger) {
  const candidates=supplementInvoiceCandidates(doc,ledger);
@@ -65,7 +78,7 @@ export function uniqueSupplementMatch(doc, ledger) {
 }
 export async function reconcileInvoiceSupplements(ports) {
  let linked=0,failed=0;
- for(const record of [...ports.getRecords()].filter(r=>!r.ledgerKey)){
+ for(const record of [...ports.getRecords()].filter(r=>!r.ledgerKey&&!r.manualUnlinked)){
   const ledger=ports.getLedger();
   const match=uniqueSupplementMatch(record,ports.getMatchLedger?.() || ledger);
   if(!match || !ledger[match.entry.key])continue;
@@ -80,7 +93,7 @@ export async function saveInvoiceSupplement(doc,ports,{reconcile=true}={}) {
  if(!record){
   await ports.saveOriginal('supplement:'+hash,doc.file);
   record=ports.getRecords().find(r=>r.hash===hash);
-  if(!record){record={hash,name:doc.name||doc.file.name||'票据附件',fields:{...doc.fields},rawText:doc.rawText||'',ledgerKey:'',savedAt:new Date().toISOString()};ports.saveRecords([...ports.getRecords(),record]);}
+  if(!record){record={hash,name:doc.name||doc.file.name||'票据附件',relativePath:doc.file.webkitRelativePath||doc.file.name,fields:{...doc.fields},rawText:doc.rawText||'',ledgerKey:'',savedAt:new Date().toISOString()};ports.saveRecords([...ports.getRecords(),record]);}
  }else if(!record.ledgerKey){
   record={...record,fields:{...record.fields,...doc.fields},rawText:doc.rawText||record.rawText};ports.saveRecords(ports.getRecords().map(r=>r.hash===hash?record:r));
  }

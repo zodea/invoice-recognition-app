@@ -53,7 +53,7 @@ const tabCls = "app-nav-item";
       </div>
     </header>
 
-    <main class="app-main" :class="{ 'ledger-main': view === 'ledger' }">
+    <main class="app-main" :class="{ 'ledger-main': view === 'ledger', 'invoice-main': view === 'invoice' }">
       <!-- 保留本批票据及付款核对草稿，切页时隐藏工作区。 -->
       <TabsContent value="invoice" force-mount v-show="view==='invoice'" class="outline-none">
         <InvoiceView :active="view==='invoice'" />
@@ -78,6 +78,7 @@ const tabCls = "app-nav-item";
 </template>
 
 <style scoped>
+.invoice-main { padding:12px; }
 .app-shell.ledger-app { height:100dvh; min-height:0; grid-template-rows:minmax(0,1fr); align-items:stretch; overflow:hidden; }
 .ledger-main { display:flex; flex-direction:column; min-height:0; overflow:auto; box-sizing:border-box; }
 .ledger-main > .ledger-tab[data-state="active"] { flex:1 0 0; min-height:320px; display:flex; flex-direction:column; }

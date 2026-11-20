@@ -8,7 +8,9 @@ import RecognitionOverlay from './RecognitionOverlay.vue';
 import PreviewMinimap from './PreviewMinimap.vue';
 import { centerPreviewAt, previewCenter } from '../lib/preview-navigation.js';
 
-const props = defineProps({ invoice: { type: Object, default: null } });
+const props = defineProps({ invoice: { type: Object, default: null }, status: Object, empty: Boolean });
+const emit = defineEmits(['adopt-paper-total']);
+const statusTone = computed(() => props.status?.tone === 'danger' ? 'border-danger-line bg-danger-soft text-danger' : 'border-warn-line bg-warn-soft text-warn');
 const page = ref(0);
 const zoom = ref(1);
 const showRegions = ref(false);
@@ -34,17 +36,23 @@ watch([() => props.invoice?.id, page, () => props.invoice?.rotation], async () =
   viewport.value?.scrollTo({ left: 0, top: 0 });
 });
 function changeZoom(delta) { zoom.value = Math.max(1, Math.min(4, Math.round((zoom.value + delta) * 100) / 100)); }
+async function resetZoom() { zoom.value = 1; await nextTick(); viewport.value?.scrollTo({ top: 0, left: 0 }); }
 function onWheel(event) { if (event.ctrlKey || event.metaKey) { event.preventDefault(); changeZoom(event.deltaY < 0 ? .25 : -.25); } }
 onBeforeUnmount(pan.cancel);
 </script>
 
 <template>
-  <section class="work-panel invoice-document">
-    <div class="panel-heading preview-title"><div><h2>发票预览</h2><p v-if="invoice"><MiddleEllipsis :text="invoice.name" /></p></div>
+  <section class="work-panel invoice-document flex flex-col">
+    <div class="ui-section-header preview-title bg-surface"><div><h2 class="text-sm font-semibold">原件预览</h2><p v-if="invoice" class="text-xs text-ink-soft"><MiddleEllipsis :text="invoice.name" /></p></div>
       <div class="preview-controls" v-if="invoice">
-        <button type="button" aria-label="缩小" title="缩小" @click="changeZoom(-.25)">−</button><span>{{ Math.round(zoom * 100) }}%</span><button type="button" aria-label="放大" title="放大" @click="changeZoom(.25)">＋</button>
-        <button type="button" @click="zoom = 1">适应窗口</button>
+        <button type="button" aria-label="缩小" title="缩小" @click="changeZoom(-.25)">−</button><button type="button" title="复位缩放及位置" @click="resetZoom">{{ Math.round(zoom * 100) }}%</button><button type="button" aria-label="放大" title="放大" @click="changeZoom(.25)">＋</button>
       </div>
+    </div>
+    <div v-if="status?.reason" class="flex items-center justify-between gap-2 border-b px-3 py-2 text-xs" :class="statusTone" role="status">
+      <span><strong>{{ status.label }}：</strong>{{ status.reason }}</span>
+      <button v-if="invoice?.status === 'error'" type="button" class="ui-btn-sm" :disabled="invoiceStore.busy" @click="invoiceActions.recognizeOne(invoice)">重新识别</button>
+      <button v-else-if="invoice?.duplicateReason" type="button" class="ui-btn-sm" @click="invoiceActions.removeInvoice(invoice.id)">移除当前票据</button>
+      <button v-else-if="status.netDifference" type="button" class="ui-btn-sm" @click="emit('adopt-paper-total', status.reason)">采用票面价税合计</button>
     </div>
     <div v-if="invoice" class="document-actions" role="group" aria-label="预览与识别操作">
       <button class="btn" type="button" :disabled="invoice.rendering || invoiceStore.busy" @click="invoiceActions.recognizeOne(invoice)">{{ invoice.status === 'running' ? '识别中…' : '识别' }}</button>
@@ -61,7 +69,7 @@ onBeforeUnmount(pan.cancel);
         <DocumentImage :file="invoice.blob" :name="invoice.name" :src="pages[page]" :page-number="page + 1" :rotation="invoice.rotation" style="width: 100%" :alt="`发票预览：${invoice.name}，第 ${page + 1} 页`" draggable="false" @dragstart.prevent />
         <RecognitionOverlay v-if="showRegions" :fields="invoice.fields" :regions="invoice.recognitionRegions" :page="page" :rotation="invoice.rotation" />
       </div>
-      <div v-else class="work-empty">{{ invoice?.rendering || invoice?.previewStatus === 'running' || invoice?.previewStatus === 'queued' ? '正在加载票面…' : invoice ? '暂无票面预览' : '请选择发票' }}</div>
+      <div v-else class="work-empty"><strong>{{ invoice?.rendering || invoice?.previewStatus === 'running' || invoice?.previewStatus === 'queued' ? '正在加载票面…' : invoice ? '暂无票面预览' : empty ? '还没有导入票据' : '请选择发票' }}</strong><span v-if="empty">将 PDF、图片或文件夹拖入窗口，或使用上方导入按钮。</span></div>
     </div>
     <PreviewMinimap :viewport="viewport" :page="pageElement" :src="pages[page]" :enabled="zoom > 1.5" />
     </div>
@@ -71,7 +79,8 @@ onBeforeUnmount(pan.cancel);
 
 <style scoped>
 .document-page { display:grid;grid-template-columns:minmax(0,1fr); flex: none; margin: auto; }
-.document-page > *, .document-stage > * { grid-area:1 / 1;min-width:0;min-height:0 } .document-stage { display:grid;grid-template-columns:minmax(0,1fr) }
+.document-page > *, .document-stage > * { grid-area:1 / 1;min-width:0;min-height:0 } .document-stage { display:grid;grid-template-columns:minmax(0,1fr); flex:1; min-height:0; }
+.document-stage .document-canvas { min-height:0; max-height:none; }
 .document-zoom { display: flex; align-items: center; gap: 8px; padding: 6px 12px; color: #64748b; font-size: 12px; }
 .document-zoom input { flex: 1; min-width: 50px; height: 22px; padding: 0; accent-color: #2563eb; cursor: ew-resize; }
 .document-zoom output { min-width: 35px; font-variant-numeric: tabular-nums; }
