@@ -132,8 +132,8 @@ function readSheet(ws, sheet, source, epoch) {
   }
   return records;
 }
-export function readPaymentExcel(bytes) {
-  const book=XLSX.read(new Uint8Array(bytes),{type:'array',cellDates:false,bookFiles:true});
+export function readPaymentExcel(bytes, { preserveFormats = false } = {}) {
+  const book=XLSX.read(new Uint8Array(bytes),{type:'array',cellDates:false,bookFiles:true,cellNF:preserveFormats});
   restoreIsoDates(book);
   return book;
 }

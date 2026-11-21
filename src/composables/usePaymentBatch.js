@@ -1,11 +1,12 @@
-import {computed,ref,shallowRef} from 'vue';
+import {computed,ref,shallowReactive,shallowRef} from 'vue';
 import {recognizePaymentEvidenceFile} from '../lib/payment-evidence-import.js';
 import {fileHash} from '../lib/file-utils.js';
-import {reviewPaymentImport,paymentEvidenceCandidates} from '../lib/payment-reconciliation.js';
+import {reviewPaymentImport,createPaymentEvidenceMatcher} from '../lib/payment-reconciliation.js';
 import {planPaymentAttachments} from '../lib/payment-batch-matching.js';
 
 export function usePaymentBatch(props,emit){
- const records=ref([]),evidence=shallowRef([]),queue=ref([]),recognitionIssues=ref([]),busy=ref(false),loaded=ref(false),progress=ref('');
+ const records=ref([]),evidence=shallowRef([]),queue=ref([]),recognitionIssues=shallowRef([]),busy=ref(false),loaded=ref(false);
+ const progress=shallowReactive({text:''});
  const selections=ref({}),excluded=ref([]),confirmed=ref([]),manualTarget=ref('');
  const sheetReview=computed(()=>reviewPaymentImport(records.value,props.existingRows,evidence.value,props.period,{confirmed:confirmed.value,excluded:excluded.value}));
  const plan=computed(()=>{
@@ -27,11 +28,14 @@ export function usePaymentBatch(props,emit){
    const issues=proposed.length?item.issues.filter(note=>!note.startsWith('暂无匹配凭证')):item.issues;
    return {...item,issues,existing,canImport:item.canImport||existing};
   });
-  if(evidence.value.length)for(const record of props.existingRows){
-   if(ids.has(record.id)||record.linkedLedgerKey||record.supplementOnly||record.duplicateOf)continue;
-   const candidates=paymentEvidenceCandidates(record,evidence.value);
-   if(record.id!==manualTarget.value&&!selectedFor(record.id).length&&!candidates.length)continue;
-   result.push({record,status:'已有付款 · 补附件',issues:[],candidates,canImport:true,existing:true});
+  if(evidence.value.length&&props.existingRows.length){
+   const matchCandidates=createPaymentEvidenceMatcher(evidence.value);
+   for(const record of props.existingRows){
+    if(ids.has(record.id)||record.linkedLedgerKey||record.supplementOnly||record.duplicateOf)continue;
+    const candidates=matchCandidates(record);
+    if(record.id!==manualTarget.value&&!selectedFor(record.id).length&&!candidates.length)continue;
+    result.push({record,status:'已有付款 · 补附件',issues:[],candidates,canImport:true,existing:true});
+   }
   }
   return result;
  });
@@ -42,6 +46,11 @@ export function usePaymentBatch(props,emit){
  async function prepare(files){
   if(!files.length||busy.value||props.saving)return;
   busy.value=true;loaded.value=true;
+  // Individual queue entries stay live. Publish matching inputs together when the batch is ready.
+  const nextEvidence=[...evidence.value],nextIssues=[...recognitionIssues.value];
+  const indicesByHash=new Map(nextEvidence.map((item,index)=>[item.hash,index]));
+  const firstByText=new Map();
+  for(const item of nextEvidence)if(item.normalized&&!firstByText.has(item.normalized))firstByText.set(item.normalized,item);
   try{
    const pending=[],ids=new Set(records.value.map(r=>r.id));
    for(const file of files.filter(f=>/\.xlsx?$/i.test(f.name)&&!f.name.startsWith('~$'))){
@@ -50,36 +59,46 @@ export function usePaymentBatch(props,emit){
      const { readPaymentBatch } = await import('../lib/payment-records.js');
      const batch=readPaymentBatch(await file.arrayBuffer(),source);
      pending.push(...batch.embedded);
-     if(!batch.records.length)recognitionIssues.value.push(source+'：未找到付款清单表头');
+     if(!batch.records.length)nextIssues.push(source+'：未找到付款清单表头');
      for(const r of batch.records)if(!ids.has(r.id)){records.value.push(r);ids.add(r.id);}
-    }catch(error){recognitionIssues.value.push(source+'：'+error.message);}
+    }catch(error){nextIssues.push(source+'：'+error.message);}
    }
    pending.push(...files.filter(f=>/\.(pdf|png|jpe?g|webp|bmp|gif|tiff?)$/i.test(f.name)).map(file=>({file,path:file.webkitRelativePath||file.name})));
    const offset=queue.value.length;
    queue.value.push(...pending.map(p=>({...p,state:'等待读取',detail:''})));
    for(const [i,{file,path}] of pending.entries()){
-    const task=queue.value[offset+i];task.state='识别中';progress.value=(i+1)+' / '+pending.length+' · '+file.name;
+    const task=queue.value[offset+i];task.state='识别中';progress.text=(i+1)+' / '+pending.length+' · '+file.name;
     try{
-     const hash=await fileHash(file),copy=evidence.value.find(item=>item.hash===hash);
-     if(copy){
-      evidence.value=evidence.value.map(c=>c===copy?{...c,paths:[...new Set([...c.paths,path])]}:c);
+     const hash=await fileHash(file),copyIndex=indicesByHash.get(hash);
+     if(copyIndex!==undefined){
+      const copy=nextEvidence[copyIndex];
+      nextEvidence[copyIndex]={...copy,paths:[...new Set([...copy.paths,path])]};
       task.fields=copy.fields;
       task.state='重复副本';task.detail=copy.file.name;continue;
      }
      let c;
-     try{c=await recognizePaymentEvidenceFile(file,{onProgress:info=>{task.detail=info;progress.value=file.name+' · '+info;}});}
+     try{c=await recognizePaymentEvidenceFile(file,{onProgress:info=>{task.detail=info;progress.text=file.name+' · '+info;}});}
      catch(error){c={file,fields:{},warnings:['识别失败，可查看原件：'+error.message]};}
      const normalized=c.pages?.map(p=>p.text.replace(/\s/g,'')).join('\n');
-     const same=normalized&&evidence.value.find(item=>item.normalized===normalized);
-     evidence.value=[...evidence.value,{...c,paths:[path],hash,normalized,duplicateHint:same?'与 '+same.file.name+' 识别文字相同':''}];
+     const same=normalized&&firstByText.get(normalized);
+     const item={...c,paths:[path],hash,normalized,duplicateHint:same?'与 '+same.file.name+' 识别文字相同':''};
+     indicesByHash.set(hash,nextEvidence.length);
+     if(normalized&&!same)firstByText.set(normalized,item);
+     nextEvidence.push(item);
      task.fields=c.fields;
      task.state=c.fields?.date||c.fields?.seller||c.fields?.kind==='order'?'已识别':'待核对';
      task.detail=[c.fields?.date,c.fields?.seller,c.fields?.total!==''&&c.fields?.total!=null?c.fields.total+' 元':''].filter(Boolean).join(' · ')||c.warnings?.[0]||'查看原件核对';
-     for(const warning of c.warnings||[])recognitionIssues.value.push(file.name+'：'+warning);
+     for(const warning of c.warnings||[])nextIssues.push(file.name+'：'+warning);
     }catch(error){task.state='读取失败';task.detail=error.message;}
-    finally{emit('evidence',evidence.value);}
    }
-  }catch(error){emit('error',error.message);}finally{busy.value=false;progress.value='';}
+  }catch(error){emit('error',error.message);}
+  finally{
+   evidence.value=nextEvidence;
+   recognitionIssues.value=nextIssues;
+   busy.value=false;
+   progress.text='';
+   emit('evidence',nextEvidence);
+  }
  }
  function commit(batchStatus){
   if(props.saving||busy.value)return;

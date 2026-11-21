@@ -15,4 +15,15 @@ assert.equal(existing[0].reimbursement, '已报销'); assert.equal(existing[0].e
 assert.equal(reviewPaymentImport([{ ...record, id: 'other-source' }], existing)[0].status, '疑似重复');
 assert.equal(reviewPaymentImport([{ ...record, date: '' }], [])[0].canImport, false);
 assert.equal(reviewPaymentImport([record, record], [])[1].canImport, false, '同次导入也防止重复来源行');
+let textReads = 0;
+const screenshot = {
+  name: 'receipt.png',
+  fields: { date: record.date, total: record.total },
+  pages: [{ get text() { textReads++; return '项目用途：防水板'; } }],
+};
+const rows = [{ ...record, purpose: '防水板' }, { ...record, id: 'batch.xlsx|sheet|4', purpose: '螺丝' }];
+const results = reviewPaymentImport(rows, [], [screenshot]);
+assert.match(results[0].candidates[0].hint, /用途、项目或备注/);
+assert.doesNotMatch(results[1].candidates[0].hint, /用途、项目或备注/);
+assert.equal(textReads, 1, '一次清单核对应重用同一份凭证的文字');
 console.log('付款清单预览、来源冲突、跨来源重复、多笔等额候选及历史状态保留测试通过');

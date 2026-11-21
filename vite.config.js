@@ -3,12 +3,13 @@ import Components from 'unplugin-vue-components/vite';
 import RekaResolver from 'reka-ui/resolver';
 import vue from "@vitejs/plugin-vue";
 import UnoCSS from "unocss/vite";
+import { ocrPrebundlePlugin, ocrProductionPlugin } from "./scripts/lib/ocr-source-reuse.mjs";
 
 // 本地运行用。OCR 用 WebGL，导出用 File System Access API，
 // 需在 Chrome / Edge 里以 http://localhost 打开（不是 file://）。
 export default defineConfig({
   base: "./",
-  plugins: [UnoCSS(), vue(),
+  plugins: [ocrProductionPlugin(), UnoCSS(), vue(),
     Components({ dirs: ['src/components'], resolvers: [RekaResolver()], dts: 'src/components.d.ts' }),
   ],
   server: {
@@ -26,6 +27,7 @@ export default defineConfig({
   },
   optimizeDeps: {
     // 这些库体积大或含 worker，交给 Vite 预构建
-    include: ["pdfjs-dist", "pdf-lib", "xlsx"],
+    include: ["pdfjs-dist", "pdf-lib", "xlsx", "@paddlejs-models/ocr"],
+    esbuildOptions: { plugins: [ocrPrebundlePlugin()] },
   },
 });

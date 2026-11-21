@@ -5,40 +5,52 @@ const normalize = v => String(v ?? '').normalize('NFKC').replace(/\s+/g,'');
 const hasAmount = v => v !== '' && v != null && Number.isFinite(Number(v));
 const sameAmount = (a,b) => hasAmount(a) && hasAmount(b) && Math.round(Number(a)*100) === Math.round(Number(b)*100);
 
-export function paymentEvidenceCandidates(record, files) {
-  const range = paymentRange(record.dateRange);
-  const candidates = [];
-  const linkedOrders = new Set();
+export function createPaymentEvidenceMatcher(files) {
+  const evidence = [];
   for (const file of files) {
     const fields = file.fields || {};
     if (fields.direction==='income' || ['failed','pending'].includes(fields.paymentStatus)) continue;
+    evidence.push({ file, fields, content: normalize((file.pages || []).map(page=>page.text).join(' ')) });
+  }
+  return record => findCandidates(record, files, evidence);
+}
+
+export function paymentEvidenceCandidates(record, files) {
+  return createPaymentEvidenceMatcher(files)(record);
+}
+
+function findCandidates(record, files, evidence) {
+  const range = paymentRange(record.dateRange);
+  const candidates = [];
+  const linkedOrders = new Set();
+  const clues = [record.purpose, record.project, record.note, ...(record.lines || []).map(line=>line.purpose)]
+    .map(normalize).filter(clue=>clue.length>=2);
+  const stage = record.recordType==='阶段汇总';
+  for (const { file, fields, content } of evidence) {
     const sellerMatch = paymentSellerMatch(record.seller, fields.seller);
     const sameSeller = !!sellerMatch;
     const sameDate = !!record.date && fields.date===record.date;
     const sameTotal = fields.kind!=='order' && sameAmount(record.total,fields.total);
-    const content = normalize((file.pages || []).map(p=>p.text).join(' '));
-    const clues = [...new Set([record.purpose,record.project,record.note,...(record.lines||[]).map(l=>l.purpose)].map(normalize))]
-      .filter(v=>v.length>=2 && content.includes(v));
-    const stage = record.recordType==='阶段汇总';
+    const hasClue = clues.some(clue=>content.includes(clue));
     if (stage) {
       const observations = file.transactions?.length ? file.transactions.map(t=>t.fields||t) : [fields];
       if (!observations.some(t=>{
         if (t.direction==='income' || ['pending','failed'].includes(t.paymentStatus)) return false;
         if (t.date && ((range.start && t.date<range.start)||(range.end && t.date>range.end))) return false;
-        return (t.date && (range.start || range.end)) || (record.seller && normalize(t.seller)===normalize(record.seller)) || clues.length;
+        return (t.date && (range.start || range.end)) || (record.seller && normalize(t.seller)===normalize(record.seller)) || hasClue;
       })) continue;
     } else if (record.recordType==='报销批次') {
-      if (!sameTotal || !(sameSeller || sameDate || clues.length)) continue;
+      if (!sameTotal || !(sameSeller || sameDate || hasClue)) continue;
     } else {
       if (record.date && fields.date && !sameDate) continue;
       if (fields.kind !== 'order' && hasAmount(fields.total) && hasAmount(record.total) && !sameTotal) {
         const difference = paymentAmountDifference(record.total, fields.total);
-        if (sameDate && (sameSeller || clues.length) && Math.abs(difference) <= 10) candidates.push({ file, sameSeller, score: 0, hint: `同日差额候选：${difference > 0 ? '+' : '−'}${Math.abs(difference).toFixed(2)} 元，需手动核对` });
+        if (sameDate && (sameSeller || hasClue) && Math.abs(difference) <= 10) candidates.push({ file, sameSeller, score: 0, hint: `同日差额候选：${difference > 0 ? '+' : '−'}${Math.abs(difference).toFixed(2)} 元，需手动核对` });
         continue;
       }
-      if (!(sameDate && sameTotal) && !(sameSeller && (sameTotal || sameDate || clues.length)) && !(clues.length && (sameTotal || sameDate))) continue;
+      if (!(sameDate && sameTotal) && !(sameSeller && (sameTotal || sameDate || hasClue)) && !(hasClue && (sameTotal || sameDate))) continue;
     }
-    const reasons=[sameDate && '日期',sameTotal && '金额',sameSeller && (sellerMatch === 'alias' ? '收款方别名' : '收款方'),clues.length && '用途、项目或备注'].filter(Boolean);
+    const reasons=[sameDate && '日期',sameTotal && '金额',sameSeller && (sellerMatch === 'alias' ? '收款方别名' : '收款方'),hasClue && '用途、项目或备注'].filter(Boolean);
     const hint = reasons.length ? reasons.join('、')+'相符' : '符合阶段范围，请核对逐笔交易';
     candidates.push({file,sameSeller,score:reasons.length,hint});
     if (fields.orderId && sameSeller && sameTotal && sameDate && fields.kind==='payment') linkedOrders.add(fields.orderId);
@@ -60,6 +72,7 @@ function sourceRows(record) {
 export function reviewPaymentImport(records,existing,files=[],period='',{confirmed=[],excluded=[]}={}) {
   const origins=new Map(existing.flatMap(r=>sourceRows(r).map(key=>[key,r])));
   const included=[...existing];
+  const matchCandidates=createPaymentEvidenceMatcher(files);
   return records.map(record=>{
     const keys=sourceRows(record);
     const prior=keys.map(key=>origins.get(key)).find(Boolean);
@@ -85,7 +98,7 @@ export function reviewPaymentImport(records,existing,files=[],period='',{confirm
         if (canImport) status='已人工核对';
       }
     }
-    const candidates=paymentEvidenceCandidates(record,files);
+    const candidates=matchCandidates(record);
     issues.push(...warnings);
     if (!record.payer) issues.push('付款名称未知');
     if (!candidates.length && record.recordType!=='合计' && record.recordType!=='现金无凭证' && !record.cashWithoutEvidence) issues.push('暂无匹配凭证，可手动选择');

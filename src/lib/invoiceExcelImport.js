@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx/xlsx.mjs';
 import { readPaymentExcel, paymentDate } from './payment-records.js';
 import { moneyCents } from './invoice-allocation.js';
+import { restoreInvoiceExcelSource } from './invoice-excel-source.js';
 
 import { relativeLink } from './invoice-workbook-links.js';
 export { invoiceWorkbooksWithoutExportCopies, relativeLink } from './invoice-workbook-links.js';
@@ -23,7 +24,8 @@ function checkedColumns(headers) {
 }
 
 export function readInvoiceSourceWorkbook(bytes, sourcePath) {
-  const workbook = readPaymentExcel(bytes);
+  const workbook = readPaymentExcel(bytes, { preserveFormats: true });
+  restoreInvoiceExcelSource(workbook);
   const date1904 = !!workbook.Workbook?.WBProps?.date1904;
   const records = [];
   let hasCheckedColumns = false;
