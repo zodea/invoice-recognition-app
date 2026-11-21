@@ -23,7 +23,8 @@ summary::-webkit-details-marker { display: none; }
   border-radius: var(--workspace-control-radius);
   font-size: var(--workspace-control-font);
 }
-.app-shell [role="tabpanel"] .finance-table :is(th, td) {
+.app-shell [role="tabpanel"] .finance-table :is(th, td),
+.app-shell [role="tabpanel"] .ledger-workspace .ledger-table :is(th, td) {
   height: var(--workspace-table-row);
   padding-block: 7px;
   font-size: var(--workspace-control-font);
