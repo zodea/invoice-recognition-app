@@ -1,13 +1,12 @@
 import { appStorage } from './lib/app-storage.js';
 import { reactive, watch } from "vue";
-import { renderFileToPages } from "./lib/pdf";
 import { recognizePages } from "./lib/ocr";
 import { parseDoc } from "./lib/parse";
 import { buildTree, buildTreeFromStore, flattenForApply } from "./lib/delivery-tree";
 import { loadSuppliers, matchSupplierExact as matchSupplier, normalizeCompanyName } from "./lib/supplier-directory.js";
 import { vlConfigured, vlParseDocument } from "./lib/ocr-vl";
 import { parseVlToDocs } from "./lib/vl-parse";
-import { rotateImageUrl } from "./lib/pdftext";
+import { rotateImageUrl } from './lib/image-utils.js';
 import { toastWarn } from "./lib/toast";
 
 import { directory, saveDirectory, deleteArchive } from './lib/expense-directory.js';
@@ -93,7 +92,8 @@ function makeFileRecord(file, partitionId, preset = {}) {
     note: preset.special && preset.groupName ? `特殊组：${preset.groupName}` : "",
   });
   store.files.push(f);
-  renderFileToPages(file)
+  import('./lib/pdf.js')
+    .then(({ renderFileToPages }) => renderFileToPages(file))
     .then((r) => {
       f.pages = r.pages;
       f.kind = r.kind;

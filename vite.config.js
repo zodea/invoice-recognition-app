@@ -1,20 +1,34 @@
 import { defineConfig } from "vite";
-import AutoImport from 'unplugin-auto-import/vite';
-import Components from 'unplugin-vue-components/vite';
-import RekaResolver from 'reka-ui/resolver';
+import AutoImport from "unplugin-auto-import/vite";
+import Components from "unplugin-vue-components/vite";
+import RekaResolver from "reka-ui/resolver";
 import vue from "@vitejs/plugin-vue";
 import UnoCSS from "unocss/vite";
+import { cleanBuildOutput } from "./scripts/lib/clean-build-output.mjs";
 import { ocrPrebundlePlugin, ocrProductionPlugin } from "./scripts/lib/ocr-source-reuse.mjs";
 
 // 本地运行用。OCR 用 WebGL，导出用 File System Access API，
 // 需在 Chrome / Edge 里以 http://localhost 打开（不是 file://）。
 export default defineConfig({
   base: "./",
-  plugins: [ocrProductionPlugin(), UnoCSS(), vue(),
-    AutoImport({ imports: ['vue'], dirs: ['src/composables'], dts: 'src/auto-imports.d.ts' }),
+  plugins: [
+    cleanBuildOutput(),
+    ocrProductionPlugin(),
+    UnoCSS(),
+    vue(),
+    AutoImport({
+      imports: ["vue"],
+      dirs: ["src/composables"],
+      dts: "src/auto-imports.d.ts",
+      exclude: [/[\\/]node_modules[\\/]/, /[\\/]\.git[\\/]/, /[\\/]dist[\\/]/],
+    }),
     Components({
-      dirs: ['src/components'], extensions: ['vue'], deep: true,
-      resolvers: [RekaResolver()], dts: 'src/components.d.ts',
+      dirs: ["src/components"],
+      extensions: ["vue"],
+      deep: true,
+      resolvers: [RekaResolver()],
+      dts: "src/components.d.ts",
+      exclude: [/[\\/]node_modules[\\/]/, /[\\/]\.git[\\/]/, /[\\/]dist[\\/]/],
     }),
   ],
   server: {
@@ -31,16 +45,21 @@ export default defineConfig({
     },
   },
   build: {
+    // 显式要求构建前清空输出目录，防止旧 chunk 持续累积进 Tauri 打包产物。
+    emptyOutDir: true,
     rollupOptions: {
       output: {
         manualChunks(id) {
+          const normalizedId = id.replace(/\\/g, "/");
           // 表格和首页共享 Vue，将运行时单独归组以保持表格按需加载。
-          if (/\/node_modules\/(?:vue|@vue)\//.test(id)) return 'vue-runtime';
-          if (id.includes('commonjsHelpers.js')) return 'commonjs-runtime';
-          if (/\/node_modules\/(?:pdfjs-dist|pdf-lib|@pdf-lib)\//.test(id)) return 'vendor-pdf';
-          if (id.includes('/node_modules/xlsx/')) return 'vendor-xlsx';
-          if (id.includes('/node_modules/vxe-')) return 'vendor-table';
-          if (id.includes('/node_modules/@paddlejs')) return 'vendor-ocr';
+          if (/\/node_modules\/(?:vue|@vue)\//.test(normalizedId)) return "vue-runtime";
+          if (normalizedId.includes("commonjsHelpers.js")) return "commonjs-runtime";
+          // 拆开 PDF 解析预览（pdfjs-dist）与 PDF 生成编辑（pdf-lib），避免互相拖累按需加载。
+          if (normalizedId.includes("/node_modules/pdfjs-dist/")) return "vendor-pdfjs";
+          if (/\/node_modules\/(?:pdf-lib|@pdf-lib)\//.test(normalizedId)) return "vendor-pdf-lib";
+          if (normalizedId.includes("/node_modules/xlsx/")) return "vendor-xlsx";
+          if (normalizedId.includes("/node_modules/vxe-")) return "vendor-table";
+          if (normalizedId.includes("/node_modules/@paddlejs")) return "vendor-ocr";
         },
       },
     },

@@ -15,8 +15,7 @@ import { loadLedgerTrash, readLedgerTrashForChange, moveLedgerToTrash, restoreLe
 import { normalizeBuyerName } from './lib/invoice-buyer-check.js';
 import { invoiceProblems } from "./lib/invoice-review.js";
 import { reactive, markRaw } from "vue";
-import { renderFileToPages } from "./lib/pdf";
-import { extractPdfText, renderPdfPages, rotateImageUrl, imgNaturalSize } from "./lib/pdftext";
+import { rotateImageUrl, imgNaturalSize } from './lib/image-utils.js';
 import { getOcrCache, putOcrCache } from './lib/ocr-cache.js';
 import { recognizePageRegion, recognizePages, yieldToBackground } from "./lib/ocr";
 import { parseInvoice, isProbablyInvoiceText } from "./lib/invoice-parse";
@@ -75,6 +74,7 @@ async function produceRenderedPages(inv, rotation) {
   if (inv.kind === "image") {
     return await Promise.all(inv.pages.map((p) => rotateImageUrl(p.dataUrl, rotation)));
   }
+  const { renderPdfPages } = await import('./lib/pdftext.js');
   return await renderPdfPages(inv.blob, { scale: adaptivePreviewScale(), maxPixels: 360000, rotation, maxPages: inv.isTextPdf ? 10 : 60 });
 }
 // 取首页宽高（图片/扫描件用已知页尺寸；电子票用首张渲染图尺寸）。
@@ -137,6 +137,7 @@ async function preparePdf(inv, cached) {
       inv.isTextPdf = !!cached.isTextPdf;
       return;
     }
+    const { extractPdfText } = await import('./lib/pdftext.js');
     const probe = await extractPdfText(inv.blob);
     if (inv.removed) return;
     inv.pageCount = probe.numPages || 1;
@@ -161,6 +162,7 @@ async function preparePdf(inv, cached) {
 
 async function loadEmbeddedScans(inv) {
   if (inv.embeddedScansLoaded || inv.removed) return;
+  const { renderFileToPages } = await import('./lib/pdf.js');
   const { pages } = await renderFileToPages(inv.blob, { useObjectUrl: true });
   inv.pages = pages;
   inv.embeddedScansLoaded = true;
@@ -171,6 +173,7 @@ async function loadEmbeddedScans(inv) {
 async function pageImagesForOcr(inv, firstPage, maxPages) {
   let urls = [];
   try {
+    const { renderPdfPages } = await import('./lib/pdftext.js');
     urls = await renderPdfPages(inv.blob, { firstPage, maxPages, scale: 2.2, maxPixels: 2_200_000 });
   } catch { /* 尝试原始扫描图 */ }
   if ((urls.length < maxPages || urls.some(url => !url)) && !inv.isTextPdf) {
@@ -344,7 +347,8 @@ async function recoverHeader(inv, result, page, trackRegions) {
   try {
     if (isPdf(inv) && trackRegions) {
       // 只有票号缺失时才以旧版高清倍率重绘首页，局部补扫保留原始像素。
-      [originalUrl] = await renderPdfPages(inv.blob, { scale: 3, maxPages: 1 }).catch(() => []);
+      [originalUrl] = await import('./lib/pdftext.js')
+        .then(({ renderPdfPages }) => renderPdfPages(inv.blob, { scale: 3, maxPages: 1 })).catch(() => []);
     }
     const recovered = await recoverMedicalReceiptNumber(originalUrl ? { ...page, dataUrl: originalUrl } : page, recognizePageRegion);
     if (recovered) {
@@ -432,7 +436,9 @@ async function readRecognition(inv, { force, remaining, deferNamed }) {
   if (isPdf(inv)) {
     let probe = force ? null : pdfProbes.get(inv);
     pdfProbes.delete(inv);
-    if (!remaining && !probe) probe = await extractPdfText(inv.blob).catch(() => null);
+    if (!remaining && !probe) {
+      probe = await import('./lib/pdftext.js').then(({ extractPdfText }) => extractPdfText(inv.blob)).catch(() => null);
+    }
     if (!remaining && isProbablyInvoiceText(probe?.text || '')) {
       inv.isTextPdf = true;
       result = { rawText: probe.text, regions: probe.regions, parsedFields: parseInvoice(probe.text) };

@@ -35,7 +35,8 @@ globalThis.fixture = {
 };
 const mocks = {
   './lib/ocr': 'export const {recognizePages,recognizePageRegion}=globalThis.fixture; export const yieldToBackground=()=>Promise.resolve();',
-  './lib/pdftext': 'export const {extractPdfText,renderPdfPages}=globalThis.fixture; export const imgNaturalSize=()=>({}); export const rotateImageUrl=u=>u;',
+  './lib/pdftext.js': 'export const {extractPdfText,renderPdfPages}=globalThis.fixture;',
+  './lib/image-utils.js': 'export const imgNaturalSize=()=>({}); export const rotateImageUrl=u=>u;',
   './lib/ocr-cache.js': 'export const {getOcrCache,putOcrCache}=globalThis.fixture;',
 };
 const hooks = registerHooks({ resolve(spec, context, next) {
@@ -44,7 +45,6 @@ const hooks = registerHooks({ resolve(spec, context, next) {
   return next(spec,context);
 }});
 const { invoiceActions: actions, invoiceStore: store } = await import('../src/invoiceStore.js');
-hooks.deregister();
 
 async function add(name, bytes) {
   await actions.addFiles([new File([bytes], name, { type: 'application/pdf' })]);
@@ -93,3 +93,4 @@ assert.deepEqual(crops, ['blob:3/1']);
 assert.equal(receipt.fields.number, '0012345678');
 actions.clearAll();
 console.log('高清缩图、扫描件早停、失败页补扫、持久缓存接口、强制重跑和医疗票高清补扫通过');
+hooks.deregister();

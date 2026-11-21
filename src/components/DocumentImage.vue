@@ -1,7 +1,6 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { isPdf } from '../lib/file-utils.js';
-import { renderPdfPages } from '../lib/pdftext.js';
 import { acquirePreview, previewKey } from '../lib/preview-cache.js';
 
 const props = defineProps({
@@ -46,6 +45,7 @@ watch([() => props.file, () => props.name, () => props.pageNumber, () => props.r
       const { file, pageNumber, rotation } = props;
       const key = previewKey(file, pageNumber, rotation, targetWidth);
       const page = await acquirePreview(key, async () => {
+        const { renderPdfPages } = await import('../lib/pdftext.js');
         const [url] = await renderPdfPages(file, { firstPage: pageNumber, maxPages: 1, targetWidth, rotation });
         if (!url) return '';
         const decoded = new Image();

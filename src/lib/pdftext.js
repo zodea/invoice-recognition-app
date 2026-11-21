@@ -1,22 +1,23 @@
 // 电子发票多是“文字型 PDF”，直接抽文字最准（不经过 OCR）。
 // 同时提供按需高清渲染；worker 和中文字体映射使用本地静态文件。
-import * as pdfjsLib from "pdfjs-dist";
 import { groupPdfTextLines } from './pdf-lines.js';
 import { pdfRenderScale } from './pdf-preview.js';
 import { pdfTextRegions } from './recognition-regions.js';
 
 const baseUrl = import.meta.env?.BASE_URL || '/';
-pdfjsLib.GlobalWorkerOptions.workerSrc = `${baseUrl}pdf.worker.min.mjs`;
-
-// 返回纯文本、分行结果及归一化文字坐标，区域开关直接复用坐标。
-export async function extractPdfText(file, { maxPages = 10 } = {}) {
-  const buf = new Uint8Array(await file.arrayBuffer());
-  // cMapUrl/cMapPacked：CID 字体的电子发票需要 cmap 才能抽出中文（cmaps 放在 public/）。
-  const pdf = await pdfjsLib.getDocument({
-    data: buf,
+async function openPdf(file) {
+  const [pdfjs, buffer] = await Promise.all([import('pdfjs-dist'), file.arrayBuffer()]);
+  pdfjs.GlobalWorkerOptions.workerSrc = `${baseUrl}pdf.worker.min.mjs`;
+  return pdfjs.getDocument({
+    data: new Uint8Array(buffer),
     cMapUrl: `${baseUrl}cmaps/`,
     cMapPacked: true,
   }).promise;
+}
+
+// 返回纯文本、分行结果及归一化文字坐标，区域开关直接复用坐标。
+export async function extractPdfText(file, { maxPages = 10 } = {}) {
+  const pdf = await openPdf(file);
   try {
     const pages = [];
     const all = [];
@@ -51,51 +52,8 @@ function canvasToObjectURL(canvas) {
   });
 }
 
-// 取图片自然尺寸（用于横向自动旋转判断）。
-export function imgNaturalSize(url) {
-  return new Promise((resolve) => {
-    const im = new Image();
-    im.onload = () => resolve({ w: im.naturalWidth, h: im.naturalHeight });
-    im.onerror = () => resolve({ w: 0, h: 0 });
-    im.src = url;
-  });
-}
-
-// 把一张图片按 deg(顺时针 0/90/180/270) 旋转，返回新的对象 URL；deg=0 原样返回。
-export async function rotateImageUrl(url, deg = 0) {
-  const r = ((deg % 360) + 360) % 360;
-  if (!url || r === 0) return url;
-  const img = await new Promise((res, rej) => {
-    const im = new Image();
-    im.onload = () => res(im);
-    im.onerror = rej;
-    im.src = url;
-  });
-  const w = img.naturalWidth;
-  const h = img.naturalHeight;
-  const canvas = document.createElement("canvas");
-  const swap = r === 90 || r === 270;
-  canvas.width = swap ? h : w;
-  canvas.height = swap ? w : h;
-  const ctx = canvas.getContext("2d");
-  ctx.translate(canvas.width / 2, canvas.height / 2);
-  ctx.rotate((r * Math.PI) / 180);
-  ctx.drawImage(img, -w / 2, -h / 2);
-  return await new Promise((resolve) => {
-    canvas.toBlob((blob) => {
-      canvas.width = canvas.height = 0;
-      resolve(blob ? URL.createObjectURL(blob) : url);
-    }, 'image/png');
-  });
-}
-
 export async function renderPdfPages(file, { scale = 2, firstPage = 1, maxPages = 10, timeoutMs = 12000, rotation = 0, targetWidth = 0, maxPixels = 16000000 } = {}) {
-  const buf = new Uint8Array(await file.arrayBuffer());
-  const pdf = await pdfjsLib.getDocument({
-    data: buf,
-    cMapUrl: `${baseUrl}cmaps/`,
-    cMapPacked: true,
-  }).promise;
+  const pdf = await openPdf(file);
   const out = [];
   try {
     const start = Math.max(1, Math.floor(firstPage));

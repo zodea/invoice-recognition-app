@@ -12,7 +12,8 @@ import { createPreviewPan } from '../lib/preview-pan.js';
 import { invoiceActions } from "../invoiceStore.js";
 import { deductionStatus, missingReimbursementFields, redInvoiceStatus } from "../lib/invoice-ledger-state.js";
 import { getLedgerAttachment, saveLedgerAttachment } from "../lib/ledger-attachments";
-import { renderPdfPages, rotateImageUrl } from "../lib/pdftext";
+import { rotateImageUrl } from '../lib/image-utils.js';
+import { isPdf } from '../lib/file-utils.js';
 
 import { invoiceProblems } from "../lib/invoice-review";
 const editing = ref(false);
@@ -51,7 +52,7 @@ const loading = ref(true);
 let displayedSource = '';
 let displayedSlot = '';
 let generation = 0;
-const isPdf = computed(() => /\.pdf$/i.test(attachment.value?.name || "") || attachment.value?.blob?.type === "application/pdf");
+const isPdfAttachment = computed(() => isPdf(attachment.value));
 const missing = computed(() => missingReimbursementFields(props.entry));
 const detailTotals = computed(() => {
   const lines = props.entry.details || [];
@@ -97,9 +98,13 @@ async function loadAttachment() {
     const identity = JSON.stringify([slot, source.hash, source.savedAt, source.linkedAt, source.name, source.blob.size, source.blob.type]);
     // 台账状态刷新也会触发附件检查；原件未变时保留已经显示的图片。
     if (identity === displayedSource && images.value.length) return;
-    const result = /\.pdf$/i.test(source.name) || source.blob.type === "application/pdf"
-      ? await renderPdfPages(source.blob, { maxPages: 20, scale: 2, rotation: angle, maxPixels: 360000 })
-      : [await imagePreviewUrl(source.blob, angle)];
+    let result;
+    if (isPdf(source)) {
+      const { renderPdfPages } = await import('../lib/pdftext.js');
+      result = await renderPdfPages(source.blob, { maxPages: 20, scale: 2, rotation: angle, maxPixels: 360000 });
+    } else {
+      result = [await imagePreviewUrl(source.blob, angle)];
+    }
     if (result[0]) await new Promise(resolve => {
       const image = new Image();
       image.onload = image.onerror = resolve;
@@ -189,7 +194,7 @@ function update(key, event) {
           <div v-for="(url, index) in images" :key="index" class="preview-page" :style="{ width: `${zoom}%` }">
             <DocumentImage :file="attachment?.blob" :name="attachment?.name" :src="url" :page-number="index + 1" :rotation="rotation" :alt="`发票原件第 ${index + 1} 页`" draggable="false" />
           </div>
-          <p v-if="isPdf && images.length === 20" class="preview-note">预览最多显示前 20 页。</p>
+          <p v-if="isPdfAttachment && images.length === 20" class="preview-note">预览最多显示前 20 页。</p>
         </div>
 
       </section>

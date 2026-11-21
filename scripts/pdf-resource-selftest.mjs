@@ -6,13 +6,16 @@ const mockModule = 'data:text/javascript,' + encodeURIComponent(`
   export const GlobalWorkerOptions = {};
   export function getDocument() { return { promise: Promise.resolve(globalThis.__pdfTestDocument) }; }
 `);
+let engineRequested = false;
 const hooks = registerHooks({
   resolve(specifier, context, next) {
-    return specifier === 'pdfjs-dist' ? { url: mockModule, shortCircuit: true } : next(specifier, context);
+    if (specifier !== 'pdfjs-dist') return next(specifier, context);
+    engineRequested = true;
+    return { url: mockModule, shortCircuit: true };
   },
 });
 const { extractPdfText, renderPdfPages } = await import('../src/lib/pdftext.js');
-hooks.deregister();
+assert.equal(engineRequested, false, '加载预览模块时应保持 PDF.js 未加载');
 
 let destroyed = 0, cleaned = 0, canceled = 0;
 const requestedPages = [], viewports = [], formats = [];
@@ -30,6 +33,7 @@ const originalClearTimeout = globalThis.clearTimeout;
 const activeTimers = new Set(), canvases = [];
 try {
   await assert.rejects(extractPdfText(file), /文字读取失败/);
+  assert.equal(engineRequested, true, '实际读取 PDF 时才加载引擎');
   assert.equal(cleaned, 1);
   assert.equal(destroyed, 1);
   page.getTextContent = async () => ({ items: [{ str: '测试', transform: [1, 0, 0, 1, 0, 1] }] });
@@ -76,6 +80,7 @@ try {
   assert.deepEqual(viewports.at(-1), { scale: 8, rotation: 90 });
   assert.ok(formats.every(type => type === 'image/png'), '文字预览使用无损 PNG');
 } finally {
+  hooks.deregister();
   for (const timer of activeTimers) originalClearTimeout(timer);
   globalThis.setTimeout = originalTimeout;
   globalThis.clearTimeout = originalClearTimeout;

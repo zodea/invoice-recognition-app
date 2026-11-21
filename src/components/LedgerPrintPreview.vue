@@ -2,7 +2,6 @@
 import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { getLedgerAttachment } from '../lib/ledger-attachments.js';
 import { buildPrintLayout, openForPrint } from '../lib/invoice-layout.js';
-import { renderPdfPages } from '../lib/pdftext.js';
 import { downloadBytes } from '../lib/file-utils.js';
 import { invoiceStore } from '../invoiceStore.js';
 
@@ -48,6 +47,7 @@ watch([output, page], async ([bytes, number], _, onCleanup) => {
   image.value = ''; notice.value = '';
   if (!bytes) return;
   try {
+    const { renderPdfPages } = await import('../lib/pdftext.js');
     const [result] = await renderPdfPages(new Blob([bytes], {type:'application/pdf'}), { firstPage: number, maxPages: 1, scale: 1.3 });
     if (!active) { if (result) URL.revokeObjectURL(result); return; }
     url = result;

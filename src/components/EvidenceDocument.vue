@@ -1,7 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { isPdf } from '../lib/file-utils.js';
-import { renderPdfPages } from '../lib/pdftext.js';
 import { createPreviewPan } from '../lib/preview-pan.js';
 
 const props = defineProps({ file: Object });
@@ -18,7 +17,12 @@ watch(() => props.file, async (file, _, onCleanup) => {
   notice.value = file ? '正在读取原件…' : '请选择原件';
   if (!file) return;
   try {
-    loaded = isPdf(file) ? await renderPdfPages(file, { maxPages: 20, scale: 1.4, maxPixels: 360000 }) : [URL.createObjectURL(file)];
+    if (isPdf(file)) {
+      const { renderPdfPages } = await import('../lib/pdftext.js');
+      loaded = await renderPdfPages(file, { maxPages: 20, scale: 1.4, maxPixels: 360000 });
+    } else {
+      loaded = [URL.createObjectURL(file)];
+    }
     if (stale) { loaded.forEach(url => URL.revokeObjectURL(url)); return; }
     urls.value = loaded;
     notice.value = loaded.length ? '' : '没有可预览的页面';

@@ -2,7 +2,6 @@
 // 合并 PDF（公司-日期范围-送货单N张.pdf）或单件（日期-原名.pdf）；
 // 工地根目录放「工地名-送货单整理汇总.xlsx」。
 import { downloadBytes } from "./file-utils.js";
-import { buildPdfFromFiles } from "./pdf.js";
 import { archiveBaseName, sanitize } from "./naming.js";
 
 export function fsAccessSupported() {
@@ -57,6 +56,7 @@ function soloPdfName(f) {
 // writeIn(companyDirName, fileName, bytes) 由调用方决定写到 公司子文件夹（FS Access）
 // 还是加前缀下载（回退）。来源档案记成 "公司/文件名" 方便在 Excel 里定位。
 async function exportPartitionPdfs(files, writeIn, log) {
+  const { buildPdfFromFiles } = await import('./pdf.js');
   const byCompany = groupByCompany(files);
   for (const [company, cfiles] of byCompany.entries()) {
     const companyDir = sanitize(company) || "未命名公司";
