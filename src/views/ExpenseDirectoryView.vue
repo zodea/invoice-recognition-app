@@ -147,7 +147,7 @@ const stats = computed(() => {
             </div>
             <div class="directory-table-wrap" tabindex="0" aria-label="费用汇总表，可滚动">
               <table class="directory-table">
-                <thead><tr><th v-for="[key, label] in columns" :key="key">{{ label }}</th><th class="text-right">笔数</th><th class="text-right">采购 / 费用金额</th><th class="text-right">已报销金额</th><th>明细</th></tr></thead>
+                <thead><tr><th v-for="[key, label] in columns" :key="key" scope="col">{{ label }}</th><th scope="col" class="text-right">笔数</th><th scope="col" class="text-right">采购 / 费用金额</th><th scope="col" class="text-right">已报销金额</th><th scope="col">明细</th></tr></thead>
                 <tbody>
                   <tr v-for="record in summary" :key="groupKey(record)" class="cursor-pointer hover:bg-brand-soft" @click="detailGroup = record">
                     <td v-for="[key] in columns" :key="key"><MiddleEllipsis :text="record[key]" class="max-w-56" /></td>
