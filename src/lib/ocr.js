@@ -57,7 +57,9 @@ export function initOcr(onProgress) {
     })().catch((err) => {
       initPromise = null; // 允许重试
       const msg = String((err && err.message) || err);
-      throw new Error(/超时|timeout/i.test(msg) ? msg : `OCR 模型加载失败：${msg}（模型已内置本地，一般无需联网；若持续失败请重启应用）`);
+      const error = new Error(/超时|timeout/i.test(msg) ? msg : `OCR 模型加载失败：${msg}（模型已内置本地，一般无需联网；若持续失败请重启应用）`);
+      error.name = 'OcrInitializationError';
+      throw error;
     });
   }
   return initPromise;
@@ -81,17 +83,50 @@ function extractLines(res) {
   return [];
 }
 
-// 识别一张页图（dataUrl/objectURL），返回文本行数组。
-async function recognizeDataUrl(dataUrl, onProgress, onRegions) {
-  await initOcr(onProgress);
-  const img = await loadImage(dataUrl);
-  const res = await withTimeout(
-    ocrMod.recognize(img),
-    RECOGNIZE_TIMEOUT_MS,
-    "单页识别超时（图片过大或显卡过慢）。可压缩/重扫该页后重试。"
-  );
-  if (onRegions) onRegions(ocrTextRegions(res, img.naturalWidth, img.naturalHeight));
-  return extractLines(res).filter((s) => s && s.trim());
+export function downscaleImageForOcr(source, maxEdge = 1600) {
+  const width = source.naturalWidth || source.width;
+  const height = source.naturalHeight || source.height;
+  const ratio = maxEdge / Math.max(width, height);
+  if (!width || !height || ratio >= 1) return source;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(width * ratio));
+  canvas.height = Math.max(1, Math.round(height * ratio));
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(source, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+// Paddle 1.2.4 的检测器和 OpenCV 裁剪共用内部画布，所有入口逐次推理。
+let inferenceQueue = Promise.resolve();
+function recognizeSource(source, onRegions) {
+  const run = inferenceQueue.then(async () => {
+    await initOcr();
+    if (source instanceof HTMLCanvasElement) {
+      // 检测器按 HTMLImageElement 的尺寸属性将检测框映回输入坐标。
+      source.naturalWidth = source.width;
+      source.naturalHeight = source.height;
+    }
+    const result = await withTimeout(ocrMod.recognize(source), RECOGNIZE_TIMEOUT_MS,
+      '单页识别超时（图片过大或显卡过慢）。可压缩/重扫该页后重试。');
+    onRegions?.(ocrTextRegions(result, source.naturalWidth, source.naturalHeight));
+    return extractLines(result).filter(line => line && line.trim());
+  });
+  inferenceQueue = run.catch(() => {});
+  return run;
+}
+
+async function recognizeDataUrl(dataUrl, onRegions) {
+  const image = await loadImage(dataUrl);
+  const input = downscaleImageForOcr(image);
+  try {
+    if (input !== image) image.removeAttribute('src');
+    return await recognizeSource(input, onRegions);
+  } finally {
+    if (input !== image) input.width = input.height = 0;
+    image.removeAttribute('src');
+  }
 }
 
 export async function recognizePageRegion(page, crop, onPageRegions) {
@@ -103,22 +138,19 @@ export async function recognizePageRegion(page, crop, onPageRegions) {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
-  canvas.getContext('2d').drawImage(image, left, top, width, height, 0, 0, width, height);
-  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-  canvas.width = canvas.height = 0;
-  if (!blob) return [];
-  const url = URL.createObjectURL(blob);
   try {
-    return await recognizeDataUrl(url, undefined, onPageRegions ? regions => onPageRegions(regions.map(region => ({
+    canvas.getContext('2d', { willReadFrequently: true }).drawImage(image, left, top, width, height, 0, 0, width, height);
+    return await recognizeSource(canvas, onPageRegions && (regions => onPageRegions(regions.map(region => ({
       ...region,
       x: (left + region.x * width) / image.naturalWidth,
       y: (top + region.y * height) / image.naturalHeight,
       width: region.width * width / image.naturalWidth,
       height: region.height * height / image.naturalHeight,
       page: page.pageIndex ?? 0,
-    }))) : undefined);
+    })))));
   } finally {
-    URL.revokeObjectURL(url);
+    canvas.width = canvas.height = 0;
+    image.removeAttribute('src');
   }
 }
 
@@ -130,7 +162,7 @@ export async function recognizePages(pages, onProgress, { onPageRegions } = {}) 
   for (let i = 0; i < pages.length; i++) {
     if (onProgress) onProgress(`识别第 ${i + 1}/${pages.length} 页…`);
     try {
-      const lines = await recognizeDataUrl(pages[i].dataUrl, undefined, onPageRegions ? regions => onPageRegions(regions.map(region => ({ ...region, page: pages[i].pageIndex ?? i }))) : undefined);
+      const lines = await recognizeDataUrl(pages[i].dataUrl, onPageRegions ? regions => onPageRegions(regions.map(region => ({ ...region, page: pages[i].pageIndex ?? i }))) : undefined);
       all.push(...lines);
     } catch (e) {
       failed.push({ page: i + 1, reason: String((e && e.message) || e) });
@@ -143,4 +175,12 @@ export async function recognizePages(pages, onProgress, { onPageRegions } = {}) 
   }
   recognizePages.lastFailedPages = failed; // 部分失败：调用方可读取并提示
   return all;
+}
+
+export function yieldToBackground() {
+  if (globalThis.scheduler?.postTask) return globalThis.scheduler.postTask(() => {}, { priority: 'background' });
+  return new Promise(resolve => {
+    if (globalThis.requestIdleCallback) globalThis.requestIdleCallback(resolve, { timeout: 300 });
+    else setTimeout(resolve, 0);
+  });
 }

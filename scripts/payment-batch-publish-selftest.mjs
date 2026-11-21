@@ -59,3 +59,26 @@ assert.deepEqual(batch.evidence.value[0].paths, ['first.png', 'copy.png']);
 assert.equal(batch.evidence.value[1].duplicateHint, '与 first.png 识别文字相同');
 assert.equal(batch.evidence.value[2].duplicateHint, '与 first.png 识别文字相同');
 console.log('付款凭证逐张进度、批次发布和跨批次重复副本索引测试通过');
+
+// 规范命名的截图在推理未返回时就能核对。不能据文件名推断支付成功。
+const started = Promise.withResolvers(), finish = Promise.withResolvers();
+globalThis.__recognizeBatchFixture = async file => {
+  started.resolve();
+  await finish.promise;
+  return { file, fields: { transactionId: 'TX-123' }, pages: [{text: '交易单号 TX-123'}], warnings: [] };
+};
+const namedBatch = usePaymentBatch({ existingRows: [], period: '', saving: false }, () => {});
+const namedFile = image('named', '2026-10-06-测试商户-3200.00元.PNG');
+const processing = namedBatch.prepare([namedFile]);
+try {
+  await started.promise;
+  assert.equal(namedBatch.busy.value, true);
+  assert.equal(namedBatch.queue.value[0].filenameDraft, true);
+  assert.deepEqual(namedBatch.evidence.value[0].fields, {date:'2026-10-06',seller:'测试商户',total:'3200.00'});
+} finally {
+  finish.resolve();
+  await processing;
+  delete globalThis.__recognizeBatchFixture;
+}
+assert.equal(namedBatch.evidence.value[0].fields.transactionId, 'TX-123');
+assert.equal(namedBatch.evidence.value[0].fields.seller, '测试商户');

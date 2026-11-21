@@ -17,10 +17,11 @@ import { invoiceProblems } from "./lib/invoice-review.js";
 import { reactive, markRaw } from "vue";
 import { renderFileToPages } from "./lib/pdf";
 import { extractPdfText, renderPdfPages, rotateImageUrl, imgNaturalSize } from "./lib/pdftext";
-import { recognizePageRegion, recognizePages } from "./lib/ocr";
+import { getOcrCache, putOcrCache } from './lib/ocr-cache.js';
+import { recognizePageRegion, recognizePages, yieldToBackground } from "./lib/ocr";
 import { parseInvoice, isProbablyInvoiceText } from "./lib/invoice-parse";
 import { applyParsedInvoiceFields } from "./lib/invoice-fields";
-import { applyInvoiceFilenameFallback } from "./lib/invoice-filename";
+import { applyInvoiceFilenameFallback, paymentScreenshotDraft } from "./lib/invoice-filename";
 import { recoverMedicalReceiptNumber, shouldRetryMedicalNumber } from './lib/invoice-medical-ocr.js';
 import { confirmedDuplicateInvoices, markInvoiceDuplicates } from "./lib/invoice-dedupe";
 import { identifyIntakeFile, intakeFile, supplementFolder } from './lib/fileIntake.js';
@@ -129,15 +130,61 @@ async function processPreviewQueue() {
   }
 }
 
-// 文字层不可用时，以独立的无损整页图识别；不读取屏幕缩略图。
-async function pageImagesForOcr(inv) {
+async function preparePdf(inv, cached) {
   try {
-    const images = await renderPdfPages(inv.blob, { scale: 3, maxPages: inv.isTextPdf ? 10 : 60 });
-    const pages = images.map((dataUrl, pageIndex) => ({ dataUrl, pageIndex })).filter(page => page.dataUrl);
-    if (pages.length) return { pages, owned: true };
-  } catch { /* 整页渲染失败时回退原始扫描图 */ }
-  return { pages: inv.pages || [], owned: false };
+    if (cached?.pageCount) {
+      inv.pageCount = cached.pageCount;
+      inv.isTextPdf = !!cached.isTextPdf;
+      return;
+    }
+    const probe = await extractPdfText(inv.blob);
+    if (inv.removed) return;
+    inv.pageCount = probe.numPages || 1;
+    const readable = isProbablyInvoiceText(probe.text);
+    inv.textGarbled = !readable && probe.text.replace(/\s/g, '').length >= 40;
+    inv.isTextPdf = readable || inv.textGarbled;
+    pdfProbes.set(inv, probe);
+  } catch {
+    try {
+      const { PDFDocument } = await import('pdf-lib');
+      const pdf = await PDFDocument.load(await inv.blob.arrayBuffer());
+      inv.pageCount = pdf.getPageCount();
+    } catch {
+      await loadEmbeddedScans(inv);
+      inv.pageCount = inv.pages.length || 1;
+    }
+  } finally {
+    inv.rendering = false;
+    if (!inv.removed) queuePreviewRender(inv);
+  }
 }
+
+async function loadEmbeddedScans(inv) {
+  if (inv.embeddedScansLoaded || inv.removed) return;
+  const { pages } = await renderFileToPages(inv.blob, { useObjectUrl: true });
+  inv.pages = pages;
+  inv.embeddedScansLoaded = true;
+  if (inv.removed) revokeInvoiceUrls(inv);
+}
+
+// OCR 按物理页号分段渲染。内嵌 JPEG 可能只是裁片，回退时不在预览上画框。
+async function pageImagesForOcr(inv, firstPage, maxPages) {
+  let urls = [];
+  try {
+    urls = await renderPdfPages(inv.blob, { firstPage, maxPages, scale: 2.2, maxPixels: 2_200_000 });
+  } catch { /* 尝试原始扫描图 */ }
+  if ((urls.length < maxPages || urls.some(url => !url)) && !inv.isTextPdf) {
+    await loadEmbeddedScans(inv).catch(() => {});
+  }
+  return Array.from({ length: maxPages }, (_, offset) => {
+    const pageIndex = firstPage + offset - 1;
+    return { pageIndex, dataUrl: urls[offset] || inv.pages[pageIndex]?.dataUrl, owned: !!urls[offset] };
+  });
+}
+
+const preparing = new WeakMap();
+const pdfProbes = new WeakMap();
+const importCache = new WeakMap();
 
 export const invoiceStore = reactive({
   invoices: [],
@@ -212,7 +259,7 @@ async function collectRecognizedSupplements() {
     if (inv.fields.docType !== '付款凭证') continue;
     inv.paymentMatchNote = '';
     try {
-      const hash = await fileHash(inv.blob);
+      const hash = inv.sha256 || await fileHash(inv.blob);
       const archived = invoiceStore.supplements.find(record => record.hash === hash);
       if (archived) {
         inv.supplementHash = hash; inv.linkedLedgerKey = archived.ledgerKey;
@@ -291,31 +338,135 @@ function refreshHistory() {
   for (const inv of invoiceStore.invoices) applyHistoryToInvoice(inv);
 }
 
-// 只填空字段，保留人工编辑
-const applyParsed = applyParsedInvoiceFields;
-
-async function applyOcrInvoice(inv, text, firstPage, trackRegions = true) {
-  if (text.trim()) {
-    inv.rawText = text;
-    applyParsed(inv.fields, parseInvoice(text), text);
+async function recoverHeader(inv, result, page, trackRegions) {
+  if (!shouldRetryMedicalNumber(result.parsedFields, inv.name)) return;
+  let originalUrl;
+  try {
+    if (isPdf(inv) && trackRegions) {
+      // 只有票号缺失时才以旧版高清倍率重绘首页，局部补扫保留原始像素。
+      [originalUrl] = await renderPdfPages(inv.blob, { scale: 3, maxPages: 1 }).catch(() => []);
+    }
+    const recovered = await recoverMedicalReceiptNumber(originalUrl ? { ...page, dataUrl: originalUrl } : page, recognizePageRegion);
+    if (recovered) {
+      result.parsedFields.number = recovered.number;
+      result.rawText = [result.rawText, recovered.text].filter(Boolean).join('\n');
+      if (trackRegions) result.regions.push(...recovered.regions);
+    }
+  } finally {
+    if (originalUrl) URL.revokeObjectURL(originalUrl);
   }
-  if (!shouldRetryMedicalNumber(inv.fields, inv.name) || !firstPage) return;
-  invoiceStore.msg = "重识别医疗票据号码区域…";
-  const recovered = await recoverMedicalReceiptNumber(firstPage, recognizePageRegion);
-  if (!recovered || inv.fields.number) return;
-  inv.fields.number = recovered.number;
-  inv.rawText = [text, recovered.text].filter(Boolean).join("\n");
-  if (trackRegions) inv.recognitionRegions = markRaw([...inv.recognitionRegions, ...recovered.regions]);
 }
 
-function applyFilenameFallback(inv) {
-  const { filled } = applyInvoiceFilenameFallback(inv.fields, inv.name);
-  if (filled.length) {
-    const note = "已按文件名补录，需复核";
-    if (!String(inv.systemNote || "").includes(note)) inv.systemNote = inv.systemNote ? `${inv.systemNote}；${note}` : note;
-    return true;
+function isDetail(inv, fields) {
+  return supplementFolder(intakeFile(inv.blob).parentFolder) || supplementType(fields) ||
+    /行程单|行程及费用明细|快递.*明细|邮寄.*明细/.test(inv.name);
+}
+
+async function scanPdf(inv, previous) {
+  const pending = previous?.remainingPages || Array.from({ length: inv.pageCount }, (_, i) => i + 1);
+  const limit = Math.min(pending.length, inv.isTextPdf ? 4 : 20);
+  const result = { rawText: previous?.rawText || '', regions: [...(previous?.regions || [])], parsedFields: { ...previous?.parsedFields }, remainingPages: [] };
+  const failed = [];
+  let index = 0, stop = false;
+  while (index < limit && !stop && !inv.removed) {
+    // 常见发票先取两页，后续和补扫每次仅保留少量整页图。
+    const start = pending[index];
+    let count = 1;
+    while (count < 2 && index + count < limit && pending[index + count] === start + count) count++;
+    const pages = await pageImagesForOcr(inv, start, count);
+    try {
+      for (const page of pages) {
+        if (inv.removed) break;
+        const number = pending[index++];
+        if (!page.dataUrl) { failed.push(number); continue; }
+        try {
+          invoiceStore.msg = '识别第 ' + number + '/' + inv.pageCount + ' 页…';
+          const lines = await recognizePages([page], undefined, {
+            onPageRegions: page.owned ? regions => result.regions.push(...regions) : undefined,
+          });
+          result.rawText = [result.rawText, ...lines].filter(Boolean).join('\n');
+          result.parsedFields = parseInvoice(result.rawText);
+          if (number === 1) await recoverHeader(inv, result, page, page.owned);
+          const fields = result.parsedFields;
+          if (!previous && !inv.isTextPdf && fields.docType === '增值税发票' && !isDetail(inv, fields) &&
+              /^\d{8,25}$/.test(fields.number) && Number.isFinite(fields.total)) {
+            stop = true;
+            break;
+          }
+        } catch (error) {
+          failed.push(number);
+          if (error.name === 'OcrInitializationError') { stop = true; break; }
+        }
+      }
+    } finally {
+      for (const page of pages) if (page.owned) URL.revokeObjectURL(page.dataUrl);
+    }
   }
-  return false;
+  result.remainingPages = [...failed, ...pending.slice(index)];
+  result.note = failed.length ? '第 ' + failed.join('、') + ' 页识别失败，可补扫重试' : 'OCR 识别，请重点核对';
+  result.cacheable = !failed.length;
+  return result;
+}
+
+let backgroundQueue = Promise.resolve();
+function deferScreenshot(inv) {
+  inv.status = 'queued';
+  backgroundQueue = backgroundQueue.then(async () => {
+    await yieldToBackground();
+    while (invoiceStore.busy && !inv.removed) await new Promise(resolve => setTimeout(resolve, 50));
+    if (!inv.removed && inv.status === 'queued') await invoiceActions.recognizeOne(inv, { background: true });
+  }).catch(error => { inv.error = String(error.message || error); inv.status = 'error'; });
+}
+
+async function readRecognition(inv, { force, remaining, deferNamed }) {
+  const lookup = importCache.get(inv);
+  importCache.delete(inv);
+  if (!force && !remaining) {
+    const cached = await (lookup || getOcrCache(inv.sha256));
+    if (cached) return cached;
+    if (deferNamed && inv.filenameDraft) { deferScreenshot(inv); return null; }
+  }
+  await preparing.get(inv);
+  if (inv.removed) return null;
+  let result;
+  if (isPdf(inv)) {
+    let probe = force ? null : pdfProbes.get(inv);
+    pdfProbes.delete(inv);
+    if (!remaining && !probe) probe = await extractPdfText(inv.blob).catch(() => null);
+    if (!remaining && isProbablyInvoiceText(probe?.text || '')) {
+      inv.isTextPdf = true;
+      result = { rawText: probe.text, regions: probe.regions, parsedFields: parseInvoice(probe.text) };
+    } else {
+      result = await scanPdf(inv, remaining ? inv.lastRecognition : null);
+    }
+  } else {
+    const regions = [];
+    const lines = await recognizePages(inv.pages, undefined, { onPageRegions: hits => regions.push(...hits) });
+    const rawText = lines.join('\n');
+    result = { rawText, regions, parsedFields: parseInvoice(rawText) };
+    await recoverHeader(inv, result, inv.pages[0], true);
+    if (result.parsedFields.docType === '医疗票据') result.note = '医疗票据 OCR 识别，请重点核对';
+  }
+  if (isPdf(inv)) Object.assign(result, { pageCount: inv.pageCount, isTextPdf: inv.isTextPdf });
+  if (result.rawText.trim() && result.cacheable !== false) await putOcrCache(inv.sha256, result);
+  return result;
+}
+
+function applyRecognition(inv, result) {
+  const previous = inv.automaticFields || {};
+  // 重新识别和补扫时，只替换上一次自动填入且用户未修改的值。
+  for (const [key, value] of Object.entries(previous)) {
+    if (inv.fields[key] === value) inv.fields[key] = '';
+  }
+  const automatic = {};
+  applyParsedInvoiceFields(automatic, result.parsedFields, result.rawText);
+  const { filled } = applyInvoiceFilenameFallback(automatic, inv.name);
+  applyParsedInvoiceFields(inv.fields, automatic, result.rawText);
+  inv.automaticFields = markRaw(automatic);
+  inv.lastRecognition = markRaw(result);
+  inv.rawText = result.rawText;
+  inv.recognitionRegions = markRaw(result.regions || []);
+  inv.systemNote = [result.note, filled.length && '已按文件名补录，需复核'].filter(Boolean).join('；');
 }
 
 export const invoiceActions = {
@@ -323,6 +474,7 @@ export const invoiceActions = {
     const arr = Array.from(fileList).filter((f) => /\.(pdf|png|jpe?g|bmp|webp|gif|tiff?)$/i.test(f.name));
     if (arr.length) dismissToast(duplicateToast);
     for (const [index, file] of arr.entries()) {
+      if (arr.length > 15 && index > 0 && index % 8 === 0) await new Promise(resolve => setTimeout(resolve, 0));
       const source = await identifyIntakeFile(file).catch(() => intakeFile(file));
       onFile?.(index + 1, arr.length);
       if (source.sha256 && invoiceStore.invoices.some(inv => inv.sourcePath === source.relativePath && inv.sha256 === source.sha256)) continue;
@@ -360,65 +512,23 @@ export const invoiceActions = {
       });
       invoiceStore.invoices.push(inv);
       if (!invoiceStore.selectedId) invoiceStore.selectedId = inv.id;
-      renderFileToPages(file, { useObjectUrl: true })
-        .then(async (r) => {
-          inv.pages = r.pages;
-          if (inv.removed) { revokeInvoiceUrls(inv); return; }
-          if (r.kind === "pdf") {
-            // 电子发票（文字型 PDF）即便内嵌了二维码/印章小图，也会被 extractJpegStreams
-            // 误当成“页图”。这里再用文字探测确认：抽得到发票文字就按电子发票处理——
-            // 丢弃碎片图、预览走信息卡片、页数取真实 PDF 页数（与 embedPdf 打印一致）。
-            let textPdf = r.unsupported;
-            let probedNumPages = 0;
-            if (!textPdf) {
-              try {
-                const tr = await extractPdfText(file);
-                probedNumPages = tr.numPages || 0; // 复用探针页数，省一次 pdf-lib 解析
-                const t = tr.text || "";
-                const meaningful = t.replace(/\s/g, "").length;
-                if (isProbablyInvoiceText(t)) {
-                  textPdf = true;
-                  inv.rawText = t; // 文字层可用：直接解析
-                  inv.recognitionRegions = markRaw(tr.regions || []);
-                } else if (meaningful >= 40) {
-                  // 有实质文字层但被字体加密成乱码（如某些电子发票）：仍按电子票处理，
-                  // 预览渲染整页、识别时走“整页 OCR”兜底（不存乱码 rawText）。
-                  textPdf = true;
-                  inv.textGarbled = true;
-                }
-              } catch (e) {
-                /* 抽不到文字则按扫描件处理 */
-              }
-            }
-            if (textPdf) {
-              inv.isTextPdf = true;
-              for (const page of inv.pages) if (page.dataUrl?.startsWith('blob:')) URL.revokeObjectURL(page.dataUrl);
-              inv.pages = []; // 丢弃误抽的二维码/印章碎片
-              if (probedNumPages) {
-                inv.pageCount = probedNumPages;
-              } else {
-                try {
-                  const { PDFDocument } = await import("pdf-lib");
-                  const doc = await PDFDocument.load(await file.arrayBuffer());
-                  inv.pageCount = doc.getPageCount();
-                } catch (e) {
-                  inv.pageCount = 1;
-                }
-              }
-            } else {
-              inv.pageCount = probedNumPages || r.pages.length || 1;
-            }
-          } else {
-            inv.pageCount = r.pages.length || 1;
-          }
-          inv.rendering = false;
-          if (inv.removed) { revokeInvoiceUrls(inv); return; }
-          queuePreviewRender(inv); // 异步渲染左侧真实打印预览
-        })
-        .catch((e) => {
-          inv.rendering = false;
-          inv.error = String((e && e.message) || e);
-        });
+      if (inv.kind === 'image') {
+        const draft = paymentScreenshotDraft(file.name);
+        if (draft) {
+          Object.assign(inv.fields, draft);
+          inv.automaticFields = markRaw(draft);
+          inv.filenameDraft = true;
+          inv.systemNote = '文件名草稿，可先核对；交易单号待后台识别';
+        }
+        inv.pages = [{ dataUrl: URL.createObjectURL(file), pageIndex: 0 }];
+        inv.rendering = false;
+        queuePreviewRender(inv);
+        continue;
+      }
+      const lookup = getOcrCache(inv.sha256);
+      importCache.set(inv, lookup);
+      const ready = lookup.then(cached => preparePdf(inv, cached)).catch(error => { inv.error = String(error.message || error); });
+      preparing.set(inv, ready);
     }
   },
 
@@ -529,76 +639,16 @@ export const invoiceActions = {
     return duplicates.length;
   },
 
-  async recognizeOne(inv, { skipDedupe = false } = {}) {
-    // 等待文件读取（抽图/抽文字探测）完成，避免点早了被直接跳过（点"全部识别"会静默漏掉）
-    let waited = 0;
-    while (inv.rendering && waited < 20000) {
-      await new Promise((r) => setTimeout(r, 150));
-      waited += 150;
-    }
-    if (inv.rendering) return;
+  async recognizeOne(inv, { skipDedupe = false, force = false, remaining = false, background = false, deferNamed = false } = {}) {
+    if (inv.removed || inv.status === 'running' || (remaining && !inv.lastRecognition?.remainingPages?.length)) return;
     inv.status = "running";
     inv.error = "";
-    invoiceStore.busy = true;
+    if (!background) invoiceStore.busy = true;
     try {
-      let text = "";
-      if (isPdf(inv)) {
-        // 复用 addFiles 探测阶段已抽到的文字：省去重复解析，也避免与左侧预览渲染抢 pdf.js worker
-        if (inv.isTextPdf && inv.rawText) {
-          text = inv.rawText;
-        } else {
-          try {
-            const r = await extractPdfText(inv.blob);
-            text = r.text || "";
-            inv.recognitionRegions = markRaw(r.regions || []);
-          } catch (e) {
-            text = "";
-          }
-        }
-        if (isProbablyInvoiceText(text)) {
-          // 文字层可用：直接解析（最准最快）
-          inv.isTextPdf = true;
-          inv.rawText = text;
-          applyParsed(inv.fields, parseInvoice(text), text);
-        } else {
-          // 文字层缺失(扫描件) 或 被字体加密成乱码(电子票) → 渲染整页转 OCR。
-          // 加密票虽抽不到文字，但渲染出来视觉正常，OCR 能读出真实文字。
-          let ocrText = "";
-          try {
-            const input = await pageImagesForOcr(inv);
-            inv.recognitionRegions = [];
-            try {
-              if (input.pages.length) {
-                invoiceStore.msg = inv.textGarbled ? "字体加密，转图像 OCR 识别…" : "OCR 识别扫描发票…";
-                const lines = await recognizePages(input.pages, m => { invoiceStore.msg = m; }, {
-                  // 原始内嵌图可能只是页面裁片，无法确认整页位置时不画框。
-                  onPageRegions: input.owned ? regions => { inv.recognitionRegions = markRaw([...inv.recognitionRegions, ...regions]); } : undefined,
-                });
-                ocrText = lines.join("\n");
-                await applyOcrInvoice(inv, ocrText, input.pages.find(page => (page.pageIndex ?? 0) === 0), input.owned);
-              }
-            } finally {
-              if (input.owned) for (const page of input.pages) URL.revokeObjectURL(page.dataUrl);
-            }
-          } catch (e) {
-            // OCR 不可用（如无法联网下载模型/无 WebGL）→ 不让整张失败，下面用文件名兜底
-            inv.systemNote = "OCR 不可用，已按文件名补录，请手动核对";
-          }
-          if (ocrText.trim()) {
-            inv.systemNote = inv.systemNote || "OCR 识别，请重点核对";
-          }
-          // 无论 OCR 成否，最后都会执行下方 applyFilenameFallback 补齐日期/金额等空字段
-        }
-      } else {
-        invoiceStore.msg = "OCR 识别发票图片…";
-        inv.recognitionRegions = [];
-        const lines = await recognizePages(inv.pages, (m) => (invoiceStore.msg = m), {
-          onPageRegions: regions => { inv.recognitionRegions = markRaw([...inv.recognitionRegions, ...regions]); },
-        });
-        await applyOcrInvoice(inv, lines.join("\n"), inv.pages[0]);
-        if (inv.fields.docType === "医疗票据") inv.systemNote = inv.systemNote || "医疗票据 OCR 识别，请重点核对";
-      }
-      applyFilenameFallback(inv);
+      const result = await readRecognition(inv, { force, remaining, deferNamed });
+      if (!result || inv.removed) return;
+      applyRecognition(inv, result);
+      inv.filenameDraft = false;
       if (supplementFolder(intakeFile(inv.blob).parentFolder)) {
         inv.fields.attachmentType ||= /行程单/.test(intakeFile(inv.blob).parentFolder) ? '行程单' : '行程及费用明细';
         inv.include = false;
@@ -625,7 +675,7 @@ export const invoiceActions = {
       inv.error = String((e && e.message) || e);
       invoiceStore.msg = "识别失败：" + inv.error;
     } finally {
-      if (!skipDedupe) invoiceStore.busy = false;
+      if (!skipDedupe && !background) invoiceStore.busy = false;
     }
   },
 
@@ -633,17 +683,17 @@ export const invoiceActions = {
     if (invoiceStore.busy) return;
     invoiceStore.busy = true;
     try {
-      const pending = invoiceStore.invoices.filter(inv => inv.status !== 'done');
+      const pending = invoiceStore.invoices.filter(inv => !['done', 'queued', 'running'].includes(inv.status));
       invoiceStore.recognitionProgress = { label: '识别票据', done: 0, total: pending.length };
       for (const [index, inv] of pending.entries()) {
-        if (!inv.removed) await invoiceActions.recognizeOne(inv, { skipDedupe: true });
+        if (!inv.removed) await invoiceActions.recognizeOne(inv, { skipDedupe: true, deferNamed: true });
         invoiceStore.recognitionProgress.done = index + 1;
       }
       invoiceStore.recognitionProgress = { label: '核对附件匹配' };
       const duplicateCount = invoiceActions.removeConfirmedDuplicates();
       refreshHistory();
       const reused = invoiceStore.invoices.filter((i) => i.history && i.history.usedBefore).length;
-      const unfinished = invoiceStore.invoices.filter((i) => i.status !== "done").length;
+      const unfinished = invoiceStore.invoices.filter(i => i.status === "error" || i.status === "idle").length;
       const matched = await syncMatchedAttachments();
       const attachments = await invoiceActions.matchRecognizedAttachments();
       invoiceStore.msg = `本批识别结束${unfinished ? `，${unfinished} 张未识别成功` : ""}${duplicateCount ? `，已自动移除 ${duplicateCount} 张本批重复` : ""}${reused ? `，⚠ ${reused} 张有历史勾选或使用记录` : ""}；匹配台账 ${matched.matched} 张，新增原件 ${matched.saved} 张${matched.needsReview ? `，${matched.needsReview} 张需人工核对` : ""}${matched.failed ? `，${matched.failed} 张原件保存失败` : ""}。`;

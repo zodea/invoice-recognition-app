@@ -46,12 +46,13 @@ onBeforeUnmount(pan.cancel);
     </div>
     <div v-if="status?.reason" class="flex items-center justify-between gap-2 border-b px-3 py-2 text-xs" :class="statusTone" role="status">
       <span><strong>{{ status.label }}：</strong>{{ status.reason }}</span>
-      <button v-if="invoice?.status === 'error'" type="button" class="ui-btn-sm" :disabled="invoiceStore.busy" @click="invoiceActions.recognizeOne(invoice)">重新识别</button>
+      <button v-if="invoice?.status === 'error'" type="button" class="ui-btn-sm" :disabled="invoiceStore.busy" @click="invoiceActions.recognizeOne(invoice, { force: true })">重新识别</button>
       <button v-else-if="invoice?.duplicateReason" type="button" class="ui-btn-sm" @click="invoiceActions.removeInvoice(invoice.id)">移除当前票据</button>
       <button v-else-if="status.netDifference" type="button" class="ui-btn-sm" @click="emit('adopt-paper-total', status.reason)">采用票面价税合计</button>
     </div>
     <div v-if="invoice" class="document-actions" role="group" aria-label="预览与识别操作">
-      <button class="btn" type="button" :disabled="invoice.rendering || invoiceStore.busy" @click="invoiceActions.recognizeOne(invoice)">{{ invoice.status === 'running' ? '识别中…' : '识别' }}</button>
+      <button class="btn" type="button" :disabled="invoice.rendering || invoiceStore.busy || invoice.status === 'running'" @click="invoiceActions.recognizeOne(invoice, { force: invoice.status === 'done' || invoice.status === 'error' })">{{ invoice.status === 'running' ? '识别中…' : invoice.status === 'done' ? '重新识别' : '识别' }}</button>
+      <button v-if="invoice.lastRecognition?.remainingPages?.length" class="btn" type="button" :disabled="invoiceStore.busy || invoice.status === 'running'" @click="invoiceActions.recognizeOne(invoice, { remaining: true })">补扫剩余页面（{{ invoice.lastRecognition.remainingPages.length }}）</button>
       <button v-if="invoice.rawText" class="btn" type="button" :aria-expanded="showText" aria-controls="invoice-recognized-text" @click="showText = !showText">{{ showText ? '收起文本' : '文本' }}</button>
       <button class="btn" type="button" title="顺时针旋转 90°（影响预览与打印）" aria-label="旋转 90 度" :disabled="invoice.rendering || ['queued', 'running'].includes(invoice.previewStatus)" @click="invoiceActions.rotateInvoice(invoice)">↻ 方向<span v-if="invoice.rotation"> {{ invoice.rotation }}°</span></button>
       <button class="btn" type="button" :disabled="invoice.status !== 'done'" :aria-pressed="showRegions" title="复用识别位置，不重新识别。框线用于对照票面，不代表已核实正确。" @click="showRegions = !showRegions">{{ showRegions ? '隐藏识别区域' : '显示识别区域' }}</button>

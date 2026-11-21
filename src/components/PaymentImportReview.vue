@@ -14,6 +14,7 @@ const emit=defineEmits(['commit','evidence','error']);
 const {queue,records,evidence,recognitionIssues,busy,loaded,progress,selections,excluded,confirmed,manualTarget,reviewed,importable,plan,selectedFor,reset:clearBatch,prepare,commit}=usePaymentBatch(props,emit);
 const batchExpanded = ref(false);
 const showReview = computed(() => busy.value || !props.existingRows.length || batchExpanded.value);
+const canReview = computed(() => loaded.value && (!busy.value || queue.value.some(task => task.filenameDraft)));
 const done = computed(() => queue.value.filter(task => task.state !== '等待读取' && task.state !== '识别中').length);
 function showRecords() { batchExpanded.value = false; }
 defineExpose({prepare, busy, showRecords});
@@ -55,7 +56,7 @@ function addLine(r){r.lines.push({purpose:'',unit:'',quantity:'',unitPrice:'',li
         </button>
         <section v-if="!workbench || showReview" class="batch-workspace" aria-label="凭证识别工作台">
           <PaymentRecognitionQueue :queue="queue" :progress="progress" :busy="busy" />
-          <template v-if="loaded && !busy">
+          <template v-if="canReview">
       <label v-if="evidence.length&&existingRows.length" class="existing-target">补充到已有付款<select v-model="manualTarget"><option value="">选择需要人工分配的记录</option><option v-for="r in existingRows.filter(r=>!r.linkedLedgerKey&&!r.duplicateOf&&!r.supplementOnly)" :key="r.id" :value="r.id">{{ r.date }} · {{ r.seller }} · {{ r.total }} 元 · {{ r.source }}</option></select></label>
       <UiDisclosure v-if="recognitionIssues.length"><template #label>{{ recognitionIssues.length }} 条凭证识别提示</template><div v-for="(issue, i) in recognitionIssues" :key="i">{{ issue }}</div></UiDisclosure>
       <p v-if="reviewed.length" class="review-count">{{ evidence.length }} 份凭证 · {{ records.length }} 笔清单款项</p>

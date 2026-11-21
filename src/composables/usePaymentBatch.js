@@ -1,5 +1,7 @@
 import {computed,ref,shallowReactive,shallowRef} from 'vue';
 import {recognizePaymentEvidenceFile} from '../lib/payment-evidence-import.js';
+import {paymentScreenshotDraft} from '../lib/invoice-filename.js';
+import {yieldToBackground} from '../lib/ocr.js';
 import {fileHash} from '../lib/file-utils.js';
 import {reviewPaymentImport,createPaymentEvidenceMatcher} from '../lib/payment-reconciliation.js';
 import {planPaymentAttachments} from '../lib/payment-batch-matching.js';
@@ -46,7 +48,7 @@ export function usePaymentBatch(props,emit){
  async function prepare(files){
   if(!files.length||busy.value||props.saving)return;
   busy.value=true;loaded.value=true;
-  // Individual queue entries stay live. Publish matching inputs together when the batch is ready.
+  // 普通批次统一发布；规范命名的截图可先核对文件名草稿。
   const nextEvidence=[...evidence.value],nextIssues=[...recognitionIssues.value];
   const indicesByHash=new Map(nextEvidence.map((item,index)=>[item.hash,index]));
   const firstByText=new Map();
@@ -66,25 +68,60 @@ export function usePaymentBatch(props,emit){
    pending.push(...files.filter(f=>/\.(pdf|png|jpe?g|webp|bmp|gif|tiff?)$/i.test(f.name)).map(file=>({file,path:file.webkitRelativePath||file.name})));
    const offset=queue.value.length;
    queue.value.push(...pending.map(p=>({...p,state:'等待读取',detail:''})));
-   for(const [i,{file,path}] of pending.entries()){
-    const task=queue.value[offset+i];task.state='识别中';progress.text=(i+1)+' / '+pending.length+' · '+file.name;
+   const jobs=pending.map((source,i)=>({ ...source,task:queue.value[offset+i],draft:paymentScreenshotDraft(source.file.name) }));
+   // 先发布可核对的文件名草稿。后续替换同一索引，保留用户正在调整的凭证选择。
+   const enrichment=[];
+   for(const job of jobs.filter(job=>job.draft)){
+    const {file,path,task,draft}=job;
+    task.filenameDraft=true;
+    task.fields=draft;
+    task.detail='文件名草稿，可先核对；后台补识别交易单号';
     try{
-     const hash=await fileHash(file),copyIndex=indicesByHash.get(hash);
-     if(copyIndex!==undefined){
+     const hash=await fileHash(file), index=indicesByHash.get(hash);
+     if(index!==undefined){
+      const copy=nextEvidence[index];
+      nextEvidence[index]={...copy,paths:[...new Set([...copy.paths,path])]};
+      task.state='重复副本';task.detail=copy.file.name;continue;
+     }
+     indicesByHash.set(hash,nextEvidence.length);
+     enrichment.push({...job,hash,index:nextEvidence.length});
+     nextEvidence.push({file,paths:[path],hash,fields:draft,pages:[],transactions:[],warnings:[]});
+    }catch(error){task.state='读取失败';task.detail=error.message;}
+   }
+   if(enrichment.length){
+    evidence.value=nextEvidence.slice();
+    emit('evidence',evidence.value);
+   }
+   for(const job of [...jobs.filter(job=>!job.draft),...enrichment]){
+    const {file,path,task,draft}=job;
+    if(draft)await yieldToBackground();
+    task.state='识别中';progress.text=file.name;
+    try{
+     const hash=job.hash||await fileHash(file),copyIndex=indicesByHash.get(hash);
+     if(job.index===undefined&&copyIndex!==undefined){
       const copy=nextEvidence[copyIndex];
       nextEvidence[copyIndex]={...copy,paths:[...new Set([...copy.paths,path])]};
       task.fields=copy.fields;
       task.state='重复副本';task.detail=copy.file.name;continue;
      }
      let c;
-     try{c=await recognizePaymentEvidenceFile(file,{onProgress:info=>{task.detail=info;progress.text=file.name+' · '+info;}});}
+     try{c=await recognizePaymentEvidenceFile(file,{sha256:hash,onProgress:info=>{task.detail=info;progress.text=file.name+' · '+info;}});}
      catch(error){c={file,fields:{},warnings:['识别失败，可查看原件：'+error.message]};}
      const normalized=c.pages?.map(p=>p.text.replace(/\s/g,'')).join('\n');
      const same=normalized&&firstByText.get(normalized);
      const item={...c,paths:[path],hash,normalized,duplicateHint:same?'与 '+same.file.name+' 识别文字相同':''};
-     indicesByHash.set(hash,nextEvidence.length);
+     if(draft && !(c.transactions?.length > 1)){
+      for(const [key,value] of Object.entries(draft))if(c.fields[key]===''||c.fields[key]==null)c.fields[key]=value;
+     }
      if(normalized&&!same)firstByText.set(normalized,item);
-     nextEvidence.push(item);
+     if(job.index===undefined){
+      indicesByHash.set(hash,nextEvidence.length);
+      nextEvidence.push(item);
+     }else{
+      item.paths=nextEvidence[job.index].paths;
+      nextEvidence[job.index]=item;
+      evidence.value=nextEvidence.slice();
+     }
      task.fields=c.fields;
      task.state=c.fields?.date||c.fields?.seller||c.fields?.kind==='order'?'已识别':'待核对';
      task.detail=[c.fields?.date,c.fields?.seller,c.fields?.total!==''&&c.fields?.total!=null?c.fields.total+' 元':''].filter(Boolean).join(' · ')||c.warnings?.[0]||'查看原件核对';

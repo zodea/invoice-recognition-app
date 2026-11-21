@@ -87,3 +87,12 @@ export function applyInvoiceFilenameFallback(fields, name) {
 
   return { fallback, filled };
 }
+
+// 同一命名格式也用于发票原件，只提供待核对的字段，不据此判断付款状态。
+export function paymentScreenshotDraft(name) {
+  if (!/^\d{4}-\d{2}-\d{2}-.+-\d+\.\d{2}元(?:-\d+)?\.(?:png|jpe?g|webp|bmp|gif|tiff?)$/i.test(name)) return null;
+  const { date, seller, total } = parseInvoiceFilename(name);
+  const parsed = new Date(date + 'T00:00:00Z');
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date || !seller) return null;
+  return { date, seller, total };
+}

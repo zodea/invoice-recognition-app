@@ -1,5 +1,6 @@
 // 识别只产生待核对候选；不修改或重命名用户文件。PDF 每页独立分析。
 import { parsePaymentEvidence, parsePaymentTransactions } from './payment-evidence.js';
+import { getOcrCache, putOcrCache } from './ocr-cache.js';
 import { isPdf } from './file-utils.js';
 import { intakeFile } from './fileIntake.js';
 
@@ -39,9 +40,18 @@ export async function recognizePaymentEvidenceFile(file, options = {}) {
       } finally { urls.forEach(url => { if (url) URL.revokeObjectURL(url); }); }
     }
   } else {
-    const url = URL.createObjectURL(file);
-    try { notify('识别图片内容'); texts = [(await recognize([{ dataUrl: url, pageIndex: 0 }])).join('\n')]; }
-    finally { URL.revokeObjectURL(url); }
+    const key = options.sha256 && 'payment:' + options.sha256;
+    const cached = await getOcrCache(key);
+    if (cached) texts = [cached.rawText];
+    else {
+      const url = URL.createObjectURL(file);
+      try {
+        notify('识别图片内容');
+        const rawText = (await recognize([{ dataUrl: url, pageIndex: 0 }])).join('\n');
+        texts = [rawText];
+        if (rawText.trim()) await putOcrCache(key, { rawText, regions: [], parsedFields: parse(rawText) });
+      } finally { URL.revokeObjectURL(url); }
+    }
   }
   const pages = Array.from({length: count}, (_, i) => ({ page: i + 1, text: texts[i] || '', fields: parse(texts[i] || ''), transactions: parsePaymentTransactions(texts[i] || '') }));
   if (!pages.some(p => p.text.trim())) warnings.push('未识别到文字，请人工对照原件');
