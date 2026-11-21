@@ -73,7 +73,8 @@ function closeDialog(value) { if (!runningAction.value && !busy.value) open.valu
 function checkedCount(source) { return source.records.filter(row => props.fileMatches?.byRow.has(row.id)).length; }
 async function exportCheckedWorkbook(source) {
   if (!checkedCount(source)) return;
-  const name = source.sourcePath.split('/').at(-1).replace(/\.xlsx?$/i, '') + '_核对版.xlsx';
+  const stem = source.sourcePath.split('/').at(-1).replace(source.hasCheckedColumns ? /(?:_核对版(?:\(\d+\))?)?\.xlsx?$/i : /\.xlsx?$/i, '');
+  const name = stem + '_核对版.xlsx';
   await saveWithDialog(buildCheckedInvoiceWorkbook(source, props.fileMatches.byRow), name, excelMime, '已保存核对版 Excel', '已下载核对版 Excel，请放到原 Excel 同级目录。');
 }
 

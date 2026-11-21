@@ -32,7 +32,7 @@ export function planPaymentAttachments(records,files,existing=[],{onClaims}={}){
    if(matches.length!==1){notes.push((matches.length?'附件同名，需核对：':'尚缺清单附件：')+ref);for(const i of matches)explicit.add(i);continue;}
    const i=matches[0]; explicit.add(i);proposals.set(i,'清单附件链接或嵌入图片');
   }
-  const ordinary=row.recordType!=='阶段汇总'&&!row.cashWithoutEvidence&&row.recordType!=='现金无凭证';
+  const ordinary=!['阶段汇总','报销批次','现金无凭证'].includes(row.recordType)&&!row.cashWithoutEvidence;
   const matches=ordinary?paymentsByIdentity.get(identity(row.date,row.seller,row.total))||[]:[];
   if(matches.length===1 && !explicit.has(matches[0]) && [...proposals.keys()].every(i=>files[i].fields?.kind==='order'))proposals.set(matches[0],'日期、金额及收款方唯一一致');
   if(matches.length===1 && proposals.has(matches[0])){

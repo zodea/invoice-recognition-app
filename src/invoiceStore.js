@@ -305,12 +305,15 @@ export const invoiceActions = {
   async addFiles(fileList) {
     const arr = Array.from(fileList).filter((f) => /\.(pdf|png|jpe?g|bmp|webp|gif|tiff?)$/i.test(f.name));
     for (const file of arr) {
+      const source = await identifyIntakeFile(file).catch(() => intakeFile(file));
+      if (source.sha256 && invoiceStore.invoices.some(inv => inv.sourcePath === source.relativePath && inv.sha256 === source.sha256)) continue;
       const inv = reactive({
         id: uid("inv"),
         name: file.name,
         blob: file,
-        sourcePath: intakeFile(file).relativePath,
-        sha256Short: '',
+        sourcePath: source.relativePath,
+        sha256: source.sha256 || '',
+        sha256Short: source.sha256Short || '',
         kind: /\.pdf$/i.test(file.name) ? "pdf" : "image",
         pages: [],
         recognitionRegions: [],
@@ -337,7 +340,6 @@ export const invoiceActions = {
         historyAutoExcluded: false,
       });
       invoiceStore.invoices.push(inv);
-      identifyIntakeFile(file).then(record => { inv.sha256Short = record.sha256Short; }).catch(() => {});
       if (!invoiceStore.selectedId) invoiceStore.selectedId = inv.id;
       renderFileToPages(file)
         .then(async (r) => {

@@ -65,13 +65,19 @@ function readSheet(ws, sheet, source, epoch) {
   const identity = ['date','payer','seller','project'];
   const vertical = (ws['!merges'] || []).filter(m=>m.s.c===m.e.c && m.e.r>m.s.r && m.e.r>=first);
   const groups = vertical.filter(m=>identity.some(k=>index[k]===m.s.c)).sort((a,b)=>a.s.r-b.s.r);
+  const reimbursementBatches = new Map(vertical.filter(merge => {
+    if (merge.s.c !== index.total || h[index.total] !== '实付合计' || merge.s.r < first || !numeric(raw(merge.s.r, 'total'))) return false;
+    const overlapping = groups.filter(group => group.s.r <= merge.e.r && merge.s.r <= group.e.r);
+    return overlapping.every(group => group.s.r >= merge.s.r && group.e.r <= merge.e.r) && !overlapping.some(group => group.s.r === merge.s.r && group.e.r === merge.e.r);
+  }).map(merge => [merge.s.r, merge]));
   const read = (r,key) => {
     const m = vertical.find(m=>m.s.c===index[key] && m.s.r<=r && r<=m.e.r);
     return raw(m?.s.r ?? r,key);
   };
   const records = [];
   for (let start=first; start<=area.e.r;) {
-    let end=start;
+    const reimbursementBatch = reimbursementBatches.get(start);
+    let end=reimbursementBatch?.e.r ?? start;
     const spans=[];
     for (const m of groups) {
       if (m.s.r>end) break;
@@ -80,10 +86,10 @@ function readSheet(ws, sheet, source, epoch) {
     const rowNumbers=Array.from({length:end-start+1},(_,i)=>start+i);
     const warnings=[];
     const values=key=>rowNumbers.map(r=>raw(r,key)).filter(v=>text(v)!=='');
-    const boundaryConflict=spans.some(m=>m.s.r!==start||m.e.r!==end)
+    const boundaryConflict=!reimbursementBatch && (spans.some(m=>m.s.r!==start||m.e.r!==end)
       || [...identity,'type','range'].some(k=>new Set(values(k).map(text)).size>1)
-      || vertical.some(m=>m.s.c===index.total && m.s.r<=end && m.e.r>=start && (m.s.r<start || m.e.r>end));
-    if (spans.length && rowNumbers.slice(1).some(r=>['date','seller','payer'].filter(k=>text(raw(r,k))).length>=2)) warnings.push('合并范围内再次填写付款信息，请核对边界');
+      || vertical.some(m=>m.s.c===index.total && m.s.r<=end && m.e.r>=start && (m.s.r<start || m.e.r>end)));
+    if (!reimbursementBatch && spans.length && rowNumbers.slice(1).some(r=>['date','seller','payer'].filter(k=>text(raw(r,k))).length>=2)) warnings.push('合并范围内再次填写付款信息，请核对边界');
     if (boundaryConflict) warnings.push('付款信息或实付金额的合并边界不一致，请对照原始行');
     const lines=rowNumbers.map(r=>({purpose:text(raw(r,'purpose')),unit:raw(r,'unit'),quantity:raw(r,'quantity'),unitPrice:raw(r,'price'),lineAmount:raw(r,'amount')}))
       .filter(line=>Object.values(line).some(v=>text(v)!==''));
@@ -92,7 +98,7 @@ function readSheet(ws, sheet, source, epoch) {
     const lineTotal=amounts.length && amounts.every(numeric) ? amounts.reduce((sum,v)=>sum+cents(v),0)/100 : '';
     if (amounts.some(v=>!numeric(v))) warnings.push('明细金额格式不一致，请核对原始值');
     const explicitValues=values('total');
-    const explicitTotal=explicitValues[0] ?? read(start,'total');
+    const explicitTotal=explicitValues[0] ?? '';
     if (explicitValues.some(v=>!numeric(v)) || new Set(explicitValues.map(Number)).size>1) warnings.push('原表实付金额不一致或无效');
     const total=text(explicitTotal)!=='' ? (numeric(explicitTotal)?Number(explicitTotal):'') : lineTotal;
     if (text(explicitTotal)!=='' && lineTotal!=='' && cents(explicitTotal)!==cents(lineTotal)) warnings.push('原表实付 '+explicitTotal+' 元与明细合计 '+lineTotal+' 元不一致');
@@ -100,13 +106,17 @@ function readSheet(ws, sheet, source, epoch) {
     if (amounts.length<lines.length && (amounts.length || text(explicitTotal)==='')) warnings.push('部分明细金额为空，请核对合计');
     if (rowNumbers.some(r=>['total','amount'].some(k=>cell(r,index[k])?.f && text(raw(r,k))===''))) warnings.push('金额公式的缓存值为空，请在 Excel 重算或人工填写');
     const get=k=>read(start,k);
-    const date=paymentDate(get('date'),epoch), seller=text(get('seller'));
-    const originalType=text(get('type')), cash=text(get('evidence'))==='现金无凭证';
+    const dates = [...new Set(rowNumbers.map(row => paymentDate(read(row, 'date'), epoch)).filter(Boolean))].sort();
+    const date=dates.length===1?dates[0]:paymentDate(get('date'),epoch);
+    const sellers = [...new Set(rowNumbers.map(row => text(read(row, 'seller'))).filter(Boolean))];
+    const seller=reimbursementBatch ? (sellers.length===1 ? sellers[0] : sheet) : text(get('seller'));
+    if (reimbursementBatch) warnings.push('实付合计跨多行，请对照原表、收款方和凭证，确认报销批次边界');
+    const originalType=text(get('type')), cash=text(get('evidence'))==='现金无凭证' || /(?:送礼金额|现金无凭证)$/.test(header(sheet));
     const labelFound=rowNumbers.some(r=>rows[r-area.s.r]?.some(v=>summaryLabel.test(text(v))));
     const summarySheet=/(?:汇总|统计)(?:表|页|清单)?$/.test(sheet);
     let recordType=originalType;
     if (originalType==='统计合计' || (!originalType && (labelFound || summarySheet))) recordType='合计';
-    else if (['','明细','普通费用'].includes(originalType)) recordType=cash?'现金无凭证':'';
+    else if (['','明细','普通费用'].includes(originalType)) recordType=cash?'现金无凭证':reimbursementBatch?'报销批次':'';
     else if (!['合计','阶段汇总','现金无凭证'].includes(recordType)) warnings.push('记录类型与支持的类型不一致，请确认');
     const part=k=>paymentDate(get(k),epoch)||text(get(k));
     const rangeValue=get('range');
@@ -122,7 +132,7 @@ function readSheet(ws, sheet, source, epoch) {
       const sourceIssues=[...new Set(values('issue').map(text))];
       const originalStatus=text(get('status'));
       records.push({attachmentRefs,sourceFile:source,sourceSheet:sheet,firstRow:start+1,lastRow:end+1,sourceIssues,originalStatus,id:[source,sheet,start+1].join('|'), source:source+' / '+sheet+' / 行'+(start+1)+(end>start?'-'+(end+1):''),
-        date,dateRange,recordType,sourceRecordType:originalType,cashWithoutEvidence:cash,seller,total,payer,
+        date,dateRange:dateRange || (reimbursementBatch && dates.length ? dates[0]+'至'+dates.at(-1) : ''),recordType,sourceRecordType:originalType,cashWithoutEvidence:cash,seller,total,payer,
         project:text(get('project')),purpose:lines.map(l=>l.purpose).filter(Boolean).join(' / '),lines,rawRows,
         team:text(get('team')),deliveryNumber:text(get('number')),buyer:'',refund:get('refund'),note:[...new Set(values('note').map(text))].join(' / '),
         reimbursement:'未核对',evidenceHash:'',evidenceConfirmed:false,importWarnings:warnings,explicitTotal,lineTotal});

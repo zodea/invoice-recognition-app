@@ -5,6 +5,7 @@
   --vxe-ui-font-primary-color: #1867c0;
   --vxe-ui-table-border-color: #e3e6ea;
   --vxe-ui-table-header-background-color: #f9fafb;
-  --vxe-ui-table-row-height-default: 36px;
+  --vxe-ui-table-row-height-default: var(--workspace-table-row);
+  --vxe-ui-table-row-height-small: var(--workspace-table-row);
   --vxe-ui-table-row-current-background-color: #e7f1fb;
 }

@@ -8,3 +8,23 @@ summary::-webkit-details-marker { display: none; }
 *::-webkit-scrollbar-thumb { border-radius: 8px; background: #aeb8c5; }
 *::-webkit-scrollbar-track, *::-webkit-scrollbar-corner { background: transparent; }
 @supports not selector(::-webkit-scrollbar) { * { scrollbar-width: thin; scrollbar-color: #aeb8c5 transparent; } }
+
+.app-shell {
+  --workspace-control-height: 32px;
+  --workspace-control-radius: 6px;
+  --workspace-control-font: 13px;
+  --workspace-table-row: 36px;
+}
+.app-shell [role="tabpanel"] :is(.btn, .btn-primary, .ui-btn, .ui-btn-primary):not(.ui-btn-sm, .text-xs),
+.app-shell [role="tabpanel"] :is(.field-input, .ui-input):not(textarea) {
+  min-height: var(--workspace-control-height);
+  height: var(--workspace-control-height);
+  padding-block: 0;
+  border-radius: var(--workspace-control-radius);
+  font-size: var(--workspace-control-font);
+}
+.app-shell [role="tabpanel"] .finance-table :is(th, td) {
+  height: var(--workspace-table-row);
+  padding-block: 7px;
+  font-size: var(--workspace-control-font);
+}

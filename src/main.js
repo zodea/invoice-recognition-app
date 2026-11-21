@@ -3,10 +3,10 @@ import { initializeLocalData } from './lib/local-data.js';
 import { isTauri, invokeTauri } from './lib/platform.js';
 import "@unocss/reset/tailwind.css";
 import "virtual:uno.css";
-import "./styles/base-reset.css";
-import "./styles/vxe-override.css";
 import "./styles.css";
 import "./expense-ui.css";
+import "./styles/base-reset.css";
+import "./styles/vxe-override.css";
 // Load store singletons only after migration/the disk snapshot is ready.
 async function start() {
   const root = document.querySelector('#app');

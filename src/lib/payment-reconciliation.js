@@ -27,6 +27,8 @@ export function paymentEvidenceCandidates(record, files) {
         if (t.date && ((range.start && t.date<range.start)||(range.end && t.date>range.end))) return false;
         return (t.date && (range.start || range.end)) || (record.seller && normalize(t.seller)===normalize(record.seller)) || clues.length;
       })) continue;
+    } else if (record.recordType==='报销批次') {
+      if (!sameTotal || !(sameSeller || sameDate || clues.length)) continue;
     } else {
       if (record.date && fields.date && !sameDate) continue;
       if (fields.kind !== 'order' && hasAmount(fields.total) && hasAmount(record.total) && !sameTotal) {
@@ -66,7 +68,7 @@ export function reviewPaymentImport(records,existing,files=[],period='',{confirm
     const issues=[];
     let status='可新增待核对', canImport=true;
     const stage=record.recordType==='阶段汇总';
-    const complete=(stage || (record.date && record.seller)) && hasAmount(record.total);
+    const complete=(stage || (record.recordType==='报销批次' && record.seller) || (record.date && record.seller)) && hasAmount(record.total);
     if (prior) {
       status=prior.id!==record.id || sourceConflict(prior,record) ? '来源内容冲突' : '来源已存在';
       issues.push('保留已有款项、归属、报销状态及附件'); canImport=false;

@@ -1,5 +1,5 @@
 const normalize = value => String(value ?? '').normalize('NFKC').replace(/\s+/g, '');
-const brandAliases = [['速停车', '泊云速停车'], ['货省省', '江苏运满满']];
+const brandAliases = [['速停车', '泊云速停车'], ['货省省', '江苏运满满'], ['货车司机', '人间清醒']];
 
 export function paymentSellerMatch(left, right, aliases = brandAliases) {
   const first = normalize(left), second = normalize(right);

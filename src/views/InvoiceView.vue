@@ -9,6 +9,7 @@ import { useConfirmation } from '../composables/useConfirmation.js';
 import { matchesBuyerCheck } from '../lib/invoice-buyer-check.js';
 import { workspaceInvoiceStatus } from '../lib/invoice-workspace-status.js';
 import { matchInvoiceFiles } from '../lib/invoiceFileMatcher.js';
+import { invoiceWorkbooksWithoutExportCopies } from '../lib/invoiceExcelImport.js';
 import { ledgerKey } from '../lib/invoice-ledger.js';
 import PaymentEvidenceDrawer from '../components/PaymentEvidenceDrawer.vue';
 import { pendingPaymentCount } from '../lib/payment-store.js';
@@ -32,7 +33,7 @@ const paperTotals = ref({});
 function addWorkbooks(sources) {
   const updated = new Map(invoiceWorkbooks.value.map(source => [source.sourcePath, source]));
   for (const source of sources) updated.set(source.sourcePath, source);
-  invoiceWorkbooks.value = [...updated.values()];
+  invoiceWorkbooks.value = invoiceWorkbooksWithoutExportCopies([...updated.values()]);
 }
 function clearWorkspace() { invoiceActions.clearAll(); invoiceWorkbooks.value = []; paperTotals.value = {}; }
 const fileMatches = computed(() => invoiceWorkbooks.value.length ? matchInvoiceFiles(invoiceWorkbooks.value.flatMap(source => source.records), invoiceStore.invoices) : null);

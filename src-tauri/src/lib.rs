@@ -2,6 +2,7 @@ use base64::{engine::general_purpose, Engine as _};
 use std::fs;
 use std::path::{Path, PathBuf};
 mod local_data;
+mod file_intake;
 
 fn clean_path_part(value: &str, fallback: &str) -> String {
     let cleaned = value
@@ -219,6 +220,9 @@ pub fn run() {
             local_data::local_data_cancel_restore,
             local_data::local_data_recover,
             local_data::local_data_open_folder,
+            file_intake::pick_intake_folder,
+            file_intake::read_intake_file,
+            file_intake::release_intake_folder,
             pick_export_dir,
             write_export_file,
             open_external,
@@ -226,6 +230,7 @@ pub fn run() {
             vl_get_json,
             vl_get_text
         ])
+        .manage(file_intake::Intake::default())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

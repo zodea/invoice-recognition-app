@@ -1,6 +1,7 @@
 import { normalizeBuyerName } from './invoice-buyer-check.js';
 import { moneyCents } from './invoice-allocation.js';
 import { supplementInvoiceCandidates, supplementType } from './invoice-supplements.js';
+import { relativeLink } from './invoiceExcelImport.js';
 
 const compact = value => String(value || '').normalize('NFKC').replace(/\s/g, '');
 const medical = fields => /医疗|门诊/.test([fields.type, fields.docType, fields.sourcePath].join(' '));
@@ -17,6 +18,13 @@ export function matchInvoiceFiles(rows, invoices) {
   const supplements = valid.filter(invoice => supplementType(invoice.fields));
   const byRow = new Map(), byInvoice = new Map();
   const claims = new Map();
+  const byHash = new Map();
+  for (const invoice of originals) {
+    if (!invoice.sha256Short) continue;
+    const matches = byHash.get(invoice.sha256Short) || [];
+    matches.push(invoice);
+    byHash.set(invoice.sha256Short, matches);
+  }
   for (const row of rows) {
     const exact = originals.filter(invoice => sameInvoiceNumber(row, invoice));
     let candidates = exact, rule = 'L1';
@@ -27,6 +35,10 @@ export function matchInvoiceFiles(rows, invoices) {
         return (!row.number || row.numberUnsafe || !invoice.fields.number) && expected !== null && actual !== null && Math.abs(expected - actual) <= 100 && row.date && row.date === invoice.fields.date && seller && seller === normalizeBuyerName(invoice.fields.seller);
       });
       rule = 'L2';
+    }
+    const previous = byHash.get(row.prior?.hash);
+    if (previous?.length === 1 && candidates.includes(previous[0]) && relativeLink(row.sourcePath, previous[0].sourcePath || previous[0].name) === row.prior.path) {
+      candidates = previous;
     }
     if (candidates.length !== 1) continue;
     const [invoice] = candidates;

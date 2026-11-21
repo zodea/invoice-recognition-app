@@ -3,18 +3,39 @@ import { ref } from "vue";
 import { invoiceActions, invoiceStore } from "../invoiceStore.js";
 import { partitionFiles, SUPPORTED_HINT } from "../lib/upload";
 import { toastWarn } from "../lib/toast";
-import { intakeFile, isSystemFile } from '../lib/fileIntake.js';
+import { intakeFile, isSystemFile, paymentEvidenceFolder, pickDesktopIntakeFolder } from '../lib/fileIntake.js';
+import { isTauri } from '../lib/platform.js';
 import { readInvoiceSourceWorkbook } from '../lib/invoiceExcelImport.js';
 import { readPaymentBatch } from '../lib/payment-records.js';
 
 const emit = defineEmits(['payment-batch', 'invoice-workbooks']);
 const input = ref(null);
 const folderInput = ref(null);
+const importingFolder = ref(false);
+
+async function chooseFolder() {
+  if (!isTauri()) return folderInput.value.click();
+  importingFolder.value = true;
+  try {
+    const selection = await pickDesktopIntakeFolder();
+    if (!selection) return;
+    if (selection.skipped) toastWarn(`已跳过 ${selection.skipped} 个无法读取、超出大小限制或指向其他目录的项目。`);
+    if (!selection.files.length) toastWarn('所选目录没有可导入的文件。');
+    else await intake(selection.files);
+  } catch (error) {
+    toastWarn(`无法读取所选目录：${String(error?.message || error)}`);
+  } finally {
+    importingFolder.value = false;
+  }
+}
 
 async function intake(files) {
   if (invoiceStore.busy) { toastWarn("正在识别发票，请等待本批完成后再导入。"); return; }
   files = Array.from(files).filter(file => !isSystemFile(file.name));
   const spreadsheets = files.filter(file => /\.xlsx?$/i.test(file.name));
+  const documents = files.filter(file => !spreadsheets.includes(file));
+  const paymentDocuments = documents.filter(paymentEvidenceFolder);
+  const looseDocuments = documents.filter(file => !intakeFile(file).parentFolder);
   if (spreadsheets.length) {
     const invoiceBooks = [], otherBooks = [];
     for (const file of spreadsheets) {
@@ -27,10 +48,11 @@ async function intake(files) {
       } catch { otherBooks.push(file); }
     }
     if (invoiceBooks.length) emit('invoice-workbooks', invoiceBooks);
-    if (otherBooks.length) emit('payment-batch', [...otherBooks, ...files.filter(file => !spreadsheets.includes(file))]);
+    if (otherBooks.length) emit('payment-batch', [...otherBooks, ...(invoiceBooks.length ? [...paymentDocuments, ...looseDocuments] : documents)]);
     if (!invoiceBooks.length) return;
-    files = files.filter(file => !spreadsheets.includes(file));
   }
+  if (!spreadsheets.length && paymentDocuments.length) emit('payment-batch', paymentDocuments);
+  files = documents.filter(file => !paymentDocuments.includes(file));
   const { supported, ignored } = partitionFiles(files);
   if (supported.length) {
     await invoiceActions.addFiles(supported);
@@ -53,8 +75,8 @@ function onPick(e) {
   <div class="invoice-upload-actions">
     <input ref="input" type="file" multiple accept=".pdf,image/*,.xlsx,.xls" hidden @change="onPick" />
     <input ref="folderInput" type="file" webkitdirectory multiple hidden @change="onPick" />
-    <button type="button" class="ui-btn-primary" :disabled="invoiceStore.busy" @click="input.click()">＋ 导入文件</button>
-    <button type="button" class="ui-btn" :disabled="invoiceStore.busy" @click="folderInput.click()">导入文件夹</button>
+    <button type="button" class="ui-btn-primary" :disabled="invoiceStore.busy || importingFolder" @click="input.click()">＋ 导入文件</button>
+    <button type="button" class="ui-btn" :disabled="invoiceStore.busy || importingFolder" @click="chooseFolder">{{ importingFolder && !invoiceStore.busy ? '正在读取文件夹…' : '导入文件夹' }}</button>
   </div>
 </template>
 <style scoped>
