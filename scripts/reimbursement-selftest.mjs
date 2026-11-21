@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import * as XLSX from "xlsx";
 import { markReimbursedBatch, historyStatus, shouldDefaultExcludeByHistory, buildHistoryReportBytes, updateCurrentReimbursements, setInvoiceExpenseTag } from "../src/lib/invoice-ledger.js";
 import { inferExpenseTag } from "../src/lib/invoice-tags.js";
-import { confirmedDuplicateInvoices } from "../src/lib/invoice-dedupe.js";
+import { confirmedDuplicateInvoices, isDuplicateInvoice, markInvoiceDuplicates } from "../src/lib/invoice-dedupe.js";
 
 const a = "26442000004900444576", b = "26442000004900444577";
 const initial = { [a]: { key: a, number: a, project: "工地" }, [b]: { key: b, number: b, reimbursement: "已报销", reimbursementDate: "2026-01-01" } };
@@ -40,4 +40,15 @@ const changedTotal = { ...complete, fields: { ...complete.fields, total: "51" } 
 const differentNumber = { ...complete, fields: { ...complete.fields, number: b } };
 assert.deepEqual(confirmedDuplicateInvoices([noNumber, complete, duplicate, changedTotal, differentNumber]), [duplicate]);
 assert.deepEqual(confirmedDuplicateInvoices([{ ...complete, status: "idle" }, complete]), []);
+for (const order of [[noNumber, complete, differentNumber, changedTotal], [complete, differentNumber, noNumber, duplicate, changedTotal]]) {
+  const batch = order.map((item, index) => ({ ...item, id: String(index + 1), include: true }));
+  const originals = [];
+  const expected = batch.map(item => {
+    const match = originals.find(original => isDuplicateInvoice(item, original));
+    if (!match) originals.push(item);
+    return match?.id || '';
+  });
+  markInvoiceDuplicates(batch);
+  assert.deepEqual(batch.map(item => item.duplicateOfId), expected, '有号和无号混排时仍指向首张符合条件的原票');
+}
 console.log("批量报销、日期、重复提醒及导出验证通过");

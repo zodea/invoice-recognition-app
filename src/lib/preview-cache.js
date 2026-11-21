@@ -9,6 +9,18 @@ export function previewKey(file, page, rotation, width) {
   return [fileIds.get(file), page, rotation, width].join('/');
 }
 
+export function discardFilePreviews(file) {
+  const id = fileIds.get(file);
+  if (!id) return;
+  fileIds.delete(file);
+  for (const [key, entry] of pages) {
+    if (!key.startsWith(id + '/')) continue;
+    pages.delete(key);
+    entry.discarded = true;
+    if (!entry.users && entry.url) URL.revokeObjectURL(entry.url);
+  }
+}
+
 function evict() {
   for (const [key, entry] of pages) {
     if (pages.size <= limit) break;
@@ -38,6 +50,7 @@ export async function acquirePreview(key, render) {
     if (released) return;
     released = true;
     entry.users--;
+    if (entry.discarded && !entry.users) URL.revokeObjectURL(url);
     evict();
   } };
 }

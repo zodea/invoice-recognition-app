@@ -5,25 +5,46 @@ import { pdfRenderScale } from './pdf-preview.js';
 import { pdfTextRegions } from './recognition-regions.js';
 
 const baseUrl = import.meta.env?.BASE_URL || '/';
-async function openPdf(file) {
-  const [pdfjs, buffer] = await Promise.all([import('pdfjs-dist'), file.arrayBuffer()]);
-  pdfjs.GlobalWorkerOptions.workerSrc = `${baseUrl}pdf.worker.min.mjs`;
-  return pdfjs.getDocument({
-    data: new Uint8Array(buffer),
-    cMapUrl: `${baseUrl}cmaps/`,
-    cMapPacked: true,
-  }).promise;
+// Extraction, preview and OCR all create PDF.js workers. Hold the slot until
+// destruction finishes, including when opening the document itself fails.
+const maxDocuments = 2;
+const waiting = [];
+let activeDocuments = 0;
+async function withPdfDocument(file, signal, read) {
+  signal?.throwIfAborted();
+  if (activeDocuments < maxDocuments) activeDocuments++;
+  else await new Promise(resolve => waiting.push(resolve));
+  try {
+    signal?.throwIfAborted();
+    const [pdfjs, buffer] = await Promise.all([import('pdfjs-dist'), file.arrayBuffer()]);
+    signal?.throwIfAborted();
+    pdfjs.GlobalWorkerOptions.workerSrc = `${baseUrl}pdf.worker.min.mjs`;
+    const task = pdfjs.getDocument({ data: new Uint8Array(buffer), cMapUrl: `${baseUrl}cmaps/`, cMapPacked: true });
+    let pdf;
+    try {
+      pdf = await task.promise;
+      signal?.throwIfAborted();
+      return await read(pdf);
+    } finally {
+      if (pdf) await pdf.destroy();
+      else await task.destroy();
+    }
+  } finally {
+    const next = waiting.shift();
+    if (next) next();
+    else activeDocuments--;
+  }
 }
 
 // 返回纯文本、分行结果及归一化文字坐标，区域开关直接复用坐标。
-export async function extractPdfText(file, { maxPages = 10 } = {}) {
-  const pdf = await openPdf(file);
-  try {
+export async function extractPdfText(file, { maxPages = 10, signal } = {}) {
+  return withPdfDocument(file, signal, async pdf => {
     const pages = [];
     const all = [];
     const regions = [];
     const numPages = pdf.numPages; // 供调用方复用，省一次 pdf-lib 解析
     for (let i = 1; i <= Math.min(numPages, maxPages); i++) {
+      signal?.throwIfAborted();
       const page = await pdf.getPage(i);
       try {
         const content = await page.getTextContent();
@@ -36,9 +57,7 @@ export async function extractPdfText(file, { maxPages = 10 } = {}) {
       }
     }
     return { text: all.join('\n'), pages, numPages, regions };
-  } finally {
-    await pdf.destroy();
-  }
+  });
 }
 
 // 把 PDF 每页渲染成图片 dataURL，用于左侧"打印排版"预览——效果与导出的打印 PDF 一致。
@@ -52,12 +71,12 @@ function canvasToObjectURL(canvas) {
   });
 }
 
-export async function renderPdfPages(file, { scale = 2, firstPage = 1, maxPages = 10, timeoutMs = 12000, rotation = 0, targetWidth = 0, maxPixels = 16000000 } = {}) {
-  const pdf = await openPdf(file);
+export async function renderPdfPages(file, { scale = 2, firstPage = 1, maxPages = 10, timeoutMs = 12000, rotation = 0, targetWidth = 0, maxPixels = 16000000, signal } = {}) {
   const out = [];
-  try {
+  return withPdfDocument(file, signal, async pdf => {
     const start = Math.max(1, Math.floor(firstPage));
     for (let i = start; i <= Math.min(pdf.numPages, start + maxPages - 1); i++) {
+      signal?.throwIfAborted();
       let page, canvas, timer;
       try {
         page = await pdf.getPage(i);
@@ -85,8 +104,10 @@ export async function renderPdfPages(file, { scale = 2, firstPage = 1, maxPages 
         if (canvas) { canvas.width = 0; canvas.height = 0; }
       }
     }
+    signal?.throwIfAborted();
     return out;
-  } finally {
-    await pdf.destroy();
-  }
+  }).catch(error => {
+    for (const url of out) if (url) URL.revokeObjectURL(url);
+    throw error;
+  });
 }

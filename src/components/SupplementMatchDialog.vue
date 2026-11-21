@@ -26,7 +26,7 @@ watch(() => invoiceStore.matchSupplementHash, async (hash, _, onCleanup) => {
     const attachment = await getLedgerAttachment('supplement:' + hash);
     if (!stale) original.value = attachment?.blob || null;
   } catch (error) { if (!stale) message.value = error.message; }
-});
+}, { immediate: true });
 async function link() {
   try { await invoiceActions.confirmSupplementLink(record.value.hash, selected.value); message.value = '已关联主票。'; }
   catch (error) { message.value = error.message; }

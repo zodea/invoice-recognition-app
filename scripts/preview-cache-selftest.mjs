@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { acquirePreview, previewKey } from '../src/lib/preview-cache.js';
+import { acquirePreview, discardFilePreviews, previewKey } from '../src/lib/preview-cache.js';
 
 const file = new Blob(['preview test']);
 const raw = URL.createObjectURL(file);
@@ -34,6 +34,19 @@ try {
   await assert.rejects(acquirePreview(retryKey, () => Promise.reject(new Error('render failed'))));
   const retry = await acquirePreview(retryKey, make);
   retry.release();
+  const activePage = await acquirePreview(key(36), make);
+  let finish;
+  const pending = acquirePreview(key(40), () => new Promise(resolve => { finish = resolve; }));
+  await Promise.resolve();
+  discardFilePreviews(file);
+  await assert.rejects(fetch(retry.url), '清空时回收空闲缓存');
+  assert.equal((await fetch(activePage.url)).status, 200, '保留其他视图仍在使用的同一页');
+  activePage.release();
+  await assert.rejects(fetch(activePage.url));
+  finish(make());
+  const late = await pending;
+  late.release();
+  await assert.rejects(fetch(late.url), '清空后才完成的预览也能释放');
   assert.equal(await (await fetch(raw)).text(), 'preview test');
 } finally { URL.revokeObjectURL(raw); }
 console.log('高清预览 36 页逐项淘汰、并发复用、占用保护、失败重试与原图隔离通过');

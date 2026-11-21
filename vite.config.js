@@ -13,6 +13,32 @@ export default defineConfig({
   base: "./",
   plugins: [
     cleanBuildOutput(),
+    {
+      name: "preload-home-workspace",
+      apply: "build",
+      transformIndexHtml(_, { bundle, chunk }) {
+        // Download the workspace during startup. Its store modules still execute
+        // only after the desktop data migration in main.js has completed.
+        const home = Object.values(bundle).find(output => output.type === "chunk" &&
+          output.moduleIds.some(id => id.endsWith("/src/App.vue")));
+        if (!home || home === chunk) return;
+        const seen = new Set([chunk.fileName, ...chunk.imports]);
+        const scripts = [];
+        function preload(file) {
+          if (seen.has(file) || bundle[file]?.type !== "chunk") return;
+          seen.add(file);
+          scripts.push({ tag: "link", attrs: { rel: "modulepreload", crossorigin: "", href: "./" + file } });
+          bundle[file].imports.forEach(preload);
+        }
+        preload(home.fileName);
+        return [
+          ...scripts,
+          ...Array.from(home.viteMetadata.importedCss, file => ({
+            tag: "link", injectTo: "head", attrs: { rel: "stylesheet", crossorigin: "", href: "./" + file },
+          })),
+        ];
+      },
+    },
     ocrProductionPlugin(),
     UnoCSS(),
     vue(),

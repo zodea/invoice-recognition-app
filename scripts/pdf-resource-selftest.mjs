@@ -4,7 +4,9 @@ import { registerHooks } from 'node:module';
 // 替换 PDF 引擎，以公开入口验证失败、超时与成功时的资源释放，不需要真实票据或浏览器。
 const mockModule = 'data:text/javascript,' + encodeURIComponent(`
   export const GlobalWorkerOptions = {};
-  export function getDocument() { return { promise: Promise.resolve(globalThis.__pdfTestDocument) }; }
+  export function getDocument() {
+    return globalThis.__pdfTestOpen?.() || { promise: Promise.resolve(globalThis.__pdfTestDocument) };
+  }
 `);
 let engineRequested = false;
 const hooks = registerHooks({
@@ -79,7 +81,25 @@ try {
   assert.deepEqual(requestedPages, [7], '高清查看只渲染指定页面，不遍历整份 PDF');
   assert.deepEqual(viewports.at(-1), { scale: 8, rotation: 90 });
   assert.ok(formats.every(type => type === 'image/png'), '文字预览使用无损 PNG');
+
+  let active = 0, peak = 0, opened = 0;
+  globalThis.__pdfTestOpen = () => {
+    opened++;
+    peak = Math.max(peak, ++active);
+    const destroy = async () => { await new Promise(resolve => originalTimeout(resolve, 1)); active--; };
+    if (opened === 1) return { promise: Promise.reject(Error('invalid PDF')), destroy };
+    return { promise: Promise.resolve({ numPages: 0, destroy }) };
+  };
+  const mixed = Array.from({ length: 200 }, (_, i) => i % 2 ? renderPdfPages(file) : extractPdfText(file));
+  const controller = new AbortController();
+  const canceledRead = extractPdfText(file, { signal: controller.signal });
+  controller.abort();
+  const results = await Promise.allSettled([...mixed, canceledRead]);
+  assert.deepEqual([opened, peak, active], [200, 2, 0], '读取、渲染和打开失败共用两个 Worker 名额，销毁后再交接');
+  assert.equal(results.filter(result => result.status === 'rejected').length, 2);
+  assert.equal(results.at(-1).reason.name, 'AbortError');
 } finally {
+  delete globalThis.__pdfTestOpen;
   hooks.deregister();
   for (const timer of activeTimers) originalClearTimeout(timer);
   globalThis.setTimeout = originalTimeout;

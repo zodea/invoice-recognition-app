@@ -16,9 +16,9 @@ import { normalizeBuyerName } from './lib/invoice-buyer-check.js';
 import { invoiceProblems } from "./lib/invoice-review.js";
 import { reactive, markRaw } from "vue";
 import { rotateImageUrl, imgNaturalSize } from './lib/image-utils.js';
+import { discardFilePreviews } from './lib/preview-cache.js';
 import { getOcrCache, putOcrCache } from './lib/ocr-cache.js';
 import { recognizePageRegion, recognizePages, yieldToBackground } from "./lib/ocr";
-import { parseInvoice, isProbablyInvoiceText } from "./lib/invoice-parse";
 import { applyParsedInvoiceFields } from "./lib/invoice-fields";
 import { applyInvoiceFilenameFallback, paymentScreenshotDraft } from "./lib/invoice-filename";
 import { recoverMedicalReceiptNumber, shouldRetryMedicalNumber } from './lib/invoice-medical-ocr.js';
@@ -35,6 +35,7 @@ import {applyAssignmentReview,persistAssignmentImport} from './lib/expense-assig
 import { dismissToast, toastInfo, toastUndo } from './lib/toast.js';
 
 let duplicateToast = null;
+let workspaceGeneration = 0;
 let seq = 0;
 const uid = (p) => `${p}_${Date.now().toString(36)}_${(seq++).toString(36)}`;
 
@@ -44,6 +45,8 @@ function emptyFields() {
 
 // 回收某张发票占用的对象 URL（预览页图/内嵌页图），避免删除/清空后内存泄漏。
 function revokeInvoiceUrls(inv) {
+  documentJobs.get(inv)?.abort();
+  discardFilePreviews(inv.blob);
   const urls = new Set();
   for (const u of inv.renderedPages || []) if (typeof u === "string" && u.startsWith("blob:")) urls.add(u);
   for (const p of inv.pages || []) if (p && typeof p.dataUrl === "string" && p.dataUrl.startsWith("blob:")) urls.add(p.dataUrl);
@@ -75,7 +78,7 @@ async function produceRenderedPages(inv, rotation) {
     return await Promise.all(inv.pages.map((p) => rotateImageUrl(p.dataUrl, rotation)));
   }
   const { renderPdfPages } = await import('./lib/pdftext.js');
-  return await renderPdfPages(inv.blob, { scale: adaptivePreviewScale(), maxPixels: 360000, rotation, maxPages: inv.isTextPdf ? 10 : 60 });
+  return await renderPdfPages(inv.blob, { signal: documentJobs.get(inv)?.signal, scale: adaptivePreviewScale(), maxPixels: 360000, rotation, maxPages: inv.isTextPdf ? 10 : 60 });
 }
 // 取首页宽高（图片/扫描件用已知页尺寸；电子票用首张渲染图尺寸）。
 async function firstPageSize(inv) {
@@ -137,8 +140,8 @@ async function preparePdf(inv, cached) {
       inv.isTextPdf = !!cached.isTextPdf;
       return;
     }
-    const { extractPdfText } = await import('./lib/pdftext.js');
-    const probe = await extractPdfText(inv.blob);
+    const [{ extractPdfText }, { isProbablyInvoiceText }] = await Promise.all([import('./lib/pdftext.js'), import('./lib/invoice-parse.js')]);
+    const probe = await extractPdfText(inv.blob, { signal: documentJobs.get(inv)?.signal });
     if (inv.removed) return;
     inv.pageCount = probe.numPages || 1;
     const readable = isProbablyInvoiceText(probe.text);
@@ -146,6 +149,7 @@ async function preparePdf(inv, cached) {
     inv.isTextPdf = readable || inv.textGarbled;
     pdfProbes.set(inv, probe);
   } catch {
+    if (inv.removed) return;
     try {
       const { PDFDocument } = await import('pdf-lib');
       const pdf = await PDFDocument.load(await inv.blob.arrayBuffer());
@@ -174,7 +178,7 @@ async function pageImagesForOcr(inv, firstPage, maxPages) {
   let urls = [];
   try {
     const { renderPdfPages } = await import('./lib/pdftext.js');
-    urls = await renderPdfPages(inv.blob, { firstPage, maxPages, scale: 2.2, maxPixels: 2_200_000 });
+    urls = await renderPdfPages(inv.blob, { signal: documentJobs.get(inv)?.signal, firstPage, maxPages, scale: 2.2, maxPixels: 2_200_000 });
   } catch { /* 尝试原始扫描图 */ }
   if ((urls.length < maxPages || urls.some(url => !url)) && !inv.isTextPdf) {
     await loadEmbeddedScans(inv).catch(() => {});
@@ -186,6 +190,7 @@ async function pageImagesForOcr(inv, firstPage, maxPages) {
 }
 
 const preparing = new WeakMap();
+const documentJobs = new WeakMap();
 const pdfProbes = new WeakMap();
 const importCache = new WeakMap();
 
@@ -348,7 +353,7 @@ async function recoverHeader(inv, result, page, trackRegions) {
     if (isPdf(inv) && trackRegions) {
       // 只有票号缺失时才以旧版高清倍率重绘首页，局部补扫保留原始像素。
       [originalUrl] = await import('./lib/pdftext.js')
-        .then(({ renderPdfPages }) => renderPdfPages(inv.blob, { scale: 3, maxPages: 1 })).catch(() => []);
+        .then(({ renderPdfPages }) => renderPdfPages(inv.blob, { signal: documentJobs.get(inv)?.signal, scale: 3, maxPages: 1 })).catch(() => []);
     }
     const recovered = await recoverMedicalReceiptNumber(originalUrl ? { ...page, dataUrl: originalUrl } : page, recognizePageRegion);
     if (recovered) {
@@ -367,6 +372,7 @@ function isDetail(inv, fields) {
 }
 
 async function scanPdf(inv, previous) {
+  const { parseInvoice } = await import('./lib/invoice-parse.js');
   const pending = previous?.remainingPages || Array.from({ length: inv.pageCount }, (_, i) => i + 1);
   const limit = Math.min(pending.length, inv.isTextPdf ? 4 : 20);
   const result = { rawText: previous?.rawText || '', regions: [...(previous?.regions || [])], parsedFields: { ...previous?.parsedFields }, remainingPages: [] };
@@ -432,12 +438,13 @@ async function readRecognition(inv, { force, remaining, deferNamed }) {
   }
   await preparing.get(inv);
   if (inv.removed) return null;
+  const { parseInvoice, isProbablyInvoiceText } = await import('./lib/invoice-parse.js');
   let result;
   if (isPdf(inv)) {
     let probe = force ? null : pdfProbes.get(inv);
     pdfProbes.delete(inv);
     if (!remaining && !probe) {
-      probe = await import('./lib/pdftext.js').then(({ extractPdfText }) => extractPdfText(inv.blob)).catch(() => null);
+      probe = await import('./lib/pdftext.js').then(({ extractPdfText }) => extractPdfText(inv.blob, { signal: documentJobs.get(inv)?.signal })).catch(() => null);
     }
     if (!remaining && isProbablyInvoiceText(probe?.text || '')) {
       inv.isTextPdf = true;
@@ -477,11 +484,13 @@ function applyRecognition(inv, result) {
 
 export const invoiceActions = {
   async addFiles(fileList, onFile) {
+    const generation = workspaceGeneration;
     const arr = Array.from(fileList).filter((f) => /\.(pdf|png|jpe?g|bmp|webp|gif|tiff?)$/i.test(f.name));
     if (arr.length) dismissToast(duplicateToast);
     for (const [index, file] of arr.entries()) {
       if (arr.length > 15 && index > 0 && index % 8 === 0) await new Promise(resolve => setTimeout(resolve, 0));
       const source = await identifyIntakeFile(file).catch(() => intakeFile(file));
+      if (generation !== workspaceGeneration) return;
       onFile?.(index + 1, arr.length);
       if (source.sha256 && invoiceStore.invoices.some(inv => inv.sourcePath === source.relativePath && inv.sha256 === source.sha256)) continue;
       const inv = reactive({
@@ -531,6 +540,7 @@ export const invoiceActions = {
         queuePreviewRender(inv);
         continue;
       }
+      documentJobs.set(inv, new AbortController());
       const lookup = getOcrCache(inv.sha256);
       importCache.set(inv, lookup);
       const ready = lookup.then(cached => preparePdf(inv, cached)).catch(error => { inv.error = String(error.message || error); });
@@ -549,7 +559,9 @@ export const invoiceActions = {
   },
 
   clearAll() {
+    workspaceGeneration++;
     dismissToast(duplicateToast);
+    previewRenderQueue.length = 0;
     invoiceStore.invoices.forEach((inv) => { inv.removed = true; revokeInvoiceUrls(inv); });
     invoiceStore.invoices.splice(0);
     invoiceStore.selectedId = "";
@@ -603,6 +615,8 @@ export const invoiceActions = {
       inv.previewStatus = inv.renderedPages.length ? "done" : "idle";
     } catch (e) {
       inv.previewStatus = "error";
+    } finally {
+      if (inv.removed) revokeInvoiceUrls(inv);
     }
   },
 
@@ -691,9 +705,15 @@ export const invoiceActions = {
     try {
       const pending = invoiceStore.invoices.filter(inv => !['done', 'queued', 'running'].includes(inv.status));
       invoiceStore.recognitionProgress = { label: '识别票据', done: 0, total: pending.length };
+      let lastYield = performance.now();
       for (const [index, inv] of pending.entries()) {
         if (!inv.removed) await invoiceActions.recognizeOne(inv, { skipDedupe: true, deferNamed: true });
         invoiceStore.recognitionProgress.done = index + 1;
+        // Cache hits can otherwise run the whole loop in microtasks without a paint.
+        if (index + 1 < pending.length && performance.now() - lastYield >= 12) {
+          await yieldToBackground();
+          lastYield = performance.now();
+        }
       }
       invoiceStore.recognitionProgress = { label: '核对附件匹配' };
       const duplicateCount = invoiceActions.removeConfirmedDuplicates();
@@ -1046,11 +1066,11 @@ export function groupPath(inv) {
 export function sortedInvoices({ applyFilters = true } = {}) {
   const dims = invoiceStore.groupDims || [];
   const arr = invoiceStore.invoices.slice();
+  const folders = new Map();
+  if (dims.length) for (const inv of arr) folders.set(inv, invoiceFolderParts(inv, dims));
   arr.sort((a, b) => {
-    const pa = invoiceFolderParts(a, dims);
-    const pb = invoiceFolderParts(b, dims);
     for (let i = 0; i < dims.length; i++) {
-      const c = (pa[i] || "").localeCompare(pb[i] || "", "zh-Hans-CN");
+      const c = (folders.get(a)[i] || "").localeCompare(folders.get(b)[i] || "", "zh-Hans-CN");
       if (c) return c;
     }
     const da = a.fields.date || "";

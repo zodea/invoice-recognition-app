@@ -28,6 +28,12 @@ try {
   await page.getByRole('button', { name: '＋ 导入文件', exact: true }).waitFor();
   await page.waitForLoadState('networkidle');
   assert.equal(requests, 0, '发票首页提前加载了 SheetJS');
+  const homeTab = page.getByRole('tab', { name: '发票与付款', exact: true });
+  await homeTab.focus();
+  await homeTab.press('ArrowRight');
+  await page.getByRole('tabpanel', { name: '历史进项台账', exact: true }).waitFor();
+  await page.keyboard.press('Home');
+  await page.getByRole('tabpanel', { name: '发票与付款', exact: true }).waitFor();
   for (const tab of ['基础档案', '送货单整理', '分供方', '单价对比', '历史进项台账']) {
     await page.getByRole('tab', { name: tab, exact: true }).click();
     await page.waitForLoadState('networkidle');

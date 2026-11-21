@@ -59,36 +59,45 @@ export function isDuplicateInvoice(candidate, original) {
 
 // 只有号码完整且票面内容一致时才自动移除；其余疑似重复仍保留供人工核对。
 export function confirmedDuplicateInvoices(invoices) {
-  const originals = [];
+  const seen = new Set();
   const duplicates = [];
   for (const inv of invoices) {
     if (inv.fields?.attachmentType || standaloneDocumentType(inv.fields) || inv.otherReceiptConfirmed) continue;
     const number = invoiceNumber(inv);
     if (inv.status !== "done" || !/^\d{18,25}$/.test(number)) continue;
-    const original = originals.find((item) => invoiceNumber(item) === number && isDuplicateInvoice(inv, item));
-    if (original) duplicates.push(inv);
-    else originals.push(inv);
+    if (!hasEnoughContent(inv)) continue;
+    const key = JSON.stringify([number, invoiceDate(inv), invoiceContentFingerprint(inv)]);
+    if (seen.has(key)) duplicates.push(inv);
+    else seen.add(key);
   }
   return duplicates;
 }
 
 export function markInvoiceDuplicates(invoices) {
-  const originals = [];
+  const groups = new Map();
   let count = 0;
 
   for (const inv of invoices) {
     inv.duplicateOfId = "";
     inv.duplicateReason = "";
-    if (supplementType(inv.fields)) continue;
-
-    const original = originals.find((x) => isDuplicateInvoice(inv, x));
+    if (supplementType(inv.fields) || !hasEnoughContent(inv)) continue;
+    const key = JSON.stringify([invoiceDate(inv), invoiceContentFingerprint(inv)]);
+    const number = invoiceNumber(inv);
+    const group = groups.get(key);
+    if (!group) {
+      groups.set(key, { first: inv, byNumber: new Map([[number, inv]]) });
+      continue;
+    }
+    // An unnumbered receipt matches the first equivalent original. A numbered
+    // receipt can also match an earlier original whose number was missing.
+    const original = number ? group.byNumber.get(number) || group.byNumber.get('') : group.first;
     if (original) {
       inv.duplicateOfId = original.id || "";
       inv.duplicateReason = `疑似重复，已自动排除；与 ${original.name || "前一张发票"} 的日期和票面内容一致`;
       inv.include = false;
       count++;
     } else {
-      originals.push(inv);
+      group.byNumber.set(number, inv);
     }
   }
 

@@ -10,9 +10,7 @@ import "./styles/vxe-override.css";
 // Load store singletons only after migration/the disk snapshot is ready.
 async function start() {
   const root = document.querySelector('#app');
-  const message = document.createElement('p');
-  message.className = 'startup-message';
-  message.textContent = '正在打开本地数据…'; root.append(message);
+  const message = root.querySelector('.startup-message');
   try {
     await initializeLocalData(text => { message.textContent = text; });
     const { default: App } = await import('./App.vue');

@@ -12,6 +12,15 @@ import { filesFromDrop, dragHasSupported } from "../lib/upload";
 
 const props=defineProps({active:{type:Boolean,default:true}});
 const paymentPanel = ref(null);
+const paymentDrawer = shallowRef(null);
+const filterPopover = shallowRef(null);
+const filtersOpen = ref(false);
+async function showFilters() {
+  try {
+    filterPopover.value = (await import('../components/InvoiceFilterPopover.vue')).default;
+    filtersOpen.value = true;
+  } catch (error) { toastInfo('筛选工具加载失败：' + error.message); }
+}
 const invoiceWorkbooks = shallowRef([]);
 const paperTotals = ref({});
 function addWorkbooks(sources) {
@@ -34,13 +43,25 @@ function adoptPaperTotal(reason) {
 }
 function clearWorkspace() { invoiceActions.clearAll(); invoiceWorkbooks.value = []; paperTotals.value = {}; }
 const fileMatches = computed(() => invoiceWorkbooks.value.length ? matchInvoiceFiles(invoiceWorkbooks.value.flatMap(source => source.records), invoiceStore.invoices) : null);
-function reviewPaymentFiles(files) { return paymentPanel.value?.show(files); }
-function openPayment(id) { return paymentPanel.value?.show(null, id); }
+async function showPaymentDrawer(files, id) {
+  try {
+    if (!paymentDrawer.value) paymentDrawer.value = (await import('../components/PaymentEvidenceDrawer.vue')).default;
+    await nextTick();
+    return await paymentPanel.value.show(files, id);
+  } catch (error) { toastInfo('付款工作台加载失败：' + error.message); }
+}
+function reviewPaymentFiles(files) { return showPaymentDrawer(files); }
+function openPayment(id) { return showPaymentDrawer(null, id); }
 const firstSupplement = computed(() => invoiceStore.supplements.find(record => !record.ledgerKey) || invoiceStore.supplements[0]);
 const pendingSupplements = computed(() => invoiceStore.supplements.filter(record => !record.ledgerKey).length);
 const { confirmation, requestConfirmation, answerConfirmation } = useConfirmation();
 const intakeFilter = ref('all');
-const intakeCounts = computed(() => invoiceStore.invoices.reduce((counts, inv) => { const state = invoiceActions.intakeDecision(inv).state; counts[state] = (counts[state] || 0) + 1; return counts; }, {}));
+const decisions = new WeakMap();
+function decisionFor(inv) {
+  if (!decisions.has(inv)) decisions.set(inv, computed(() => invoiceActions.intakeDecision(inv)));
+  return decisions.get(inv).value;
+}
+const intakeCounts = computed(() => invoiceStore.invoices.reduce((counts, inv) => { const state = decisionFor(inv).state; counts[state] = (counts[state] || 0) + 1; return counts; }, {}));
 const intakePending = computed(() => ['unrecognized','ready','review','receipt','supplement'].reduce((sum,key)=>sum+(intakeCounts.value[key]||0),0));
 async function saveSupplements(){let saved=0;const errors=[];for(const inv of invoiceStore.invoices.filter(inv=>invoiceActions.intakeDecision(inv).state==='supplement')){try{await invoiceActions.saveSupplement({invoice:inv});saved++;}catch(error){errors.push(error.message);}}toastInfo(`已保存 ${saved} 份附件，不增加费用。${errors.join('；')}`);}
 async function saveMatched() {
@@ -59,6 +80,21 @@ const dragging = ref(false);
 const dragRejected = ref(false);
 const printPreviewOpen = ref(false);
 const printDialog = ref(null);
+const printView = shallowRef(null);
+async function openPrintWorkspace(exportExcel = false) {
+  try {
+    if (!printView.value) printView.value = (await import('../components/InvoicePrintDialog.vue')).default;
+    if (exportExcel) {
+      await nextTick();
+      await printDialog.value.exportExcel();
+    } else printPreviewOpen.value = true;
+  } catch (error) { toastInfo('打开打印与导出失败：' + error.message); }
+}
+const InvoiceRow = defineAsyncComponent(() => import('../components/InvoiceRow.vue'));
+const InvoiceIntakeReview = defineAsyncComponent(() => import('../components/InvoiceIntakeReview.vue'));
+const InvoiceReimbursementToolbar = defineAsyncComponent(() => import('../components/InvoiceReimbursementToolbar.vue'));
+const ExpenseAssignmentImport = defineAsyncComponent(() => import('../components/ExpenseAssignmentImport.vue'));
+const ConfirmAction = defineAsyncComponent(() => import('../components/ConfirmAction.vue'));
 const summary = computed(() => invoiceSummary());
 const listFilter = ref('all');
 const laptop = window.matchMedia('(max-width: 1320px)');
@@ -83,12 +119,12 @@ function scanBuyers() {
   buyerCheckFilter.value = 'issues';
 }
 const filtered = computed(() => sortedInvoices().filter(({ inv }) => {
-  const state = invoiceActions.intakeDecision(inv).state;
+  const state = intakeFilter.value === 'all' ? '' : decisionFor(inv).state;
   if (intakeFilter.value === 'pending' && ['saved','payment-saved','linked','attachment-saved'].includes(state)) return false;
   if (intakeFilter.value === 'review' && state !== 'review') return false;
   if (intakeFilter.value === 'receipt' && !['receipt','supplement'].includes(state)) return false;
   if (intakeFilter.value === 'saved' && !['saved','payment-saved','linked','attachment-saved'].includes(state)) return false;
-  if (!matchesBuyerCheck(buyerChecker.value(inv.fields), buyerCheckFilter.value)) return false;
+  if (buyerCheckFilter.value !== 'all' && !matchesBuyerCheck(buyerChecker.value(inv.fields), buyerCheckFilter.value)) return false;
   const entry = inv.history?.entry;
   const tag = inv.expenseTagSet ? inv.expenseTag : entry?.expenseTagSet ? entry.expenseTag : (inv.expenseTag || entry?.expenseTag || inferExpenseTag(inv));
   const query = appliedQuery.value.trim().toLowerCase();
@@ -104,7 +140,7 @@ const supplementCounts = computed(() => {
 });
 const workspaceItems = computed(() => filtered.value.map(item => {
   const count = Math.max(supplementCounts.value.get(ledgerKey(item.inv)) || 0, fileMatches.value?.supplementCounts.get(item.inv.id) || 0);
-  const status = workspaceInvoiceStatus(item.inv, invoiceActions.intakeDecision(item.inv), count);
+  const status = workspaceInvoiceStatus(item.inv, decisionFor(item.inv), count);
   const difference = fileMatches.value?.byInvoice.get(item.inv.id);
   const accepted = difference?.netDifference && paperTotals.value[item.inv.id]?.reason === difference.reason;
   return { ...item, status: status.tone === 'danger' || accepted ? status : difference || status };
@@ -238,8 +274,8 @@ function invertSelect() {
       <button class="ui-btn-ghost workspace-list-toggle" type="button" :aria-expanded="!listCollapsed" aria-controls="workspace-invoice-list" @click="toggleList">{{ listCollapsed ? '展开票据' : '收起票据' }}</button>
       <InvoiceUpload ref="upload" @payment-batch="reviewPaymentFiles" @invoice-workbooks="addWorkbooks" />
       <input v-model="search" @change="flushSearch" @keydown.enter="flushSearch" type="search" class="ui-input min-w-28 flex-1" placeholder="搜索票号或公司" aria-label="搜索发票" />
-      <PopoverRoot><PopoverTrigger class="ui-btn">筛选与入账</PopoverTrigger><PopoverPortal>
-        <PopoverContent class="ui-popover workspace-popover" side="bottom" align="start" :side-offset="8" :collision-padding="12">
+      <button v-if="!filterPopover" type="button" class="ui-btn" aria-haspopup="dialog" aria-expanded="false" @click="showFilters">筛选与入账</button>
+      <component v-else :is="filterPopover" v-model:open="filtersOpen">
           <InvoiceBuyerCheck v-model="buyerCheckFilter" :configured="buyersConfigured" :counts="buyerCounts" @scan="scanBuyers" />
           <div class="grid grid-cols-2 gap-2 p-2">
             <label class="ui-label">购买方<select v-model="invoiceStore.buyerFilter" class="ui-input"><option v-for="buyer in buyers" :key="buyer">{{ buyer }}</option></select></label>
@@ -261,9 +297,9 @@ function invertSelect() {
             <button class="ui-btn-danger" :disabled="!!batchProgress || invoiceStore.busy || (!invoiceStore.invoices.length && !invoiceWorkbooks.length)" @click="clearWorkspace">清空</button>
           </div>
           <span v-if="invoiceStore.msg" class="block px-2 text-xs text-ink-soft" role="status">{{ invoiceStore.msg }}</span>
-        </PopoverContent>
-      </PopoverPortal></PopoverRoot>
-      <PaymentEvidenceDrawer ref="paymentPanel" :pending="pendingPaymentCount" />
+      </component>
+      <button v-if="!paymentDrawer" type="button" class="ui-btn" aria-haspopup="dialog" aria-expanded="false" @click="showPaymentDrawer()">付款清单与截图 <span class="ui-badge-brand">{{ pendingPaymentCount || 0 }}</span></button>
+      <component v-else :is="paymentDrawer" ref="paymentPanel" :pending="pendingPaymentCount" />
       <button class="ui-btn" :disabled="!firstSupplement" @click="invoiceStore.matchSupplementHash = firstSupplement.hash">待匹配附件 <span class="ui-badge-brand">{{ pendingSupplements }}</span></button>
     </header>
     <div v-if="dragging" class="file-drag-notice" :class="{ rejected: dragRejected }" role="status">
@@ -291,12 +327,12 @@ function invertSelect() {
       <span>已勾选 <strong>{{ summary.count }}</strong> 张</span><span>合计 <strong class="ui-money">¥{{ summary.total.toFixed(2) }}</strong></span>
       <button v-if="segmentCounts.issue" class="ui-badge-warn ui-focus" title="跳到下一张异常票据（Alt+Enter）" @click="nextIssue">{{ segmentCounts.issue }} 张异常</button>
       <span class="flex-1"></span>
-      <button v-if="invoiceWorkbooks.length" class="ui-btn" @click="printPreviewOpen = true">核对版 Excel</button>
-      <button v-else class="ui-btn" :disabled="!summary.count" @click="printDialog?.exportExcel()">导出 Excel</button>
-      <button class="ui-btn-primary" :disabled="!summary.count && !invoiceWorkbooks.length" @click="printPreviewOpen = true">打印与导出</button>
+      <button v-if="invoiceWorkbooks.length" class="ui-btn" @click="openPrintWorkspace()">核对版 Excel</button>
+      <button v-else class="ui-btn" :disabled="!summary.count" @click="openPrintWorkspace(true)">导出 Excel</button>
+      <button class="ui-btn-primary" :disabled="!summary.count && !invoiceWorkbooks.length" @click="openPrintWorkspace()">打印与导出</button>
     </footer>
-    <InvoicePrintDialog ref="printDialog" v-model:open="printPreviewOpen" :source-workbooks="invoiceWorkbooks" :file-matches="fileMatches" @edit-invoice="editFromPrint" />
-    <ConfirmAction :request="confirmation" @answer="answerConfirmation" />
+    <component v-if="printView" :is="printView" ref="printDialog" v-model:open="printPreviewOpen" :source-workbooks="invoiceWorkbooks" :file-matches="fileMatches" @edit-invoice="editFromPrint" />
+    <ConfirmAction v-if="confirmation" :request="confirmation" @answer="answerConfirmation" />
   </div>
 </template>
 
@@ -310,7 +346,6 @@ function invertSelect() {
 .workspace-v12 { position:relative; height: calc(100dvh - 24px); min-height: 0; gap: 10px; font-size: 13px; }
 .workspace-header { min-height: 48px; flex: none; overflow-x: auto; }
 .workspace-footer { min-height: 44px; flex: none; white-space: nowrap; overflow-x: auto; }
-.workspace-popover { z-index: 52; width: min(570px, calc(100vw - 24px)); max-height: min(76dvh, var(--reka-popover-content-available-height)); overflow: auto; }
 .workspace-v12 .invoice-columns { flex: 1; min-height: 0; grid-template-columns: 280px minmax(0, 1.35fr) 360px; gap: 10px; align-items: stretch; }
 .workspace-v12 .invoice-columns.list-collapsed { grid-template-columns: minmax(0, 1.35fr) minmax(315px, 360px); }
 .workspace-v12 :deep(.work-panel) { max-height: none; min-height: 0; }
