@@ -1,11 +1,8 @@
 <script setup>
-import { defineAsyncComponent, getCurrentInstance, ref, watch } from "vue";
+import InvoiceView from './views/InvoiceView.vue';
 
-
-// 各功能视图按需加载，仅在激活时挂载。
-// 数据存于 store 单例（store.js / invoiceStore.js），切换 tab 卸载组件也不丢数据。
+// 发票首页随应用挂载，其他页签首次激活时加载。
 const DeliveryView = defineAsyncComponent(() => import("./views/DeliveryView.vue"));
-const InvoiceView = defineAsyncComponent(() => import("./views/InvoiceView.vue"));
 const InvoiceLedgerView = defineAsyncComponent(() => import("./views/InvoiceLedgerView.vue"));
 const app = getCurrentInstance().appContext.app;
 function tableView(loadView) {

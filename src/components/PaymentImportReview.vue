@@ -1,11 +1,4 @@
 <script setup>
-import UiDisclosure from './UiDisclosure.vue';
-import FileDropInput from './FileDropInput.vue';
-import { computed, ref } from 'vue';
-import AppIcon from './AppIcon.vue';
-import PaymentEvidencePicker from './PaymentEvidencePicker.vue';
-import {usePaymentBatch} from '../composables/usePaymentBatch.js';
-import PaymentRecognitionQueue from './PaymentRecognitionQueue.vue';
 import { formatMoney } from '../lib/format.js';
 import { paymentRange } from '../lib/payment-transactions.js';
 

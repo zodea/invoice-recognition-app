@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import AutoImport from 'unplugin-auto-import/vite';
 import Components from 'unplugin-vue-components/vite';
 import RekaResolver from 'reka-ui/resolver';
 import vue from "@vitejs/plugin-vue";
@@ -10,7 +11,11 @@ import { ocrPrebundlePlugin, ocrProductionPlugin } from "./scripts/lib/ocr-sourc
 export default defineConfig({
   base: "./",
   plugins: [ocrProductionPlugin(), UnoCSS(), vue(),
-    Components({ dirs: ['src/components'], resolvers: [RekaResolver()], dts: 'src/components.d.ts' }),
+    AutoImport({ imports: ['vue'], dirs: ['src/composables'], dts: 'src/auto-imports.d.ts' }),
+    Components({
+      dirs: ['src/components'], extensions: ['vue'], deep: true,
+      resolvers: [RekaResolver()], dts: 'src/components.d.ts',
+    }),
   ],
   server: {
     port: 5173,
@@ -22,6 +27,21 @@ export default defineConfig({
         target: "https://paddleocr.aistudio-app.com",
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/vl-api/, ""),
+      },
+    },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          // 表格和首页共享 Vue，将运行时单独归组以保持表格按需加载。
+          if (/\/node_modules\/(?:vue|@vue)\//.test(id)) return 'vue-runtime';
+          if (id.includes('commonjsHelpers.js')) return 'commonjs-runtime';
+          if (/\/node_modules\/(?:pdfjs-dist|pdf-lib|@pdf-lib)\//.test(id)) return 'vendor-pdf';
+          if (id.includes('/node_modules/xlsx/')) return 'vendor-xlsx';
+          if (id.includes('/node_modules/vxe-')) return 'vendor-table';
+          if (id.includes('/node_modules/@paddlejs')) return 'vendor-ocr';
+        },
       },
     },
   },
