@@ -17,10 +17,10 @@ let seq = 0;
 const uid = (p) => `${p}_${Date.now().toString(36)}_${(seq++).toString(36)}`;
 
 export function makeItem() {
-  return { name: "", unit: "", quantity: "", unitPrice: "", total: "" };
+  return { id: uid("item"), name: "", specification: "", unit: "", quantity: "", unitPrice: "", total: "" };
 }
 export function makeDoc() {
-  return { id: uid("d"), date: null, dateText: "", orderNo: "", items: [makeItem()] };
+  return { id: uid("d"), date: null, dateText: "", orderNo: "", statedTotal: "", items: [makeItem()] };
 }
 
 export const store = reactive({
@@ -264,6 +264,7 @@ export const actions = {
       doc.date = d.date || (parsed.docs.length === 1 ? dateGuess : null) || null;
       doc.dateText = doc.date || "";
       doc.orderNo = d.orderNo || "";
+      doc.statedTotal = d.statedTotal ?? "";
       if (d.items.length) doc.items = d.items.map((it) => ({ ...makeItem(), ...it }));
       const notes = [];
       if (d.note) notes.push(d.note); // 行级算术/合计对账 待复核（issue #9）
@@ -305,6 +306,7 @@ export const actions = {
       d0.dateText = p.date;
     }
     if (p.orderNo && !d0.orderNo) d0.orderNo = p.orderNo;
+    if (p.statedTotal !== "" && (d0.statedTotal === "" || d0.statedTotal == null)) d0.statedTotal = p.statedTotal;
     if (p.items && p.items.length) {
       d0.items = p.items.map((it) => ({ ...makeItem(), ...it }));
       d0.note = "材料明细来自散行识别，需复核";

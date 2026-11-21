@@ -8,7 +8,7 @@ import {paymentStore} from '../lib/payment-store.js';
 import {directory} from '../lib/expense-directory.js';
 import {parseAssignmentWorkbook,reviewAssignmentImport,buildAssignmentTemplate} from '../lib/expense-assignment-import.js';
 import {downloadBytes} from '../lib/file-utils.js';
-defineProps({label:{type:String,default:'批量导入归属'}});
+defineProps({label:{type:String,default:'批量导入归属'}, compact: Boolean});
 const opened=ref(false), loading=ref(false), source=shallowRef(null), selected=ref([]), message=ref('');
 const mappings=ref({}), newNames=ref([]), review=shallowRef([]);
 const groups=computed(()=>[...new Set((source.value?.invoices||[]).filter(r=>r.fromInvoiceList).map(r=>r.project))]);
@@ -43,7 +43,7 @@ function apply(){
 function template(){downloadBytes(buildAssignmentTemplate(directory),'归属导入模板.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');}
 </script>
 <template>
- <button type="button" class="btn" @click="opened=true">{{ label }}</button>
+ <button type="button" :class="compact ? 'ui-btn' : 'btn'" @click="opened=true">{{ label }}</button>
  <DialogRoot v-model:open="opened"><DialogPortal><DialogOverlay class="assignment-overlay"/>
   <DialogContent class="assignment-dialog">
    <header><DialogTitle>按清单批量分配工地</DialogTitle><button class="btn" @click="opened=false">关闭</button></header>
@@ -58,7 +58,7 @@ function template(){downloadBytes(buildAssignmentTemplate(directory),'归属导�
       <select v-model="mappings[name]" @change="preview"><option :value="undefined">{{ directory.projects.includes(name)?'按原名匹配':'选择档案工地' }}</option><option v-for="p in directory.projects" :key="p">{{ p }}</option></select>
      </label><label v-if="name&&!directory.projects.includes(name)&&!mappings[name]" class="inline-check"><input v-model="newNames" :value="name" type="checkbox" @change="preview">按此名称新建工地</label></div>
     </div></UiDisclosure>
-    <div v-if="review.length" class="assignment-table"><table class="finance-table"><thead><tr><th><input type="checkbox" aria-label="选择全部可更新行" :checked="!!usable.length&&selected.length===usable.length" @change="selected=$event.target.checked?usable.map(i=>i.id):[]"></th><th>核对结果</th><th>发票 / 付款</th><th>日期 / 金额</th><th>原工地 → 新归属</th><th>清单来源</th><th>问题说明</th></tr></thead><tbody><tr v-for="item in review" :key="item.id">
+    <div v-if="review.length" class="assignment-table"><table class="finance-table"><thead><tr><th><input type="checkbox" aria-label="选择全部可更新行" :checked="!!usable.length&&selected.length===usable.length" @change="selected=$event.target.checked?usable.map(i=>i.id):[]"></th><th>核对结果</th><th>发票 / 付款</th><th>日期 / 金额</th><th>原工地 → 新归属</th><th>清单来源</th><th>问题说明</th></tr></thead><tbody><tr v-for="item in review" :key="item.id" :class="{ 'bg-warn-soft text-warn': !item.canApply }">
      <td><input v-model="selected" type="checkbox" :value="item.id" :disabled="!item.canApply" :aria-label="'选择归属行 '+item.id"/></td><td>{{ item.status }}</td><td>{{ item.kind==='invoice'?item.row.number:item.row.seller }}</td><td>{{ item.row.date }}<br>{{ item.row.total }} 元</td><td>{{ item.previous?.project||item.previous?.allocation||'—' }} → {{ item.patch?.project||item.patch?.allocation||item.row.project||'待确认' }}</td><td>{{ [item.row.sourceFile,item.row.sourceSheet,item.row.sourceRow].filter(Boolean).join(' / ') }}</td><td>{{ item.issues.join('；') }}</td>
     </tr></tbody></table></div>
    </div>

@@ -7,7 +7,15 @@ import ConfirmAction from './ConfirmAction.vue';
 import { toast, toastError } from '../lib/toast.js';
 import { useConfirmation } from '../composables/useConfirmation.js';
 
-const props = defineProps({ kinds: { type: Object, required: true } });
+const props = defineProps({ kinds: { type: Object, required: true }, stats: Object });
+const emit = defineEmits(['add']);
+const archiveChoices = computed(() => Object.entries(props.kinds).filter(([key]) => key !== 'aliases'));
+const filterChoices = computed(() => mode.value === 'trash' ? Object.entries(props.kinds) : archiveChoices.value);
+const newKind = ref('people'), newValue = ref('');
+function addRecord() {
+  const value = newValue.value.trim();
+  if (value) { emit('add', newKind.value, value); newValue.value = ''; }
+}
 const open = defineModel('open', { type: Boolean, default: false });
 const mode = defineModel('mode', { type: String, default: 'archives' });
 const { confirmation, requestConfirmation, answerConfirmation } = useConfirmation();
@@ -15,7 +23,7 @@ const query = ref(''), kind = ref('all'), page = ref(1);
 const pageSize = 8;
 const titles = { archives: '档案清单', rules: '厂家归属清单', trash: '档案回收站' };
 const records = computed(() => mode.value === 'rules' ? directory.rules : mode.value === 'trash' ? directory.deletedArchives :
-  Object.keys(props.kinds).flatMap(type => directory[type].map(value => ({ kind: type, value }))));
+  archiveChoices.value.flatMap(([type]) => directory[type].map(value => ({ kind: type, value }))));
 const filtered = computed(() => {
   const q = query.value.trim().normalize('NFKC').toLocaleLowerCase();
   return records.value.filter(record => {
@@ -30,7 +38,7 @@ watch(mode, () => { query.value = ''; kind.value = 'all'; });
 watch(pageCount, count => { page.value = Math.min(page.value, count); });
 
 async function remove(record) {
-  if (!await requestConfirmation('删除'+props.kinds[record.kind], '删除“'+record.value+'”？已有票据内容保留，相关归属规则暂停使用；可在档案回收站恢复。')) return;
+  if (!await requestConfirmation('删除'+props.kinds[record.kind], '删除“'+record.value+'”？关联 '+(props.stats?.[record.kind]?.get(record.value)?.count || 0)+' 条记录，原记录保留，可在档案回收站恢复。')) return;
   try { deleteArchive(record.kind, record.value); toast('已移入档案回收站。'); }
   catch (error) { toastError('删除失败：'+error.message); }
 }
@@ -58,17 +66,22 @@ async function removeRule(record) {
     <header><DialogTitle>{{ titles[mode] }}</DialogTitle><button class="btn" @click="open=false">关闭清单</button></header>
     <DialogDescription>{{ mode === 'trash' ? '已删除档案一直保留，直到手动永久删除。可恢复单项，也可清空全部。' : mode === 'rules' ? '查看厂家对应的购买方与工地，可搜索厂家、公司或工地名称。' : '按类型查看已添加的档案，支持搜索和分页。' }}</DialogDescription>
     <div class="records-tools">
-      <label v-if="mode !== 'rules'">类型<select v-model="kind" class="field-input"><option value="all">全部类型</option><option v-for="(label,key) in kinds" :key="key" :value="key">{{ label }}</option></select></label>
+      <label v-if="mode !== 'rules'">类型<select v-model="kind" class="field-input"><option value="all">全部类型</option><option v-for="[key, label] in filterChoices" :key="key" :value="key">{{ label }}</option></select></label>
       <input v-model="query" class="field-input records-search" :aria-label="'搜索'+titles[mode]" placeholder="输入名称搜索" type="search" />
       <span>共 {{ filtered.length }} 项</span>
       <button v-if="mode === 'trash'" class="btn-danger" :disabled="!directory.deletedArchives.length" @click="purge([...directory.deletedArchives],true)">清空全部（{{ directory.deletedArchives.length }}）</button>
     </div>
+    <form v-if="mode === 'archives'" class="flex flex-wrap items-center gap-2" @submit.prevent="addRecord">
+      <select v-model="newKind" class="ui-input w-36" aria-label="新增档案类型"><option v-for="[key, label] in archiveChoices" :key="key" :value="key">{{ label }}</option></select>
+      <input v-model="newValue" class="ui-input w-56" aria-label="新增档案名称" placeholder="输入档案名称" required />
+      <button type="submit" class="ui-btn-primary">新增档案</button>
+    </form>
     <div class="records-table-wrap"><table class="records-table">
       <thead><tr v-if="mode === 'rules'"><th>厂家 / 销售方</th><th>购买方</th><th>工地</th><th>状态</th><th>操作</th></tr><tr v-else><th class="kind-column">类型</th><th>档案名称</th><th v-if="mode === 'trash'">删除时间</th><th class="actions-column">操作</th></tr></thead>
       <tbody>
         <tr v-for="record in paged" :key="mode==='rules'?JSON.stringify([record.seller,record.buyer,record.project]):JSON.stringify([record.kind,record.value])">
           <template v-if="mode==='rules'"><td><MiddleEllipsis :text="record.seller" :tail="6" /></td><td><MiddleEllipsis :text="record.buyer" :tail="6" /></td><td><MiddleEllipsis :text="record.project" :tail="6" /></td><td><span :title="isAllocationRuleActive(record)?'':'购买方或工地已删除，恢复档案后重新启用'">{{ isAllocationRuleActive(record)?'启用':'已停用' }}</span></td><td><button class="text-action" @click="removeRule(record)">移除</button></td></template>
-          <template v-else><td>{{ kinds[record.kind] }}</td><td><MiddleEllipsis :text="record.value" :tail="8" /></td><td v-if="mode==='trash'">{{ record.deletedAt ? new Date(record.deletedAt).toLocaleString('zh-CN') : '—' }}</td><td><div class="record-actions"><template v-if="mode==='trash'"><button class="text-action" @click="restore(record)">恢复</button><button class="text-action danger" @click="purge([record])">永久删除</button></template><button v-else class="text-action danger" :aria-label="'删除档案 '+record.value" @click="remove(record)">删除</button></div></td></template>
+          <template v-else><td>{{ kinds[record.kind] }}</td><td><MiddleEllipsis :text="record.alias ? record.value + ' → ' + record.alias.target : record.value" :tail="8" /></td><td v-if="mode==='trash'">{{ record.deletedAt ? new Date(record.deletedAt).toLocaleString('zh-CN') : '—' }}</td><td><div class="record-actions"><template v-if="mode==='trash'"><button class="text-action" @click="restore(record)">恢复</button><button class="text-action danger" @click="purge([record])">永久删除</button></template><button v-else class="text-action danger" :aria-label="'删除档案 '+record.value" @click="remove(record)">删除</button></div></td></template>
         </tr>
         <tr v-if="!paged.length"><td :colspan="mode==='rules'?5:mode==='trash'?4:3" class="records-empty">{{ records.length?'没有符合条件的记录':mode==='trash'?'档案回收站为空':'暂无记录' }}</td></tr>
       </tbody>

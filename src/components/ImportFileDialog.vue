@@ -2,7 +2,7 @@
 import { ref } from 'vue';
 import { DialogRoot, DialogTrigger, DialogPortal, DialogOverlay, DialogContent, DialogTitle, DialogDescription, DialogClose } from 'reka-ui';
 import FileDropInput from './FileDropInput.vue';
-const props = defineProps({ label: String, accept: String, multiple: Boolean, disabled: Boolean, primary: Boolean });
+const props = defineProps({ label: String, accept: String, multiple: Boolean, disabled: Boolean, primary: Boolean, compact: Boolean });
 const emit = defineEmits(['files']);
 const open = ref(false);
 function selected(files) { open.value = false; emit('files', files); }
@@ -10,7 +10,7 @@ function selected(files) { open.value = false; emit('files', files); }
 
 <template>
   <DialogRoot v-model:open="open">
-    <DialogTrigger type="button" :class="primary ? 'btn-primary' : 'btn'" :disabled="disabled">{{ label }}</DialogTrigger>
+    <DialogTrigger type="button" :class="compact ? (primary ? 'ui-btn-primary' : 'ui-btn') : (primary ? 'btn-primary' : 'btn')" :disabled="disabled">{{ label }}</DialogTrigger>
     <DialogPortal>
       <DialogOverlay class="file-import-overlay" />
       <DialogContent class="file-import-dialog">

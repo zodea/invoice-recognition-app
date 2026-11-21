@@ -5,7 +5,7 @@
 // —— 这就是"一个扫描 PDF 拆成多张单"的自动实现。
 // 列名按关键词对应：品名/名称/产品→材料名称，单位，数量，单价，金额/总价→总价。
 // 解析不保证全对，识别后仍以人工核对为准（CONTEXT：待复核）。
-import { findDate, findOrderNo, findCompany, parseItemLines, COMPANY_HINTS } from "./parse.js";
+import { findDate, findOrderNo, findCompany, parseItemLines, findDeliveryStatedTotal, COMPANY_HINTS } from "./parse.js";
 
 // —— 行内清洗：去 HTML 标签 / LaTeX / Markdown 记号 / 商标符 / 实体 ——
 export function stripInline(line) {
@@ -41,12 +41,6 @@ function isSeparatorRow(cells) {
 // —— HTML 表格（VL 的实际输出格式）——
 // 一行里可能有一个或多个 <table>…</table>；每个解析成 rows(cells[])。
 // 单格整行（<td colspan=N> 备注/大写合计/说明文字）直接丢弃——它们不是材料行。
-// 从“合计/总计”行取票面合计金额（要求带 ¥，避免误抓规格/大写里的数字）。issue #9
-function extractStatedTotal(text) {
-  const m = String(text).match(/[合总]\s*计[^¥￥\n]{0,12}[¥￥]\s*([0-9][0-9,]*(?:\.[0-9]+)?)/);
-  return m ? Number(m[1].replace(/,/g, "")) : "";
-}
-
 function parseHtmlTables(line) {
   const tables = [];
   const tableRe = /<table\b[^>]*>([\s\S]*?)<\/table>/gi;
@@ -65,7 +59,7 @@ function parseHtmlTables(line) {
       if (cells.length <= 1) continue; // 整行说明（备注/大写合计）→ 丢（文字仍留 allText 供取合计）
       rows.push(cells);
     }
-    if (rows.length) tables.push({ rows, statedTotal: extractStatedTotal(allText) });
+    if (rows.length) tables.push({ rows, statedTotal: findDeliveryStatedTotal(allText) });
   }
   return tables;
 }
@@ -103,7 +97,8 @@ export function splitMarkdownBlocks(md) {
 
 // 列名 → 字段 的关键词映射
 const COL_KEYS = [
-  { key: "name", re: /品名|名称|材料|项目|规格|货名|产品|商品/ },
+  { key: "name", re: /品名|名称|材料|项目|货名|产品|商品/ },
+  { key: "specification", re: /规格|型号/ },
   { key: "unit", re: /单位/ },
   { key: "quantity", re: /数量|总数量/ },
   { key: "unitPrice", re: /单价/ },
@@ -173,6 +168,7 @@ export function tableToItems(rows) {
       continue;
     }
     const item = { name, unit, quantity, unitPrice, total };
+    if (header.specification != null && header.specification !== header.name && cells[header.specification]) item.specification = cells[header.specification];
     if (header.note != null && cells[header.note]) item.note = cells[header.note];
     // 行级算术校验：数量×单价 与 金额 不符（容差 1 元）→ 标待复核（issue #9）
     if (quantity !== "" && unitPrice !== "" && total !== "" && Math.abs(quantity * unitPrice - total) > 1) {
@@ -240,6 +236,7 @@ export function parseVlToDocs(markdownPages) {
       const company = pickSupplier(pendingText) || fileCompany || findCompany(pendingText) || "";
       const date = findDate(pendingText) || findDate(allLines);
       const orderNo = findOrderNo(pendingText) || "";
+      const statedTotal = b.statedTotal ?? findDeliveryStatedTotal(b.rows.map(cells => cells.join(" ")).join("\n"));
       docs.push({
         company,
         date: date || null,
@@ -248,7 +245,8 @@ export function parseVlToDocs(markdownPages) {
         items,
         itemsSource: "table",
         headText,
-        note: reviewNote(items, b.statedTotal),
+        statedTotal,
+        note: reviewNote(items, statedTotal),
       });
       pendingText = []; // 下一张单的头部从这里重新积累
     }
@@ -258,6 +256,7 @@ export function parseVlToDocs(markdownPages) {
   if (!docs.length) {
     const date = findDate(allLines);
     const items = parseItemLines(allLines);
+    const statedTotal = findDeliveryStatedTotal(allLines.join("\n"));
     docs.push({
       company: fileCompany || findCompany(allLines) || "",
       date: date || null,
@@ -266,7 +265,8 @@ export function parseVlToDocs(markdownPages) {
       items,
       itemsSource: items.length ? "line" : "",
       headText: "",
-      note: reviewNote(items, ""),
+      statedTotal,
+      note: reviewNote(items, statedTotal),
     });
   }
 

@@ -2,7 +2,7 @@
 import * as XLSX from "xlsx";
 import { safeSheetName, compareDocs } from "./naming.js";
 
-const HEADERS = ["日期", "单号", "材料名称", "单价", "数量", "总价", "单位", "备注", "来源档案"];
+const HEADERS = ["日期", "单号", "材料名称", "单价", "数量", "总价", "单位", "备注", "来源档案", "规格型号"];
 const COL_WIDTHS = [
   { wch: 14 },
   { wch: 16 },
@@ -13,6 +13,7 @@ const COL_WIDTHS = [
   { wch: 8 },
   { wch: 28 },
   { wch: 30 },
+  { wch: 20 },
 ];
 
 function num(v) {
@@ -80,6 +81,7 @@ export function buildWorkbookBytes(files) {
           it.unit || "",
           [d.fileNote, d.note, it.note].filter(Boolean).join("；"),
           d.source,
+          it.specification || "",
         ]);
       }
     }

@@ -38,8 +38,9 @@ export function aggregateItems(files, partitions) {
     for (const d of f.docs || []) {
       const date = d.date || d.dateText || "";
       for (const it of d.items || []) {
-        const name = String(it.name || "").trim();
-        if (!name) continue;
+        const material = String(it.name || "").trim();
+        if (!material) continue;
+        const name = [material, it.specification].filter(Boolean).join(" ");
         const price = toPrice(it.unitPrice, it.total, it.quantity);
         if (price == null) continue; // 无单价不参与对比
         obs.push({ supplier, site, name, normKey: normalizeMaterial(name), unit: it.unit || "", price, date: String(date || "") });
@@ -122,14 +123,15 @@ export function importHistoryWorkbookItems(bytes) {
     if (!grid.length) continue;
     const header = (grid[0] || []).map((h) => String(h || ""));
     const idx = (label) => header.findIndex((h) => h.includes(label));
-    const ci = { date: idx("日期"), name: idx("材料"), price: idx("单价"), qty: idx("数量"), total: idx("总价"), unit: idx("单位") };
+    const ci = { date: idx("日期"), name: idx("材料"), specification: idx("规格"), price: idx("单价"), qty: idx("数量"), total: idx("总价"), unit: idx("单位") };
     if (ci.name < 0) continue;
     const supplier = sheetName.trim() || "未命名公司";
     for (let r = 1; r < grid.length; r++) {
       const row = grid[r];
       if (!row) continue;
-      const name = String(row[ci.name] ?? "").trim();
-      if (!name || name === "（无明细）") continue;
+      const material = String(row[ci.name] ?? "").trim();
+      if (!material || material === "（无明细）") continue;
+      const name = [material, ci.specification >= 0 ? row[ci.specification] : ""].filter(Boolean).join(" ");
       const price = toPrice(ci.price >= 0 ? row[ci.price] : "", ci.total >= 0 ? row[ci.total] : "", ci.qty >= 0 ? row[ci.qty] : "");
       if (price == null) continue;
       obs.push({

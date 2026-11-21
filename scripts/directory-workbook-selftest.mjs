@@ -13,6 +13,14 @@ const imported = readDirectoryWorkbook(exportDirectoryWorkbook(original));
 const base = blank();
 assert.deepEqual(mergeDirectoryWorkbook(base, imported).next, original);
 assert.deepEqual(base, blank());
+const alias = { name: '测试简称', kind: 'buyers', target: '001' };
+const deletedAlias = { name: '旧工地名', kind: 'projects', target: '001' };
+const withAliases = { ...original, aliases: [alias], deletedArchives: [
+  ...original.deletedArchives, { kind: 'aliases', value: deletedAlias.name, alias: deletedAlias, deletedAt: '2026-06-01T00:00:00.000Z' },
+] };
+const aliasImport = readDirectoryWorkbook(exportDirectoryWorkbook(withAliases));
+assert.deepEqual(mergeDirectoryWorkbook(blank(), aliasImport).next, withAliases);
+assert.equal(mergeDirectoryWorkbook(withAliases, aliasImport).changed, 0);
 assert.equal(mergeDirectoryWorkbook(original, imported).changed, 0);
 base.deletedArchives = [{ ...original.deletedArchives[0], value: '001' }];
 base.projects = ['002'];

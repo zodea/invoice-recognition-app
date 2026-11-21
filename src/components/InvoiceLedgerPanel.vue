@@ -5,7 +5,7 @@ import ConfirmAction from './ConfirmAction.vue';
 import { useConfirmation } from '../composables/useConfirmation.js';
 const { confirmation, requestConfirmation, answerConfirmation } = useConfirmation();
 import { computed, ref } from "vue";
-import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
+import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from "reka-ui";
 const expenseImportOpen = ref(false);
 import { invoiceStore, invoiceActions } from "../invoiceStore.js";
 import { buildCurrentInputInvoiceReportBytes, buildHistoryReportBytes, currentInputReportName, historyReportName, ledgerStats } from "../lib/invoice-ledger";
@@ -15,8 +15,6 @@ import ExpenseImportReview from "./ExpenseImportReview.vue";
 import InvoiceReconciliation from "./InvoiceReconciliation.vue";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 
-defineProps({ ledgerPage: Boolean });
-const emit = defineEmits(["open-ledger"]);
 const reconciliationOpen = ref(false);
 
 const busy = ref(false);
@@ -59,12 +57,12 @@ async function saveLedgerBytes(bytes, name, okMsg, dlMsg) {
 }
 
 async function exportHistory() {
-  if (!stats.value.total) { window.alert("当前还没有历史进项发票台账。"); return; }
+  if (!stats.value.total) { toastWarn("当前还没有历史进项发票台账。"); return; }
   await saveLedgerBytes(buildHistoryReportBytes(invoiceStore.ledger), historyReportName(), "已保存历史台账", "已导出历史台账。");
 }
 
 async function exportCurrentInputStatus() {
-  if (!invoiceStore.invoices.length) { window.alert("当前还没有导入发票。"); return; }
+  if (!invoiceStore.invoices.length) { toastWarn("当前还没有导入发票。"); return; }
   await saveLedgerBytes(buildCurrentInputInvoiceReportBytes(invoiceStore.invoices, invoiceStore.ledger), currentInputReportName(), "已保存当前进项发票状态", "已导出当前进项发票状态。");
 }
 
@@ -86,54 +84,35 @@ async function clearLedger() {
 
 <template>
   <ConfirmAction :request="confirmation" @answer="answerConfirmation" />
-  <section
-    class="panel ledger-panel p-2.5 transition-colors"
-    :class="dragging ? '!border-brand bg-brand-soft shadow-[0_0_0_2px_rgba(37,99,235,0.16)]' : ''"
-    @dragenter.prevent="dragging = true"
-    @dragover.stop.prevent="dragging = true"
-    @dragleave.prevent="dragging = false"
-    @drop.stop.prevent="onDrop"
-  >
-    <div class="ledger-heading">
-      <div>
-        <h2 class="m-0 text-[15px] font-700">历史进项台账</h2>
-        <p v-if="!ledgerPage" class="mt-0.5 text-ink-soft text-xs leading-relaxed">拖入或选择税务局进项发票清单，记录官方勾选状态，并核对历史报销。</p>
-      </div>
-    <div class="ledger-stats text-ink-soft text-xs">
-      <span><b class="text-ink text-[15px]">{{ stats.total }}</b> 张</span>
-      <span><b class="text-ink text-[15px]">{{ stats.verified }}</b> 已抵税</span>
-      <span><b class="text-ink text-[15px]">{{ stats.printed }}</b> 已打印</span>
+  <section class="ui-toolbar min-h-11 gap-2 overflow-x-auto py-1" :class="{ 'border-brand bg-brand-soft': dragging }"
+    @dragenter.prevent="dragging = true" @dragover.stop.prevent="dragging = true" @dragleave.prevent="dragging = false" @drop.stop.prevent="onDrop">
+    <h2 class="shrink-0 whitespace-nowrap text-sm font-semibold">历史进项台账</h2>
+    <div class="flex min-w-max items-center gap-1.5">
+      <ImportFileDialog label="导入进项 Excel" accept=".xlsx,.xls" multiple primary compact :disabled="busy" @files="importLedgerFiles" />
+      <button class="ui-btn" @click="expenseImportOpen = true">导入报销记录</button>
+      <ExpenseAssignmentImport compact />
+      <button class="ui-btn" :disabled="!stats.total" @click="reconciliationOpen = true">历史报销核对</button>
+      <DropdownMenuRoot :modal="false">
+        <DropdownMenuTrigger class="ui-btn" :disabled="busy">导出与管理</DropdownMenuTrigger>
+        <DropdownMenuPortal>
+          <DropdownMenuContent class="ui-popover z-45 grid min-w-42 gap-1 p-1" align="end" :side-offset="6">
+            <DropdownMenuItem class="ui-btn-ghost justify-start" :disabled="!stats.total" @select="exportHistory">导出历史台账</DropdownMenuItem>
+            <DropdownMenuItem class="ui-btn-ghost justify-start" :disabled="!invoiceStore.invoices.length" @select="exportCurrentInputStatus">导出当前进项状态</DropdownMenuItem>
+            <DropdownMenuItem class="ui-btn-ghost justify-start text-danger" :disabled="!stats.total" @select="clearLedger">清空历史台账</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenuPortal>
+      </DropdownMenuRoot>
     </div>
-    </div>
-    <div
-      v-if="!ledgerPage || dragging"
-      class="mt-2 p-2 border border-dashed rounded-md text-xs font-700 transition-colors"
-      :class="dragging ? 'border-brand bg-white text-brand' : 'border-line-strong bg-[#f8fafc] text-ink-soft'"
-    >
-      {{ dragging ? "松开即可导入进项 Excel" : "可拖拽 .xlsx / .xls 到这里导入" }}
-    </div>
-    <div class="ledger-panel-actions">
-      <ImportFileDialog label="导入进项 Excel" multiple primary :disabled="busy" @files="importLedgerFiles" />
-
-      <button v-if="!ledgerPage" class="btn px-2.5 py-1.75" @click="emit('open-ledger')">打开台账页面</button>
-      <button class="btn" @click="expenseImportOpen = true">导入报销记录</button>
-      <ExpenseAssignmentImport />
-      <button class="btn px-2.5 py-1.75" :disabled="!stats.total" @click="reconciliationOpen = true">历史报销核对</button>
-      <button class="btn px-2.5 py-1.75" :disabled="busy || !stats.total" @click="exportHistory">导出历史台账</button>
-      <button class="btn px-2.5 py-1.75" :disabled="busy || !invoiceStore.invoices.length" @click="exportCurrentInputStatus">导出当前进项状态</button>
-      <button class="btn px-2.5 py-1.75 border-[#fecaca] text-[#991b1b] bg-[#fef2f2]" :disabled="busy || !stats.total" @click="clearLedger">清空历史台账</button>
-    </div>
-    <div class="mt-2 text-ink-soft text-xs" v-if="msg" role="status">{{ msg }}</div>
-    <InvoiceReconciliation v-model:open="reconciliationOpen" />
-    <DialogRoot v-model:open="expenseImportOpen"><DialogPortal><DialogOverlay class="expense-overlay" /><DialogContent class="expense-dialog">
-      <header><DialogTitle>导入报销记录</DialogTitle><button class="btn" @click="expenseImportOpen=false">关闭</button></header>
-      <DialogDescription>选择报销表，核对匹配结果后确认导入。</DialogDescription>
-      <ExpenseImportReview standalone />
-    </DialogContent></DialogPortal></DialogRoot>
+    <span v-if="dragging || busy" class="min-w-0 truncate text-xs text-brand-deep" role="status" :title="msg">{{ dragging ? '松开即可导入进项 Excel' : msg }}</span>
   </section>
+  <InvoiceReconciliation v-model:open="reconciliationOpen" />
+  <DialogRoot v-model:open="expenseImportOpen">
+    <DialogPortal><DialogOverlay class="ui-overlay z-60" />
+      <DialogContent class="ui-dialog z-61 w-[min(1000px,94vw)] max-h-[84vh] p-4">
+        <header class="flex items-center justify-between gap-2"><DialogTitle class="text-base font-semibold">导入报销记录</DialogTitle><button class="ui-btn" @click="expenseImportOpen = false">关闭</button></header>
+        <DialogDescription class="text-xs text-ink-secondary">选择报销表，核对匹配结果后确认导入。</DialogDescription>
+        <ExpenseImportReview standalone />
+      </DialogContent>
+    </DialogPortal>
+  </DialogRoot>
 </template>
-
-<style scoped>
-.ledger-panel{padding:8px 12px}.ledger-heading{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:6px}.ledger-stats{display:flex;gap:12px}.ledger-panel-actions{display:flex;gap:6px;flex-wrap:wrap}.ledger-panel-actions button{min-height:30px;padding:4px 9px;font-size:12px}
-.expense-overlay{position:fixed;inset:0;background:#0f172a66;z-index:60}.expense-dialog{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(1000px,94vw);max-height:84vh;overflow:auto;z-index:61;background:white;border-radius:10px;padding:18px;outline:none}.expense-dialog header{display:flex;align-items:center;justify-content:space-between;gap:12px}.expense-dialog h2{margin:0;font-size:18px}.expense-dialog p{color:#64748b;font-size:12px}
-</style>

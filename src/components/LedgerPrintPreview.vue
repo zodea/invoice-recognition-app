@@ -5,6 +5,7 @@ import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPor
 import { getLedgerAttachment } from '../lib/ledger-attachments.js';
 import { buildPrintLayout, openForPrint } from '../lib/invoice-layout.js';
 import { renderPdfPages } from '../lib/pdftext.js';
+import { downloadBytes } from '../lib/file-utils.js';
 import { invoiceStore } from '../invoiceStore.js';
 
 const props = defineProps({ entries: { type: Array, required: true } });
@@ -69,7 +70,8 @@ watch([output, page], async ([bytes, number], _, onCleanup) => {
         <button class="btn" :disabled="page <= 1" @click="page--">上一页</button>
         <span aria-live="polite">{{ pages ? page + ' / ' + pages + ' 页' : '—' }}</span>
         <button class="btn" :disabled="page >= pages" @click="page++">下一页</button>
-        <button class="btn-primary" :disabled="!output || !image" @click="openForPrint(output)">打印 {{ files ? files.length - skipped.length : 0 }} 张发票</button>
+        <button class="ui-btn" :disabled="!output" @click="downloadBytes(output, '历史进项台账-合并排版.pdf')">导出合并 PDF</button>
+        <button class="ui-btn-primary" :disabled="!output || !image" @click="openForPrint(output)">打印 {{ files ? files.length - skipped.length : 0 }} 张发票</button>
       </div>
       <UiDisclosure v-if="missing.length || skipped.length" class="ledger-print-warning"><template #label>有 {{ missing.length + skipped.length }} 张未排入打印，查看原因</template>
         <p v-if="missing.length">缺少可读取的发票原件（可在详情中补传）：{{ missing.join('、') }}</p>

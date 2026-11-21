@@ -4,6 +4,7 @@ import { actions } from "../store";
 import { collectDropEntries, entriesFromFileList, entriesHaveFolders, partitionFiles, dragHasSupported, SUPPORTED_HINT } from "../lib/upload";
 import { toast, toastWarn } from "../lib/toast";
 
+const props = defineProps({ compact: Boolean });
 const dragging = ref(false);
 const rejected = ref(false);
 const input = ref(null);
@@ -48,20 +49,19 @@ function onPick(e) {
 
 <template>
   <div
-    class="upload border-2 border-dashed rounded-card bg-panel px-3.5 py-2.5 cursor-pointer transition-colors flex items-center gap-3"
-    :class="rejected ? 'border-danger bg-[#fef2f2]' : dragging ? 'border-brand bg-brand-soft' : 'border-line-strong hover:border-brand'"
+    class="flex min-w-0 items-center"
+    :class="[
+      props.compact ? 'gap-1.5 rounded-md' : 'min-h-35 justify-center gap-3 rounded-card border-2 border-dashed bg-panel px-4',
+      rejected ? 'border-danger bg-danger-soft' : dragging ? 'border-brand bg-brand-soft' : 'border-line-strong',
+    ]"
     @dragover.prevent="onDragOver"
     @dragleave.prevent="onDragLeave"
     @drop.prevent="onDrop"
-    @click="input.click()"
   >
     <input ref="input" type="file" multiple accept=".pdf,image/*" hidden @change="onPick" />
     <input ref="folderInput" type="file" webkitdirectory multiple hidden @change="onPick" />
-    <div class="text-xl shrink-0" :class="rejected ? 'text-danger' : 'text-brand'">{{ rejected ? "🚫" : "⬆" }}</div>
-    <div class="min-w-0 flex-1">
-      <div class="text-sm font-600 truncate">{{ rejected ? "该类型不支持，请拖入 PDF / 图片 / 文件夹" : "拖入 PDF / 图片 / 文件夹，或点击选择" }}</div>
-      <div class="text-ink-soft text-xs truncate">支持多选、可拖整个文件夹；上传后分配到项目分区再识别、合并、导出</div>
-    </div>
-    <button type="button" class="btn px-2.5 py-1.25 text-xs shrink-0" @click.stop="folderInput.click()">📁 选择文件夹</button>
+    <span v-if="!compact || dragging" class="text-xs text-ink-secondary" role="status">{{ rejected ? '请拖入 PDF、图片或文件夹' : dragging ? '松开以导入' : '将 PDF、图片或文件夹拖到这里' }}</span>
+    <button type="button" class="ui-btn-primary" @click="input.click()">导入文件</button>
+    <button type="button" class="ui-btn" @click="folderInput.click()">选择文件夹</button>
   </div>
 </template>

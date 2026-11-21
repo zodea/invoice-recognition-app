@@ -271,11 +271,17 @@ export function candidateItemNames(lines) {
 }
 
 // 综合解析：给一张单的预填值
+export function findDeliveryStatedTotal(text) {
+  const match = String(text || '').normalize('NFKC').match(/[合总]\s*计[^¥\r\n\d-]{0,12}(?:¥\s*(-?[0-9][0-9,]*(?:\.[0-9]+)?)|(-?[0-9][0-9,]*(?:\.[0-9]+)?)\s*元)/);
+  return match ? Number((match[1] || match[2]).replace(/,/g, '')) : '';
+}
+
 export function parseDoc(lines) {
   const items = parseItemLines(lines);
   return {
     date: findDate(lines),
     orderNo: findOrderNo(lines),
+    statedTotal: findDeliveryStatedTotal(lines.join("\n")),
     company: findCompany(lines),
     items,
     itemCandidates: candidateItemNames(lines),

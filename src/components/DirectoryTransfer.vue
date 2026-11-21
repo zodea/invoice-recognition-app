@@ -8,6 +8,7 @@ import { saveBytesToChosenDir } from '../lib/invoice-export-package.js';
 import { downloadBytes } from '../lib/file-utils.js';
 import { toast, toastError } from '../lib/toast.js';
 
+defineProps({ compact: Boolean });
 const open = ref(false), busy = ref(false), source = shallowRef(null), filename = ref(''), message = ref('');
 const plan = computed(() => source.value && mergeDirectoryWorkbook(directory, source.value));
 const labels = { added: '新增档案', restored: '恢复档案', rules: '新增厂家归属', trash: '新增回收站条目', skipped: '已有或重复' };
@@ -42,10 +43,10 @@ async function download() {
 
 <template>
   <DialogRoot :open="open" @update:open="toggle">
-    <DialogTrigger class="btn">导入基础档案</DialogTrigger>
+    <DialogTrigger :class="compact ? 'ui-btn' : 'btn'">导入基础档案</DialogTrigger>
     <DialogPortal><DialogOverlay class="file-import-overlay" /><DialogContent class="file-import-dialog">
       <header><DialogTitle>导入基础档案</DialogTitle><DialogClose class="btn">关闭</DialogClose></header>
-      <DialogDescription>使用本页导出的 Excel，可填写基础档案、厂家归属及档案回收站三个工作表，也可只保留需要导入的工作表。</DialogDescription>
+      <DialogDescription>使用本页导出的 Excel，可只保留需要导入的工作表。</DialogDescription>
       <FileDropInput :disabled="busy" @files="read" />
       <p v-if="filename">{{ filename }}</p>
       <p v-if="message" role="alert">{{ message }}</p>
@@ -56,7 +57,7 @@ async function download() {
       </template>
     </DialogContent></DialogPortal>
   </DialogRoot>
-  <button type="button" class="btn" @click="download">导出基础档案</button>
+  <button type="button" :class="compact ? 'ui-btn' : 'btn'" @click="download">导出基础档案</button>
 </template>
 <style scoped>
 .directory-counts { display:grid; grid-template-columns:1fr auto; gap:6px; margin:0; font-size:13px; }

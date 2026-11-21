@@ -1,87 +1,51 @@
 <script setup>
-import { computed } from "vue";
-import { makeItem } from "../store";
+import { makeItem } from '../store.js';
 
-const props = defineProps({ doc: Object, index: Number, removable: Boolean });
-const emit = defineEmits(["remove"]);
-
-const filledRows = computed(() => (props.doc.items || []).filter((it) => String(it.name || "").trim()).length);
-
-function onDate(e) {
-  const v = e.target.value.trim();
-  props.doc.dateText = v;
-  const m = v.match(/^(20\d{2})[-.\/](\d{1,2})[-.\/](\d{1,2})$/);
-  if (m) {
-    props.doc.date = `${m[1]}-${String(+m[2]).padStart(2, "0")}-${String(+m[3]).padStart(2, "0")}`;
-  } else {
-    props.doc.date = null;
-  }
+const props = defineProps({ doc: Object });
+function updateAmount(item, key, value) {
+  item[key] = value;
+  const quantity = Number(item.quantity);
+  const price = Number(item.unitPrice);
+  item.total = String(item.quantity ?? '').trim() && String(item.unitPrice ?? '').trim() && Number.isFinite(quantity * price)
+    ? Math.round(quantity * price * 100) / 100 : '';
 }
-function recalc(it) {
-  const q = parseFloat(it.quantity);
-  const p = parseFloat(it.unitPrice);
-  if (Number.isFinite(q) && Number.isFinite(p) && (it.total === "" || it.total === null || it._auto)) {
-    it.total = Math.round(q * p * 100) / 100;
-    it._auto = true;
-  }
+function addRow() { props.doc.items.push(makeItem()); }
+function removeRow(index) {
+  if (props.doc.items.length === 1) props.doc.items.splice(0, 1, makeItem());
+  else props.doc.items.splice(index, 1);
 }
-function addRow() {
-  props.doc.items.push(makeItem());
-}
-function delRow(i) {
-  if (props.doc.items.length > 1) props.doc.items.splice(i, 1);
-}
-
-const cellInput = "w-full border border-line-strong rounded-md px-2 py-1.25 font-inherit bg-white text-ink";
 </script>
 
 <template>
-  <section class="border border-line rounded-md bg-[#fcfcfd] overflow-hidden mb-2.5">
-    <div class="flex flex-wrap gap-2.5 items-center px-3 py-2 border-b border-line bg-white">
-      <span class="chip bg-brand-soft text-brand">单 {{ index + 1 }}</span>
-      <span class="text-xs text-ink-soft">{{ filledRows }} 行材料</span>
-      <label class="inline-flex items-center gap-1 text-ink-soft text-xs">日期
-        <input class="border border-line-strong rounded-md px-2 py-1.25 font-inherit bg-white w-42.5" :value="doc.dateText" @input="onDate" placeholder="2026-03-26" />
-      </label>
-      <label class="inline-flex items-center gap-1 text-ink-soft text-xs">单号
-        <input class="border border-line-strong rounded-md px-2 py-1.25 font-inherit bg-white w-37.5" v-model="doc.orderNo" placeholder="单号 / 编号" />
-      </label>
-      <button v-if="removable" class="ml-auto btn-danger px-2 py-0.75 text-xs" @click="emit('remove')">删除此单</button>
-    </div>
-
-    <div v-if="doc.note" class="px-3 py-1.5 text-xs text-[#92400e] bg-[#fffbeb] border-b border-[#fde68a]">
-      {{ doc.note }}
-    </div>
-
-    <div class="overflow-x-auto">
-      <table class="w-full min-w-[760px] border-collapse table-fixed">
-        <thead>
-          <tr class="text-left text-xs text-ink-soft font-700 bg-[#f8fafc]">
-            <th class="px-2 py-1.5 w-[34%]">材料名称</th>
-            <th class="px-2 py-1.5 w-[10%]">单位</th>
-            <th class="px-2 py-1.5 w-[14%]">数量</th>
-            <th class="px-2 py-1.5 w-[14%]">单价</th>
-            <th class="px-2 py-1.5 w-[14%]">总价</th>
-            <th class="px-2 py-1.5 w-[56px]"></th>
-          </tr>
-        </thead>
+  <section class="flex min-h-0 flex-col overflow-hidden border-t border-line" aria-label="材料明细">
+    <header class="ui-section-header">
+      <h3 class="text-sm font-semibold">材料明细 <span class="ml-1 text-xs font-normal text-ink-soft">{{ doc.items.length }} 行</span></h3>
+      <button type="button" class="ui-btn-primary" @click="addRow">＋ 新增材料行</button>
+    </header>
+    <p v-if="doc.note" class="border-b border-warn-line bg-warn-soft px-2.5 py-1 text-xs text-warn">{{ doc.note }}</p>
+    <div class="min-h-0 flex-1 overflow-auto" tabindex="0" aria-label="材料表，可上下及左右滚动">
+      <table class="delivery-items w-full min-w-[690px] table-fixed whitespace-nowrap text-left">
+        <colgroup><col class="w-8" /><col /><col class="w-[18%]" /><col class="w-[9%]" /><col class="w-[11%]" /><col class="w-[13%]" /><col class="w-[13%]" /><col class="w-16" /></colgroup>
+        <thead><tr><th>#</th><th>材料名称</th><th>规格型号</th><th>单位</th><th>数量</th><th>单价 (元)</th><th>总价 (元)</th><th>操作</th></tr></thead>
         <tbody>
-          <tr v-for="(it, i) in doc.items" :key="i" class="border-t border-line/70">
-            <td class="px-2 py-1.5"><input :class="cellInput" v-model="it.name" placeholder="品名及规格" /></td>
-            <td class="px-2 py-1.5"><input :class="cellInput" v-model="it.unit" placeholder="个/米" /></td>
-            <td class="px-2 py-1.5"><input :class="cellInput" v-model="it.quantity" @input="recalc(it)" inputmode="decimal" /></td>
-            <td class="px-2 py-1.5"><input :class="cellInput" v-model="it.unitPrice" @input="recalc(it)" inputmode="decimal" /></td>
-            <td class="px-2 py-1.5"><input :class="cellInput" v-model="it.total" @input="it._auto = false" inputmode="decimal" /></td>
-            <td class="px-2 py-1.5">
-              <button class="btn px-2 py-0.75 text-xs text-ink-soft" @click="delRow(i)" title="删除行">删</button>
-            </td>
+          <tr v-for="(item, index) in doc.items" :key="item.id || index">
+            <td class="text-ink-soft ui-money">{{ index + 1 }}</td>
+            <td><input v-model="item.name" class="ui-input" :title="item.name" :aria-label="'第 ' + (index + 1) + ' 行材料名称'" /></td>
+            <td><input v-model="item.specification" class="ui-input" :title="item.specification" :aria-label="'第 ' + (index + 1) + ' 行规格型号'" /></td>
+            <td><input v-model="item.unit" class="ui-input" :aria-label="'第 ' + (index + 1) + ' 行单位'" /></td>
+            <td><input :value="item.quantity" class="ui-input ui-money text-right" inputmode="decimal" :aria-label="'第 ' + (index + 1) + ' 行数量'" @input="updateAmount(item, 'quantity', $event.target.value)" /></td>
+            <td><input :value="item.unitPrice" class="ui-input ui-money text-right" inputmode="decimal" :aria-label="'第 ' + (index + 1) + ' 行单价'" @input="updateAmount(item, 'unitPrice', $event.target.value)" /></td>
+            <td><input v-model="item.total" class="ui-input ui-money text-right" inputmode="decimal" :aria-label="'第 ' + (index + 1) + ' 行总价'" /></td>
+            <td><button type="button" class="ui-btn-ghost h-7 text-xs text-danger" :aria-label="'删除材料第 ' + (index + 1) + ' 行'" @click="removeRow(index)">删除</button></td>
           </tr>
         </tbody>
       </table>
     </div>
-
-    <div class="px-3 py-2 border-t border-line bg-white">
-      <button class="btn px-2.5 py-1 text-xs" @click="addRow">添加材料行</button>
-    </div>
   </section>
 </template>
+
+<style scoped>
+.delivery-items { border-collapse:separate; border-spacing:0; }
+.delivery-items th,.delivery-items td { padding:4px 5px; border-bottom:1px solid #eef0f3; }
+.delivery-items th { position:sticky; top:0; z-index:1; color:#4b5563; background:#f9fafb; font-size:12px; font-weight:600; }
+</style>
