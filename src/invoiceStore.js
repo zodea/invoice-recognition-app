@@ -18,10 +18,11 @@ import { reactive } from "vue";
 import { PDFDocument } from "pdf-lib";
 import { renderFileToPages } from "./lib/pdf";
 import { extractPdfText, renderPdfPages, rotateImageUrl, imgNaturalSize } from "./lib/pdftext";
-import { recognizePages } from "./lib/ocr";
+import { recognizePageRegion, recognizePages } from "./lib/ocr";
 import { parseInvoice, isProbablyInvoiceText } from "./lib/invoice-parse";
 import { applyParsedInvoiceFields } from "./lib/invoice-fields";
 import { applyInvoiceFilenameFallback } from "./lib/invoice-filename";
+import { recoverMedicalReceiptNumber, shouldRetryMedicalNumber } from './lib/invoice-medical-ocr.js';
 import { confirmedDuplicateInvoices, markInvoiceDuplicates } from "./lib/invoice-dedupe";
 import { identifyIntakeFile, intakeFile, supplementFolder } from './lib/fileIntake.js';
 import { invoiceFolderParts } from "./lib/invoice-export-package";
@@ -291,6 +292,20 @@ function refreshHistory() {
 // 只填空字段，保留人工编辑
 const applyParsed = applyParsedInvoiceFields;
 
+async function applyOcrInvoice(inv, text, firstPage, trackRegions = true) {
+  if (text.trim()) {
+    inv.rawText = text;
+    applyParsed(inv.fields, parseInvoice(text), text);
+  }
+  if (!shouldRetryMedicalNumber(inv.fields, inv.name) || !firstPage) return;
+  invoiceStore.msg = "重识别医疗票据号码区域…";
+  const recovered = await recoverMedicalReceiptNumber(firstPage, recognizePageRegion);
+  if (!recovered || inv.fields.number) return;
+  inv.fields.number = recovered.number;
+  inv.rawText = [text, recovered.text].filter(Boolean).join("\n");
+  if (trackRegions) inv.recognitionRegions.push(...recovered.regions);
+}
+
 function applyFilenameFallback(inv) {
   const { filled } = applyInvoiceFilenameFallback(inv.fields, inv.name);
   if (filled.length) {
@@ -524,6 +539,7 @@ export const invoiceActions = {
                   onPageRegions: input.owned ? regions => { inv.recognitionRegions.push(...regions); } : undefined,
                 });
                 ocrText = lines.join("\n");
+                await applyOcrInvoice(inv, ocrText, input.pages.find(page => (page.pageIndex ?? 0) === 0), input.owned);
               }
             } finally {
               if (input.owned) for (const page of input.pages) URL.revokeObjectURL(page.dataUrl);
@@ -533,8 +549,6 @@ export const invoiceActions = {
             inv.systemNote = "OCR 不可用，已按文件名补录，请手动核对";
           }
           if (ocrText.trim()) {
-            inv.rawText = ocrText;
-            applyParsed(inv.fields, parseInvoice(ocrText), ocrText);
             inv.systemNote = inv.systemNote || "OCR 识别，请重点核对";
           }
           // 无论 OCR 成否，最后都会执行下方 applyFilenameFallback 补齐日期/金额等空字段
@@ -545,8 +559,7 @@ export const invoiceActions = {
         const lines = await recognizePages(inv.pages, (m) => (invoiceStore.msg = m), {
           onPageRegions: regions => { inv.recognitionRegions.push(...regions); },
         });
-        inv.rawText = lines.join("\n");
-        applyParsed(inv.fields, parseInvoice(inv.rawText), inv.rawText);
+        await applyOcrInvoice(inv, lines.join("\n"), inv.pages[0]);
         if (inv.fields.docType === "医疗票据") inv.systemNote = inv.systemNote || "医疗票据 OCR 识别，请重点核对";
       }
       applyFilenameFallback(inv);

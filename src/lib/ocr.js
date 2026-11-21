@@ -94,6 +94,34 @@ async function recognizeDataUrl(dataUrl, onProgress, onRegions) {
   return extractLines(res).filter((s) => s && s.trim());
 }
 
+export async function recognizePageRegion(page, crop, onPageRegions) {
+  const image = await loadImage(page.dataUrl);
+  const left = Math.floor(crop.x * image.naturalWidth);
+  const top = Math.floor(crop.y * image.naturalHeight);
+  const width = Math.ceil((crop.x + crop.width) * image.naturalWidth) - left;
+  const height = Math.ceil((crop.y + crop.height) * image.naturalHeight) - top;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  canvas.getContext('2d').drawImage(image, left, top, width, height, 0, 0, width, height);
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  canvas.width = canvas.height = 0;
+  if (!blob) return [];
+  const url = URL.createObjectURL(blob);
+  try {
+    return await recognizeDataUrl(url, undefined, onPageRegions ? regions => onPageRegions(regions.map(region => ({
+      ...region,
+      x: (left + region.x * width) / image.naturalWidth,
+      y: (top + region.y * height) / image.naturalHeight,
+      width: region.width * width / image.naturalWidth,
+      height: region.height * height / image.naturalHeight,
+      page: page.pageIndex ?? 0,
+    }))) : undefined);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 // 识别多页，合并所有文本行。单页失败不拖垮整份：记录页号继续，最后统一抛出汇总错误
 // （若所有页都失败）或附加警告（部分失败时仍返回已识别文本，并在 warnings 里说明）。
 export async function recognizePages(pages, onProgress, { onPageRegions } = {}) {

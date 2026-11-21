@@ -4,7 +4,7 @@ function pad2(n) {
 
 export function parseInvoiceFilename(name) {
   const base = String(name || "").replace(/\.(?:pdf|png|jpe?g|bmp|webp|gif|tiff?)$/i, "");
-  const organized = base.match(/^(\d{4}-\d{2}-\d{2})-(.+)-(\d+\.\d{2})元(?:-(行程单|快递邮寄明细|邮寄明细|行程及费用明细))?(?:-\d+)?$/);
+  const organized = base.match(/^(\d{4}-\d{2}-\d{2})-(.+)-(\d+\.\d{2})元(?:-(行程单|快递邮寄明细|邮寄明细|行程及费用明细|医疗票据))?(?:-\d+)?$/);
   if (organized) return {date:organized[1],seller:organized[2],total:organized[3],number:'',type:organized[4]||'',source:'filename',hasSellerTruth:true};
 
   // 明确标明医院、日期和金额的文件名可作为待核对的兜底；未写年份时不猜年份。
@@ -75,11 +75,15 @@ export function applyInvoiceFilenameFallback(fields, name) {
   };
 
   fill("date", fallback.date);
-  fill("dateText", fallback.date);
+  if (fallback.date) fill("dateText", fields.date);
   fill("total", fallback.total);
   fill("seller", fallback.seller);
   fill("number", fallback.number);
-  fill("type", fallback.type);
+  if (fallback.type === "医疗票据" && (!fields.docType || fields.docType === "未识别")) {
+    fields.docType = fallback.type;
+    filled.push("docType");
+  }
+  if (fallback.type !== "医疗票据" || fields.docType === "医疗票据") fill("type", fallback.type);
 
   return { fallback, filled };
 }
