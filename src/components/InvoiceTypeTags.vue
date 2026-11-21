@@ -1,6 +1,5 @@
 <script setup>
 import { computed } from 'vue';
-import UiTag from './UiTag.vue';
 import { invoiceTypeTags } from '../lib/invoice-type-tags';
 const props = defineProps({entry:{type:Object,required:true}});
 const tags = computed(()=>invoiceTypeTags(props.entry));

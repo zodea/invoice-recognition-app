@@ -3,7 +3,6 @@ import { ref, computed } from "vue";
 import { store } from "../store";
 import { exportToDirectory, exportByDownload, fsAccessSupported } from "../lib/export";
 import { toast, toastError, toastInfo } from "../lib/toast";
-import ConfirmAction from "./ConfirmAction.vue";
 import { useConfirmation } from "../composables/useConfirmation.js";
 
 const { confirmation, requestConfirmation, answerConfirmation } = useConfirmation();

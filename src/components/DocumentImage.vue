@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { isPdf } from '../lib/file-utils.js';
 import { renderPdfPages } from '../lib/pdftext.js';
+import { acquirePreview, previewKey } from '../lib/preview-cache.js';
 
 const props = defineProps({
   file: Object,
@@ -20,8 +21,10 @@ const aspectRatio = ref('');
 let generation = 0, timer, observer, visibilityObserver;
 let renderedWidth = 0;
 
+let currentPage;
 function release() {
-  if (highResolution.value) URL.revokeObjectURL(highResolution.value);
+  currentPage?.release();
+  currentPage = null;
   highResolution.value = '';
   renderedWidth = 0;
 }
@@ -40,28 +43,23 @@ watch([() => props.file, () => props.name, () => props.pageNumber, () => props.r
   if (targetWidth <= renderedWidth) return;
   timer = setTimeout(async () => {
     try {
-      const pages = await renderPdfPages(props.file, {
-        firstPage: props.pageNumber,
-        maxPages: 1,
-        targetWidth,
-        rotation: props.rotation,
-      });
-      // 浏览器解码完成后再替换图片，避免切换 src 时出现空帧和高度变化。
-      if (pages[0]) {
-        const decoded = new Image(); decoded.src = pages[0];
+      const { file, pageNumber, rotation } = props;
+      const key = previewKey(file, pageNumber, rotation, targetWidth);
+      const page = await acquirePreview(key, async () => {
+        const [url] = await renderPdfPages(file, { firstPage: pageNumber, maxPages: 1, targetWidth, rotation });
+        if (!url) return '';
+        const decoded = new Image();
+        decoded.src = url;
         try { await decoded.decode(); }
-        catch { pages.filter(Boolean).forEach(url => URL.revokeObjectURL(url)); return; }
-      }
-      if (request !== generation) {
-        pages.filter(Boolean).forEach(url => URL.revokeObjectURL(url));
-        return;
-      }
-      if (pages[0]) {
-        const previousUrl = highResolution.value;
-        highResolution.value = pages[0];
-        renderedWidth = targetWidth;
-        if (previousUrl) URL.revokeObjectURL(previousUrl);
-      }
+        catch (error) { URL.revokeObjectURL(url); throw error; }
+        return url;
+      });
+      if (request !== generation) { page.release(); return; }
+      const previousPage = currentPage;
+      currentPage = page;
+      highResolution.value = page.url;
+      renderedWidth = targetWidth;
+      previousPage?.release();
     } catch { /* 高清渲染失败时继续显示已有原图 */ }
   }, 150);
 });

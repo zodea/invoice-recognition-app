@@ -1,18 +1,12 @@
 <script setup>
-import ImportFileDialog from './ImportFileDialog.vue';
-import ExpenseAssignmentImport from './ExpenseAssignmentImport.vue';
-import ConfirmAction from './ConfirmAction.vue';
 import { useConfirmation } from '../composables/useConfirmation.js';
 const { confirmation, requestConfirmation, answerConfirmation } = useConfirmation();
 import { computed, ref } from "vue";
-import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from "reka-ui";
 const expenseImportOpen = ref(false);
 import { invoiceStore, invoiceActions } from "../invoiceStore.js";
-import { buildCurrentInputInvoiceReportBytes, buildHistoryReportBytes, currentInputReportName, historyReportName, ledgerStats } from "../lib/invoice-ledger";
+import { currentInputReportName, historyReportName, ledgerStats } from "../lib/invoice-ledger-state.js";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
 import { downloadBytes } from "../lib/file-utils.js";
-import ExpenseImportReview from "./ExpenseImportReview.vue";
-import InvoiceReconciliation from "./InvoiceReconciliation.vue";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 
 const reconciliationOpen = ref(false);
@@ -39,17 +33,22 @@ async function importLedgerFiles(files) {
   } finally { busy.value = false; }
 }
 
-async function saveLedgerBytes(bytes, name, okMsg, dlMsg) {
+async function saveLedgerBytes(build, name, okMsg, dlMsg) {
+  if (busy.value) return;
+  let bytes;
   busy.value = true;
   msg.value = "请选择保存目录…";
   const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   try {
+    const workbook = await import('../lib/invoice-ledger.js');
+    bytes = build(workbook);
     const r = await saveBytesToChosenDir(bytes, name);
     if (r.canceled) toastInfo("已取消导出。");
     else if (r.fallbackDownload) { downloadBytes(bytes, name, mime); toastInfo(dlMsg); }
     else toast(`${okMsg}：${r.saved}`);
   } catch (err) {
-    if (err && err.name === "AbortError") toastInfo("已取消导出。");
+    if (!bytes) toastError("生成工作簿失败：" + (err?.message || err));
+    else if (err && err.name === "AbortError") toastInfo("已取消导出。");
     else { downloadBytes(bytes, name, mime); toastWarn("保存目录失败，已改为下载。"); }
   } finally {
     busy.value = false;
@@ -58,12 +57,12 @@ async function saveLedgerBytes(bytes, name, okMsg, dlMsg) {
 
 async function exportHistory() {
   if (!stats.value.total) { toastWarn("当前还没有历史进项发票台账。"); return; }
-  await saveLedgerBytes(buildHistoryReportBytes(invoiceStore.ledger), historyReportName(), "已保存历史台账", "已导出历史台账。");
+  await saveLedgerBytes(workbook => workbook.buildHistoryReportBytes(invoiceStore.ledger), historyReportName(), "已保存历史台账", "已导出历史台账。");
 }
 
 async function exportCurrentInputStatus() {
   if (!invoiceStore.invoices.length) { toastWarn("当前还没有导入发票。"); return; }
-  await saveLedgerBytes(buildCurrentInputInvoiceReportBytes(invoiceStore.invoices, invoiceStore.ledger), currentInputReportName(), "已保存当前进项发票状态", "已导出当前进项发票状态。");
+  await saveLedgerBytes(workbook => workbook.buildCurrentInputInvoiceReportBytes(invoiceStore.invoices, invoiceStore.ledger), currentInputReportName(), "已保存当前进项发票状态", "已导出当前进项发票状态。");
 }
 
 async function onDrop(e) {
@@ -77,7 +76,7 @@ async function clearLedger() {
     `确认清空历史进项台账吗？\n\n当前共有 ${stats.value.total} 张历史记录。这些记录将移入回收站，暂不参与汇总和查重；原件保留，可在发票列表的回收站中恢复。`
   );
   if (!ok) { toastInfo("已取消清空。"); return; }
-  try { invoiceActions.clearLedger(); toast(invoiceStore.msg); }
+  try { invoiceActions.clearLedger(); }
   catch (error) { toastError("清空失败，原记录仍保留：" + error.message); }
 }
 </script>

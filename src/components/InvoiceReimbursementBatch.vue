@@ -1,6 +1,5 @@
 <script setup>
 import { ref } from "vue";
-import ConfirmAction from "./ConfirmAction.vue";
 import { useConfirmation } from "../composables/useConfirmation.js";
 const { confirmation, requestConfirmation, answerConfirmation } = useConfirmation();
 const props = defineProps({ selectedCount: Number, visibleCount: Number });

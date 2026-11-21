@@ -1,5 +1,4 @@
 <script setup>
-import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
 defineProps({ request: { type: Object, default: null } });
 const emit = defineEmits(['answer']);
 </script>

@@ -1,5 +1,4 @@
 import {computed,ref,shallowRef} from 'vue';
-import {readPaymentBatch} from '../lib/payment-records.js';
 import {recognizePaymentEvidenceFile} from '../lib/payment-evidence-import.js';
 import {fileHash} from '../lib/file-utils.js';
 import {reviewPaymentImport,paymentEvidenceCandidates} from '../lib/payment-reconciliation.js';
@@ -48,6 +47,7 @@ export function usePaymentBatch(props,emit){
    for(const file of files.filter(f=>/\.xlsx?$/i.test(f.name)&&!f.name.startsWith('~$'))){
     const source=file.webkitRelativePath||file.name;
     try{
+     const { readPaymentBatch } = await import('../lib/payment-records.js');
      const batch=readPaymentBatch(await file.arrayBuffer(),source);
      pending.push(...batch.embedded);
      if(!batch.records.length)recognitionIssues.value.push(source+'：未找到付款清单表头');
@@ -63,6 +63,7 @@ export function usePaymentBatch(props,emit){
      const hash=await fileHash(file),copy=evidence.value.find(item=>item.hash===hash);
      if(copy){
       evidence.value=evidence.value.map(c=>c===copy?{...c,paths:[...new Set([...c.paths,path])]}:c);
+      task.fields=copy.fields;
       task.state='重复副本';task.detail=copy.file.name;continue;
      }
      let c;
@@ -71,6 +72,7 @@ export function usePaymentBatch(props,emit){
      const normalized=c.pages?.map(p=>p.text.replace(/\s/g,'')).join('\n');
      const same=normalized&&evidence.value.find(item=>item.normalized===normalized);
      evidence.value=[...evidence.value,{...c,paths:[path],hash,normalized,duplicateHint:same?'与 '+same.file.name+' 识别文字相同':''}];
+     task.fields=c.fields;
      task.state=c.fields?.date||c.fields?.seller||c.fields?.kind==='order'?'已识别':'待核对';
      task.detail=[c.fields?.date,c.fields?.seller,c.fields?.total!==''&&c.fields?.total!=null?c.fields.total+' 元':''].filter(Boolean).join(' · ')||c.warnings?.[0]||'查看原件核对';
      for(const warning of c.warnings||[])recognitionIssues.value.push(file.name+'：'+warning);

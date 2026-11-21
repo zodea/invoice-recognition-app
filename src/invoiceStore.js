@@ -14,8 +14,7 @@ import { deleteUnusedLedgerAttachments } from './lib/ledger-attachments.js';
 import { loadLedgerTrash, readLedgerTrashForChange, moveLedgerToTrash, restoreLedgerFromTrash, persistLedgerTransition } from './lib/ledger-trash.js';
 import { normalizeBuyerName } from './lib/invoice-buyer-check.js';
 import { invoiceProblems } from "./lib/invoice-review.js";
-import { reactive } from "vue";
-import { PDFDocument } from "pdf-lib";
+import { reactive, markRaw } from "vue";
 import { renderFileToPages } from "./lib/pdf";
 import { extractPdfText, renderPdfPages, rotateImageUrl, imgNaturalSize } from "./lib/pdftext";
 import { recognizePageRegion, recognizePages } from "./lib/ocr";
@@ -26,14 +25,16 @@ import { recoverMedicalReceiptNumber, shouldRetryMedicalNumber } from './lib/inv
 import { confirmedDuplicateInvoices, markInvoiceDuplicates } from "./lib/invoice-dedupe";
 import { identifyIntakeFile, intakeFile, supplementFolder } from './lib/fileIntake.js';
 import { invoiceFolderParts } from "./lib/invoice-export-package";
-import { ledgerKey, loadLedger, saveLedger, recordInvoices, markVerified, parseVerifiedNumbers, historyStatus, importInputInvoiceWorkbookBytes, markPrintedInvoices, shouldDefaultExcludeByHistory, missingReimbursementFields } from "./lib/invoice-ledger";
-import { importExpenseWorkbook } from "./lib/expense-import";
-import { markReimbursedBatch, updateCurrentReimbursements } from "./lib/invoice-ledger";
+import { ledgerKey, loadLedger, saveLedger, recordInvoices, markVerified, parseVerifiedNumbers, historyStatus, markPrintedInvoices, shouldDefaultExcludeByHistory, missingReimbursementFields } from "./lib/invoice-ledger-state.js";
+import { markReimbursedBatch, updateCurrentReimbursements } from "./lib/invoice-ledger-state.js";
 import { inferExpenseTag } from "./lib/invoice-tags";
 import { syncLedgerMatches } from "./lib/ledger-matching.js";
 import {uniqueSupplementMatch,supplementType,readInvoiceSupplements,writeInvoiceSupplements,saveInvoiceSupplement,reconcileInvoiceSupplements,linkInvoiceSupplement,unlinkInvoiceSupplement} from './lib/invoice-supplements.js';
-import {applyAssignmentReview,persistAssignmentImport} from './lib/expense-assignment-import.js';
+import {applyAssignmentReview,persistAssignmentImport} from './lib/expense-assignment-review.js';
 
+import { dismissToast, toastInfo, toastUndo } from './lib/toast.js';
+
+let duplicateToast = null;
 let seq = 0;
 const uid = (p) => `${p}_${Date.now().toString(36)}_${(seq++).toString(36)}`;
 
@@ -73,7 +74,7 @@ async function produceRenderedPages(inv, rotation) {
   if (inv.kind === "image") {
     return await Promise.all(inv.pages.map((p) => rotateImageUrl(p.dataUrl, rotation)));
   }
-  return await renderPdfPages(inv.blob, { scale: adaptivePreviewScale(), rotation, maxPages: inv.isTextPdf ? 10 : 60 });
+  return await renderPdfPages(inv.blob, { scale: adaptivePreviewScale(), maxPixels: 360000, rotation, maxPages: inv.isTextPdf ? 10 : 60 });
 }
 // 取首页宽高（图片/扫描件用已知页尺寸；电子票用首张渲染图尺寸）。
 async function firstPageSize(inv) {
@@ -141,6 +142,7 @@ async function pageImagesForOcr(inv) {
 export const invoiceStore = reactive({
   invoices: [],
   busy: false,
+  recognitionProgress: null,
   msg: "",
   perPage: 2, // 每页打印张数 1/2/4
   selectedId: "", // 左右联动选中的发票 id
@@ -303,7 +305,7 @@ async function applyOcrInvoice(inv, text, firstPage, trackRegions = true) {
   if (!recovered || inv.fields.number) return;
   inv.fields.number = recovered.number;
   inv.rawText = [text, recovered.text].filter(Boolean).join("\n");
-  if (trackRegions) inv.recognitionRegions.push(...recovered.regions);
+  if (trackRegions) inv.recognitionRegions = markRaw([...inv.recognitionRegions, ...recovered.regions]);
 }
 
 function applyFilenameFallback(inv) {
@@ -317,15 +319,17 @@ function applyFilenameFallback(inv) {
 }
 
 export const invoiceActions = {
-  async addFiles(fileList) {
+  async addFiles(fileList, onFile) {
     const arr = Array.from(fileList).filter((f) => /\.(pdf|png|jpe?g|bmp|webp|gif|tiff?)$/i.test(f.name));
-    for (const file of arr) {
+    if (arr.length) dismissToast(duplicateToast);
+    for (const [index, file] of arr.entries()) {
       const source = await identifyIntakeFile(file).catch(() => intakeFile(file));
+      onFile?.(index + 1, arr.length);
       if (source.sha256 && invoiceStore.invoices.some(inv => inv.sourcePath === source.relativePath && inv.sha256 === source.sha256)) continue;
       const inv = reactive({
         id: uid("inv"),
         name: file.name,
-        blob: file,
+        blob: markRaw(file),
         sourcePath: source.relativePath,
         sha256: source.sha256 || '',
         sha256Short: source.sha256Short || '',
@@ -356,9 +360,10 @@ export const invoiceActions = {
       });
       invoiceStore.invoices.push(inv);
       if (!invoiceStore.selectedId) invoiceStore.selectedId = inv.id;
-      renderFileToPages(file)
+      renderFileToPages(file, { useObjectUrl: true })
         .then(async (r) => {
           inv.pages = r.pages;
+          if (inv.removed) { revokeInvoiceUrls(inv); return; }
           if (r.kind === "pdf") {
             // 电子发票（文字型 PDF）即便内嵌了二维码/印章小图，也会被 extractJpegStreams
             // 误当成“页图”。这里再用文字探测确认：抽得到发票文字就按电子发票处理——
@@ -374,7 +379,7 @@ export const invoiceActions = {
                 if (isProbablyInvoiceText(t)) {
                   textPdf = true;
                   inv.rawText = t; // 文字层可用：直接解析
-                  inv.recognitionRegions = tr.regions;
+                  inv.recognitionRegions = markRaw(tr.regions || []);
                 } else if (meaningful >= 40) {
                   // 有实质文字层但被字体加密成乱码（如某些电子发票）：仍按电子票处理，
                   // 预览渲染整页、识别时走“整页 OCR”兜底（不存乱码 rawText）。
@@ -393,6 +398,7 @@ export const invoiceActions = {
                 inv.pageCount = probedNumPages;
               } else {
                 try {
+                  const { PDFDocument } = await import("pdf-lib");
                   const doc = await PDFDocument.load(await file.arrayBuffer());
                   inv.pageCount = doc.getPageCount();
                 } catch (e) {
@@ -406,6 +412,7 @@ export const invoiceActions = {
             inv.pageCount = r.pages.length || 1;
           }
           inv.rendering = false;
+          if (inv.removed) { revokeInvoiceUrls(inv); return; }
           queuePreviewRender(inv); // 异步渲染左侧真实打印预览
         })
         .catch((e) => {
@@ -426,6 +433,7 @@ export const invoiceActions = {
   },
 
   clearAll() {
+    dismissToast(duplicateToast);
     invoiceStore.invoices.forEach((inv) => { inv.removed = true; revokeInvoiceUrls(inv); });
     invoiceStore.invoices.splice(0);
     invoiceStore.selectedId = "";
@@ -486,9 +494,37 @@ export const invoiceActions = {
     return markInvoiceDuplicates(invoiceStore.invoices);
   },
 
-  removeConfirmedDuplicates() {
-    const duplicates = confirmedDuplicateInvoices(invoiceStore.invoices);
-    for (const inv of duplicates) invoiceActions.removeInvoice(inv.id);
+  removeConfirmedDuplicates({ undoable = false } = {}) {
+    const invoices = invoiceStore.invoices;
+    const duplicates = confirmedDuplicateInvoices(invoices);
+    if (undoable && duplicates.length) {
+      dismissToast(duplicateToast);
+      const removed = new Set(duplicates);
+      const order = invoices.map(inv => inv.id);
+      const selected = invoiceStore.selectedId;
+      invoiceStore.invoices = invoices.filter(inv => !removed.has(inv));
+      if (duplicates.some(inv => inv.id === selected)) invoiceStore.selectedId = invoiceStore.invoices[0]?.id || '';
+      const selectionAfterRemoval = invoiceStore.selectedId;
+
+      duplicateToast = toastUndo(`已移除 ${duplicates.length} 张重复发票，每组保留一张。`, () => {
+        const current = invoiceStore.invoices;
+        const positions = new Map(order.map((id, index) => [id, index]));
+        invoiceStore.invoices = [...current, ...removed].sort((a, b) =>
+          (positions.get(a.id) ?? Infinity) - (positions.get(b.id) ?? Infinity));
+        if (invoiceStore.selectedId === selectionAfterRemoval && duplicates.some(inv => inv.id === selected)) {
+          invoiceStore.selectedId = selected;
+        }
+        removed.clear();
+        invoiceActions.refreshDuplicates();
+        refreshHistory();
+      }, () => {
+        // 撤销期限内保留这几张的原始页和预览；恢复后所有权交还当前批次。
+        for (const inv of removed) { inv.removed = true; revokeInvoiceUrls(inv); }
+        duplicateToast = null;
+      });
+    } else {
+      for (const inv of duplicates) invoiceActions.removeInvoice(inv.id);
+    }
     invoiceActions.refreshDuplicates();
     return duplicates.length;
   },
@@ -514,7 +550,7 @@ export const invoiceActions = {
           try {
             const r = await extractPdfText(inv.blob);
             text = r.text || "";
-            inv.recognitionRegions = r.regions;
+            inv.recognitionRegions = markRaw(r.regions || []);
           } catch (e) {
             text = "";
           }
@@ -536,7 +572,7 @@ export const invoiceActions = {
                 invoiceStore.msg = inv.textGarbled ? "字体加密，转图像 OCR 识别…" : "OCR 识别扫描发票…";
                 const lines = await recognizePages(input.pages, m => { invoiceStore.msg = m; }, {
                   // 原始内嵌图可能只是页面裁片，无法确认整页位置时不画框。
-                  onPageRegions: input.owned ? regions => { inv.recognitionRegions.push(...regions); } : undefined,
+                  onPageRegions: input.owned ? regions => { inv.recognitionRegions = markRaw([...inv.recognitionRegions, ...regions]); } : undefined,
                 });
                 ocrText = lines.join("\n");
                 await applyOcrInvoice(inv, ocrText, input.pages.find(page => (page.pageIndex ?? 0) === 0), input.owned);
@@ -557,7 +593,7 @@ export const invoiceActions = {
         invoiceStore.msg = "OCR 识别发票图片…";
         inv.recognitionRegions = [];
         const lines = await recognizePages(inv.pages, (m) => (invoiceStore.msg = m), {
-          onPageRegions: regions => { inv.recognitionRegions.push(...regions); },
+          onPageRegions: regions => { inv.recognitionRegions = markRaw([...inv.recognitionRegions, ...regions]); },
         });
         await applyOcrInvoice(inv, lines.join("\n"), inv.pages[0]);
         if (inv.fields.docType === "医疗票据") inv.systemNote = inv.systemNote || "医疗票据 OCR 识别，请重点核对";
@@ -597,9 +633,13 @@ export const invoiceActions = {
     if (invoiceStore.busy) return;
     invoiceStore.busy = true;
     try {
-      for (const inv of invoiceStore.invoices) {
-        if (inv.status !== "done") await invoiceActions.recognizeOne(inv, { skipDedupe: true });
+      const pending = invoiceStore.invoices.filter(inv => inv.status !== 'done');
+      invoiceStore.recognitionProgress = { label: '识别票据', done: 0, total: pending.length };
+      for (const [index, inv] of pending.entries()) {
+        if (!inv.removed) await invoiceActions.recognizeOne(inv, { skipDedupe: true });
+        invoiceStore.recognitionProgress.done = index + 1;
       }
+      invoiceStore.recognitionProgress = { label: '核对附件匹配' };
       const duplicateCount = invoiceActions.removeConfirmedDuplicates();
       refreshHistory();
       const reused = invoiceStore.invoices.filter((i) => i.history && i.history.usedBefore).length;
@@ -609,7 +649,10 @@ export const invoiceActions = {
       invoiceStore.msg = `本批识别结束${unfinished ? `，${unfinished} 张未识别成功` : ""}${duplicateCount ? `，已自动移除 ${duplicateCount} 张本批重复` : ""}${reused ? `，⚠ ${reused} 张有历史勾选或使用记录` : ""}；匹配台账 ${matched.matched} 张，新增原件 ${matched.saved} 张${matched.needsReview ? `，${matched.needsReview} 张需人工核对` : ""}${matched.failed ? `，${matched.failed} 张原件保存失败` : ""}。`;
       if (attachments.linked || attachments.pending) invoiceStore.msg += ' 附件已关联 '+attachments.linked+' 份，待匹配 '+attachments.pending+' 份。';
       if (attachments.errors.length || attachments.failed) invoiceStore.msg += ' 附件需重试：'+(attachments.errors.join('；') || attachments.failed+' 份关联失败');
-    } finally { invoiceStore.busy = false; }
+    } finally {
+      invoiceStore.recognitionProgress = null;
+      invoiceStore.busy = false;
+    }
   },
   async matchRecognizedAttachments() {
     if (invoiceStore.savingIntake) return {linked:0,pending:0,failed:0,errors:['正在保存，请稍后重试匹配']};
@@ -715,6 +758,12 @@ export const invoiceActions = {
       const result = persistLedgerTransition(plan, previousTrash, saveLedger);
       invoiceStore.ledger = result.ledger;
       refreshHistory();
+      const ids = plan.trash.slice(0, plan.changed).map(record => record.id);
+      toastUndo(`已将 ${result.changed} 张发票移入回收站。`, () => {
+        if (invoiceStore.purgingTrash) throw new Error('正在整理回收站，请稍后从回收站恢复。');
+        const restored = invoiceActions.restoreLedgerEntries(ids);
+        toastInfo(`已恢复 ${restored.changed} 张。` + (restored.conflicts ? `另有 ${restored.conflicts} 张同号码记录，请在回收站核对。` : '') + (restored.warning || ''));
+      });
       return result;
     } finally { invoiceStore.ledgerTrash = loadLedgerTrash(); }
   },
@@ -763,6 +812,7 @@ export const invoiceActions = {
     saveLedger(result.ledger); invoiceStore.ledger = result.ledger; refreshHistory();
   },
   async importExpenseReport(file) {
+    const { importExpenseWorkbook } = await import('./lib/expense-import.js');
     const result = importExpenseWorkbook(invoiceStore.ledger, await file.arrayBuffer());
     if (!result.recognized) throw new Error("未找到可识别的发票号码和工地或付款账户列。");
     saveLedger(result.ledger);
@@ -773,6 +823,7 @@ export const invoiceActions = {
   async importInputInvoiceReport(file) {
     if (!file) return { imported: 0, added: 0, updated: 0 };
     const bytes = await file.arrayBuffer();
+    const { importInputInvoiceWorkbookBytes } = await import('./lib/invoice-ledger.js');
     const { ledger, imported, added, updated } = importInputInvoiceWorkbookBytes(invoiceStore.ledger, bytes, { sourceName: file.name });
     saveLedger(ledger);
     invoiceStore.ledger = ledger;

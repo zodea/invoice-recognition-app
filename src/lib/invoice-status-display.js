@@ -1,4 +1,4 @@
-import { deductionStatus, redInvoiceStatus } from './invoice-ledger.js';
+import { deductionStatus, redInvoiceStatus } from './invoice-ledger-state.js';
 export function deductionDisplay(entry = {}) {
   const time = String(entry.selectionTime || '').trim();
   if (time && !/^(--|—|无|暂无|未勾选|未认证)$/.test(time)) return {label:time,hasTime:true,title:'已抵扣'};

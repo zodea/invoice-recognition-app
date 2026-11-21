@@ -1,5 +1,5 @@
 <script setup>
-import { toastState, dismissToast } from "../lib/toast";
+import { toastState, dismissToast, undoToast } from "../lib/toast";
 
 const accent = { success: "border-ok", error: "border-danger", info: "border-brand", warn: "border-warn" };
 const iconColor = { success: "text-ok", error: "text-danger", info: "text-brand", warn: "text-warn" };
@@ -16,8 +16,9 @@ const icon = { success: "✓", error: "✕", info: "ℹ", warn: "!" };
         :class="accent[t.type] || 'border-brand'"
       >
         <span class="flex-none font-700 leading-5" :class="iconColor[t.type] || 'text-brand'">{{ icon[t.type] || "ℹ" }}</span>
-        <span class="flex-1 min-w-0 whitespace-pre-wrap break-words leading-5">{{ t.message }}</span>
-        <button class="flex-none text-ink-soft hover:text-ink leading-5" @click="dismissToast(t.id)" aria-label="关闭">✕</button>
+        <span role="status" class="flex-1 min-w-0 whitespace-pre-wrap break-words leading-5">{{ t.message }}</span>
+        <button v-if="t.undo" type="button" class="ui-btn-sm self-start shrink-0 text-brand" @click="undoToast(t.id)">撤销</button>
+        <button type="button" class="flex-none text-ink-soft hover:text-ink leading-5" @click="dismissToast(t.id)" aria-label="关闭">✕</button>
       </div>
     </TransitionGroup>
   </div>
@@ -26,7 +27,7 @@ const icon = { success: "✓", error: "✕", info: "ℹ", warn: "!" };
 <style scoped>
 .toast-enter-active,
 .toast-leave-active {
-  transition: opacity 0.25s ease, transform 0.25s ease;
+  transition: opacity 0.18s ease, transform 0.18s ease;
 }
 .toast-enter-from {
   opacity: 0;

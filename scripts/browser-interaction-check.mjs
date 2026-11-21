@@ -20,6 +20,11 @@ await page.waitForTimeout(300);
 for (const width of [1280,1920]) {
   await page.setViewportSize({width,height:900});
   const list=page.locator('#workspace-invoice-list'), preview=page.locator('.document-canvas'), detail=page.locator('.invoice-detail');
+  if (width === 1280) {
+    await page.getByRole('button',{name:'展开票据'}).waitFor();
+    assert.equal(await list.isVisible(),false);
+    await page.getByRole('button',{name:'展开票据'}).click();
+  }
   const [listBox, previewBox, detailBox]=await Promise.all([list.boundingBox(),preview.boundingBox(),detail.boundingBox()]);
   assert.ok(listBox.x<previewBox.x && previewBox.x+previewBox.width<=detailBox.x && detailBox.x+detailBox.width<=width,`${width}px 核对区并排无横向溢出`);
   await page.getByRole('button',{name:'收起票据'}).click();
@@ -28,7 +33,7 @@ for (const width of [1280,1920]) {
   await page.getByRole('button',{name:'展开票据'}).click();
 }
 await page.evaluate(()=>{const dataTransfer=new DataTransfer(); dataTransfer.items.add(new File(['fixture'],'测试清单.xlsx',{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));window.dispatchEvent(new DragEvent('dragenter',{dataTransfer,cancelable:true}));});
-await page.locator('.file-drag-notice').getByText('松开以导入文件或文件夹').waitFor();
+await page.locator('.file-drag-notice').getByText(/松开以导入文件夹或文件/).waitFor();
 await page.evaluate(()=>window.dispatchEvent(new DragEvent('dragleave',{relatedTarget:null})));
 await page.locator('.file-drag-notice').waitFor({state:'hidden'});
 const canvas=page.locator('.document-canvas').first();
@@ -74,7 +79,7 @@ await allocation.getByRole('radio',{name:'单一工地'}).check();
 await allocation.getByRole('combobox',{name:'使用工地'}).fill('工地甲');
 await page.getByRole('option',{name:'测试工地甲'}).click();
 await allocation.getByRole('button',{name:'保存分配'}).click();
-const sellerInput=page.locator('.invoice-detail .ui-label').filter({hasText:'销售方'}).locator('input').first();await sellerInput.fill('测试商户',{timeout:5000});await sellerInput.blur();
+const sellerInput=page.locator('.invoice-detail .ui-label').filter({hasText:'销售方'}).locator('textarea').first();await sellerInput.fill('测试商户',{timeout:5000});await sellerInput.blur();
 await page.waitForTimeout(200);assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('invoiceLedger.v1'))['26990000000000000003']),undefined,'补齐字段不可自动入账');
 await page.locator('.invoice-detail').getByRole('combobox',{name:'使用工地'}).fill('工地乙');
 await page.getByRole('option',{name:'测试工地乙'}).click();
@@ -90,6 +95,7 @@ await page.getByRole('tab',{name:/历史进项台账/}).click();
 const moreLedgerFilters = page.getByRole('button', {name:'更多筛选'});
 await moreLedgerFilters.click();
 await page.getByLabel('按金额查询发票').fill('106.00');
+await page.waitForFunction(() => document.querySelectorAll('.ledger-table tbody tr').length === 1);
 assert.equal(await page.locator('.ledger-table tbody tr').count(),1);
 await page.getByLabel('按金额查询发票').fill('');
 await page.getByLabel('仅看有附件').check();

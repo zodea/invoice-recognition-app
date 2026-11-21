@@ -1,6 +1,5 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { DialogRoot, DialogPortal, DialogOverlay, DialogContent, DialogTitle, DialogDescription, DialogClose } from 'reka-ui';
 import { invoiceActions, invoiceStore } from '../invoiceStore.js';
 import { directory } from '../lib/expense-directory.js';
 import { isMultiProject, withProjectAllocation } from '../lib/invoice-allocation.js';

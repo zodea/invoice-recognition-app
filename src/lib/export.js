@@ -3,7 +3,6 @@
 // 工地根目录放「工地名-送货单整理汇总.xlsx」。
 import { downloadBytes } from "./file-utils.js";
 import { buildPdfFromFiles } from "./pdf.js";
-import { buildWorkbookBytes } from "./excel.js";
 import { archiveBaseName, sanitize } from "./naming.js";
 
 export function fsAccessSupported() {
@@ -79,6 +78,7 @@ async function exportPartitionPdfs(files, writeIn, log) {
 // 主入口：File System Access API 版本
 export async function exportToDirectory({ partitions, files }, log) {
   const root = await window.showDirectoryPicker({ mode: "readwrite" });
+  const { buildWorkbookBytes } = await import('./excel.js');
   let total = 0;
   for (const part of partitions) {
     const pfiles = files.filter((f) => f.partitionId === part.id);
@@ -109,6 +109,7 @@ export async function exportToDirectory({ partitions, files }, log) {
 
 // 回退方案（Firefox 等不支持目录选择）：逐个触发下载，文件名带分区前缀。
 export async function exportByDownload({ partitions, files }, log) {
+  const { buildWorkbookBytes } = await import('./excel.js');
   let total = 0;
   for (const part of partitions) {
     const pfiles = files.filter((f) => f.partitionId === part.id);

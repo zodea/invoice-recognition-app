@@ -3,13 +3,9 @@ import { appStorage } from '../lib/app-storage.js';
 
 import { invoiceProblems } from "../lib/invoice-review";
 import { ref, computed } from "vue";
-import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
 import { invoiceStore, invoiceActions, invoiceSummary, orderedForPrint, groupPath } from "../invoiceStore.js";
 import { buildPrintLayout, openForPrint } from "../lib/invoice-layout";
 import { downloadBytes } from "../lib/file-utils.js";
-import { buildInvoiceWorkbookBytes } from "../lib/invoice-excel";
-import { buildCheckedInvoiceWorkbook } from '../lib/invoiceExcelImport.js';
-import { buildReimburseWorkbookBytes, reimburseWorkbookName } from "../lib/invoice-reimburse";
 import {
   canUseTauriExport,
   pickTauriExportDir,
@@ -21,8 +17,6 @@ import {
 } from "../lib/invoice-export-package";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 
-import InvoicePreview from './InvoicePreview.vue';
-import ConfirmAction from './ConfirmAction.vue';
 import { useConfirmation } from '../composables/useConfirmation.js';
 
 const open = defineModel('open', { type: Boolean, default: false });
@@ -75,6 +69,7 @@ async function exportCheckedWorkbook(source) {
   if (!checkedCount(source)) return;
   const stem = source.sourcePath.split('/').at(-1).replace(source.hasCheckedColumns ? /(?:_核对版(?:\(\d+\))?)?\.xlsx?$/i : /\.xlsx?$/i, '');
   const name = stem + '_核对版.xlsx';
+  const { buildCheckedInvoiceWorkbook } = await import('../lib/invoiceExcelImport.js');
   await saveWithDialog(buildCheckedInvoiceWorkbook(source, props.fileMatches.byRow), name, excelMime, '已保存核对版 Excel', '已下载核对版 Excel，请放到原 Excel 同级目录。');
 }
 
@@ -152,6 +147,7 @@ async function exportExcel() {
   if (!checkComplete()) return;
   if (!included.value.length) { toastWarn("没有勾选发票。"); return; }
   const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  const { buildInvoiceWorkbookBytes } = await import('../lib/invoice-excel.js');
   await saveWithDialog(buildInvoiceWorkbookBytes(included.value), "发票开票明细与汇总账单.xlsx", mime, "已保存 Excel", "已导出明细 + 汇总账单 Excel。");
 }
 async function exportReimburse() {
@@ -160,6 +156,7 @@ async function exportReimburse() {
   const repeated = included.value.filter(inv => inv.history?.entry?.reimbursement === "已报销");
   if (repeated.length && !await requestConfirmation("可能重复报销", `当前选择中有 ${repeated.length} 张发票已报销。仍要导出报销表吗？`, "继续导出")) return;
   const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  const { buildReimburseWorkbookBytes, reimburseWorkbookName } = await import('../lib/invoice-reimburse.js');
   await saveWithDialog(buildReimburseWorkbookBytes(included.value), reimburseWorkbookName(included.value), mime, "已保存财务费用报销表", "已导出财务费用报销表。");
 }
 
@@ -183,6 +180,7 @@ async function exportPackage() {
       const cmp = key === "total" ? (Number(av) || 0) - (Number(bv) || 0) : String(av).localeCompare(String(bv), "zh-CN");
       return cmp * (exportDirection.value === "asc" ? 1 : -1);
     });
+    const { buildInvoiceWorkbookBytes } = await import('../lib/invoice-excel.js');
     const excelBytes = buildInvoiceWorkbookBytes(list);
     let result;
     if (canUseTauriExport()) {

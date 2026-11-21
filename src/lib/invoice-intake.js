@@ -1,7 +1,7 @@
 import { createBuyerChecker, normalizeBuyerName, buyerCheckLabels } from './invoice-buyer-check.js';
 import { standaloneDocumentType } from './document-kind.js';
 import { invoiceProblems } from './invoice-review.js';
-import { historyStatus, ledgerKey } from './invoice-ledger.js';
+import { historyStatus, ledgerKey } from './invoice-ledger-state.js';
 import {supplementType} from './invoice-supplements.js';
 import {isMultiProject, projectAllocationState} from './invoice-allocation.js';
 

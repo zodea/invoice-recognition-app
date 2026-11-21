@@ -82,7 +82,10 @@ export async function rotateImageUrl(url, deg = 0) {
   ctx.rotate((r * Math.PI) / 180);
   ctx.drawImage(img, -w / 2, -h / 2);
   return await new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob ? URL.createObjectURL(blob) : url), 'image/png');
+    canvas.toBlob((blob) => {
+      canvas.width = canvas.height = 0;
+      resolve(blob ? URL.createObjectURL(blob) : url);
+    }, 'image/png');
   });
 }
 

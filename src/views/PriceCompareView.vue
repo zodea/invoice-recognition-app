@@ -1,5 +1,4 @@
 <script setup>
-import ImportFileDialog from '../components/ImportFileDialog.vue';
 // 单价对比（issue #7）：行=材料（归一化+手动并组），列=供应商，单元格=最近价(+区间)，高亮最低价。
 // 数据源：store 当前已识别明细 + 导入的历史「送货单整理汇总.xlsx」。
 import { computed, ref } from "vue";
@@ -11,15 +10,13 @@ import {
   splitGroup,
   loadManualGroups,
   saveManualGroups,
-  importHistoryWorkbookItems,
-  exportPriceCompareWorkbookBytes,
-} from "../lib/price-compare";
+} from "../lib/material-prices.js";
 import { downloadBytes } from "../lib/file-utils.js";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 
 import { directory } from '../lib/expense-directory.js';
-import { supplierStore, matchSupplierExact } from '../lib/supplier-db.js';
+import { supplierStore, matchSupplierExact } from '../lib/supplier-directory.js';
 const importedObs = ref([]); // 历史 Excel 导入的观测点
 const manualGroups = ref(loadManualGroups());
 const siteFilter = ref(""); // "" = 全部工地汇总
@@ -57,6 +54,7 @@ async function onImportPick([file]) {
     return;
   }
   try {
+    const { importHistoryWorkbookItems } = await import('../lib/price-compare.js');
     const items = importHistoryWorkbookItems(new Uint8Array(await file.arrayBuffer()));
     if (!items.length) {
       toastWarn("没读到可对比的明细（确认是「送货单整理汇总.xlsx」）。");
@@ -74,15 +72,18 @@ async function exportExcel() {
     toastWarn("没有可导出的对比数据。");
     return;
   }
-  const bytes = exportPriceCompareWorkbookBytes(compare.value);
   const name = "材料单价对比.xlsx";
   const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  let bytes;
   try {
+    const { exportPriceCompareWorkbookBytes } = await import('../lib/price-compare.js');
+    bytes = exportPriceCompareWorkbookBytes(compare.value);
     const r = await saveBytesToChosenDir(bytes, name);
     if (r.canceled) toastInfo("已取消导出。");
     else if (r.fallbackDownload) { downloadBytes(bytes, name, mime); toastInfo("已下载单价对比 Excel。"); }
     else toast(`已保存：${r.saved}`);
   } catch (e) {
+    if (!bytes) { toastError("生成工作簿失败：" + (e?.message || e)); return; }
     downloadBytes(bytes, name, mime);
     toastWarn("保存目录失败，已改为下载。");
   }

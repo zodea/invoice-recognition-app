@@ -1,5 +1,5 @@
 <script setup>
-import ImportFileDialog from '../components/ImportFileDialog.vue';
+import { useDebouncedFilter } from '../composables/useDebouncedFilter.js';
 import { computed, reactive, ref } from "vue";
 import { invoiceStore } from "../invoiceStore.js";
 import {
@@ -7,24 +7,16 @@ import {
   saveSuppliers,
   emptySupplier,
   collectFromInvoices,
-  exportSuppliersWorkbookBytes,
-  importSuppliersWorkbookBytes,
   companySearchUrl,
   normalizeCompanyName,
-} from "../lib/supplier-db";
+} from "../lib/supplier-directory.js";
 import { openExternal } from "../lib/open-external";
-import MiddleEllipsis from "../components/MiddleEllipsis.vue";
 import { downloadBytes } from "../lib/file-utils.js";
 import { saveBytesToChosenDir } from "../lib/invoice-export-package";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
-import SupplierDetail from "../components/SupplierDetail.vue";
 
 import { directory } from '../lib/expense-directory.js';
-import { withSupplierTemplateOptions } from '../lib/supplier-template.js';
-import SupplierForm from '../components/SupplierForm.vue';
-import ConfirmAction from '../components/ConfirmAction.vue';
 import { useConfirmation } from '../composables/useConfirmation.js';
-import { DialogContent,DialogOverlay,DialogPortal,DialogRoot,DialogTitle,DialogDescription } from 'reka-ui';
 import { SUPPLIER_TYPES } from '../lib/supplier-schema.js';
 const {confirmation,requestConfirmation,answerConfirmation}=useConfirmation();
 const db=supplierStore;
@@ -40,8 +32,9 @@ function persist() {
   saveSuppliers(db.list);
 }
 
+const { applied: appliedQuery } = useDebouncedFilter(query);
 const filtered = computed(() => {
-  const q = normalizeCompanyName(query.value);
+  const q = normalizeCompanyName(appliedQuery.value);
   return db.list.filter((s) => {
     if(typeFilter.value && (s.type||SUPPLIER_TYPES[0])!==typeFilter.value)return false;
     if(!q)return true;
@@ -55,7 +48,7 @@ function confirmType(){for(const key of Object.keys(draft))delete draft[key];Obj
 function startEdit(s){for(const key of Object.keys(draft))delete draft[key];Object.assign(draft,emptySupplier(),JSON.parse(JSON.stringify(s)));editingId.value=s.id;}
 function saved(again){editingId.value='';if(again)startAdd();}
 async function remove(s){if(!await requestConfirmation('删除分供方','删除「'+s.name+'」的档案？历史票据仍保留原名称。'))return;try{saveSuppliers(db.list.filter(x=>x.id!==s.id));toastInfo('已删除：'+s.name);}catch(e){toastError(e.message);}}
-async function downloadTemplate(){try{const response=await fetch(new URL('../assets/supplier-import.xlsx',import.meta.url));if(!response.ok)throw new Error('模板读取失败');const bytes=withSupplierTemplateOptions(new Uint8Array(await response.arrayBuffer()),{projects:directory.projects,suppliers:db.list});const name='分供方批量导入模板（下拉选项）.xlsx';const r=await saveBytesToChosenDir(bytes,name);if(r.fallbackDownload)downloadBytes(bytes,name,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');else if(!r.canceled)toast('模板已保存');}catch(e){toastError(e.message);}}
+async function downloadTemplate(){try{const response=await fetch(new URL('../assets/supplier-import.xlsx',import.meta.url));if(!response.ok)throw new Error('模板读取失败');const { withSupplierTemplateOptions } = await import('../lib/supplier-template.js');const bytes=withSupplierTemplateOptions(new Uint8Array(await response.arrayBuffer()),{projects:directory.projects,suppliers:db.list});const name='分供方批量导入模板（下拉选项）.xlsx';const r=await saveBytesToChosenDir(bytes,name);if(r.fallbackDownload)downloadBytes(bytes,name,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');else if(!r.canceled)toast('模板已保存');}catch(e){toastError(e.message);}}
 
 async function jumpSearch(s) {
   try {
@@ -91,15 +84,18 @@ async function exportExcel() {
     toastWarn("分供方列表为空。");
     return;
   }
-  const bytes = exportSuppliersWorkbookBytes(db.list);
   const name = "分供方资料.xlsx";
   const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  let bytes;
   try {
+    const { exportSuppliersWorkbookBytes } = await import('../lib/supplier-db.js');
+    bytes = exportSuppliersWorkbookBytes(db.list);
     const r = await saveBytesToChosenDir(bytes, name);
     if (r.canceled) toastInfo("已取消导出。");
     else if (r.fallbackDownload) { downloadBytes(bytes, name, mime); toastInfo("已下载分供方资料 Excel。"); }
     else toast(`已保存：${r.saved}`);
   } catch (e) {
+    if (!bytes) { toastError("生成工作簿失败：" + (e?.message || e)); return; }
     downloadBytes(bytes, name, mime);
     toastWarn("保存目录失败，已改为下载。");
   }
@@ -113,6 +109,7 @@ async function onImportPick([file]) {
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const next=JSON.parse(JSON.stringify(db.list));
+    const { importSuppliersWorkbookBytes } = await import('../lib/supplier-db.js');
     const r = importSuppliersWorkbookBytes(next, bytes);
     saveSuppliers(next);
     importResult.value=r;

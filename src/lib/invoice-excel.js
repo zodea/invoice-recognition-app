@@ -1,5 +1,5 @@
 // 发票：开票明细表 + 汇总账单表（按销售方汇总）。
-import * as XLSX from "xlsx";
+import * as XLSX from 'xlsx/xlsx.mjs';
 
 function num(v) {
   if (v === "" || v === null || v === undefined) return "";

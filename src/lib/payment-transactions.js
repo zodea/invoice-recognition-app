@@ -1,4 +1,4 @@
-import { paymentDate } from './payment-records.js';
+import { paymentDate } from './payment-date.js';
 
 export function paymentRange(value) {
   const parts = String(value || '').split(/\s*(?:至|到|[~～—])\s*/);

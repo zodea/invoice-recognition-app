@@ -1,14 +1,15 @@
 <script setup>
+import { useDebouncedFilter } from '../composables/useDebouncedFilter.js';
 import { computed, ref } from 'vue';
-import MiddleEllipsis from './MiddleEllipsis.vue';
 
 const props = defineProps({ title: String, groups: Array, stats: Object });
 const emit = defineEmits(['add', 'remove']);
 const kind = ref(props.groups[0].kind);
 const query = ref('');
+const { applied: appliedQuery } = useDebouncedFilter(query);
 const name = ref('');
 const filtered = computed(() => {
-  const key = query.value.trim().normalize('NFKC').toLowerCase();
+  const key = appliedQuery.value.trim().normalize('NFKC').toLowerCase();
   return props.groups.map(group => ({ ...group, names: group.names.filter(value => value.normalize('NFKC').toLowerCase().includes(key)) }));
 });
 function add() {

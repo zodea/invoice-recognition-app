@@ -4,7 +4,6 @@
 // 直接抽出原始 JPEG，供送货单预览及识别使用，也作为发票整页渲染失败时的兜底。
 // 发票正常预览和整页 OCR 使用 pdftext.js，以保留页面布局和一致的框线坐标。
 // 导出 / 批量打印用 pdf-lib 把原件页/图片重新封装、合并、排版。
-import { PDFDocument } from "pdf-lib";
 import { isPdf } from './file-utils.js';
 
 function blobToDataUrl(blob) {
@@ -84,7 +83,7 @@ export async function extractJpegStreams(buf) {
 
 // 把一个 PDF 或图片渲染成页图数组：[{ dataUrl, width, height }]。
 // PDF 走“抽内嵌 JPEG”；抽不到（文字型/非扫描件）则 pages 为空、unsupported=true。
-export async function renderFileToPages(file, { maxPages = 60 } = {}) {
+export async function renderFileToPages(file, { maxPages = 60, useObjectUrl = false } = {}) {
   if (isPdf(file)) {
     const buf = new Uint8Array(await file.arrayBuffer());
     const jpegs = (await extractJpegStreams(buf)).slice(0, maxPages);
@@ -96,7 +95,7 @@ export async function renderFileToPages(file, { maxPages = 60 } = {}) {
     }
     return { kind: "pdf", pages, unsupported: pages.length === 0 };
   }
-  const dataUrl = await blobToDataUrl(file);
+  const dataUrl = useObjectUrl ? URL.createObjectURL(file) : await blobToDataUrl(file);
   const dim = await imageDims(dataUrl);
   return { kind: "image", pages: [{ dataUrl, width: dim.w, height: dim.h }] };
 }
@@ -113,11 +112,13 @@ async function dataUrlToPngBytes(dataUrl) {
   canvas.height = img.naturalHeight;
   canvas.getContext("2d").drawImage(img, 0, 0);
   const blob = await new Promise((r) => canvas.toBlob(r, "image/png"));
+  canvas.width = canvas.height = 0;
   return new Uint8Array(await blob.arrayBuffer());
 }
 
 // 把若干文件（保持原件）拼成一个 PDF；多份即“合并”。返回 Uint8Array。
 export async function buildPdfFromFiles(files) {
+  const { PDFDocument } = await import("pdf-lib");
   const out = await PDFDocument.create();
   for (const f of files) {
     const blob = f.blob;

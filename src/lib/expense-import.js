@@ -1,6 +1,6 @@
 import { isMultiProject, projectNames } from './invoice-allocation.js';
 import { paymentDate } from "./payment-records.js";
-import * as XLSX from "xlsx";
+import * as XLSX from 'xlsx/xlsx.mjs';
 import { inferExpenseTag } from "./invoice-tags.js";
 import {isAssignmentWorkbook} from './expense-assignment-import.js';
 

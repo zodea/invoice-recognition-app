@@ -1,6 +1,5 @@
 <script setup>
 import { computed } from "vue";
-import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
 import { store, actions, collectProblems, partitionName } from "../store";
 
 const problems = computed(() => collectProblems());

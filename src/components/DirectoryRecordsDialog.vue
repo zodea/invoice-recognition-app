@@ -1,9 +1,8 @@
 <script setup>
+import { notifyArchiveRemoval } from '../lib/archive-feedback.js';
+import { useDebouncedFilter } from '../composables/useDebouncedFilter.js';
 import { computed, ref, watch } from 'vue';
-import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
 import { directory, deleteArchive, restoreArchive, purgeDeletedArchives, saveDirectory, isAllocationRuleActive } from '../lib/expense-directory.js';
-import MiddleEllipsis from './MiddleEllipsis.vue';
-import ConfirmAction from './ConfirmAction.vue';
 import { toast, toastError } from '../lib/toast.js';
 import { useConfirmation } from '../composables/useConfirmation.js';
 
@@ -24,8 +23,9 @@ const pageSize = 8;
 const titles = { archives: '档案清单', rules: '厂家归属清单', trash: '档案回收站' };
 const records = computed(() => mode.value === 'rules' ? directory.rules : mode.value === 'trash' ? directory.deletedArchives :
   archiveChoices.value.flatMap(([type]) => directory[type].map(value => ({ kind: type, value }))));
+const { applied: appliedQuery } = useDebouncedFilter(query);
 const filtered = computed(() => {
-  const q = query.value.trim().normalize('NFKC').toLocaleLowerCase();
+  const q = appliedQuery.value.trim().normalize('NFKC').toLocaleLowerCase();
   return records.value.filter(record => {
     if (mode.value !== 'rules' && kind.value !== 'all' && record.kind !== kind.value) return false;
     return (mode.value === 'rules' ? `${record.seller} ${record.buyer} ${record.project}` : record.value).normalize('NFKC').toLocaleLowerCase().includes(q);
@@ -39,7 +39,7 @@ watch(pageCount, count => { page.value = Math.min(page.value, count); });
 
 async function remove(record) {
   if (!await requestConfirmation('删除'+props.kinds[record.kind], '删除“'+record.value+'”？关联 '+(props.stats?.[record.kind]?.get(record.value)?.count || 0)+' 条记录，原记录保留，可在档案回收站恢复。')) return;
-  try { deleteArchive(record.kind, record.value); toast('已移入档案回收站。'); }
+  try { deleteArchive(record.kind, record.value); notifyArchiveRemoval(record.kind, record.value); }
   catch (error) { toastError('删除失败：'+error.message); }
 }
 function restore(record) {

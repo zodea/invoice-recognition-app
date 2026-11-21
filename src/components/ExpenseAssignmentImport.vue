@@ -1,12 +1,9 @@
 <script setup>
-import UiDisclosure from './UiDisclosure.vue';
-import FileDropInput from './FileDropInput.vue';
 import { computed, ref, shallowRef } from 'vue';
-import {DialogRoot,DialogPortal,DialogOverlay,DialogContent,DialogTitle,DialogDescription} from 'reka-ui';
 import {invoiceStore,invoiceActions} from '../invoiceStore.js';
 import {paymentStore} from '../lib/payment-store.js';
 import {directory} from '../lib/expense-directory.js';
-import {parseAssignmentWorkbook,reviewAssignmentImport,buildAssignmentTemplate} from '../lib/expense-assignment-import.js';
+import { reviewAssignmentImport } from '../lib/expense-assignment-review.js';
 import {downloadBytes} from '../lib/file-utils.js';
 defineProps({label:{type:String,default:'批量导入归属'}, compact: Boolean});
 const opened=ref(false), loading=ref(false), source=shallowRef(null), selected=ref([]), message=ref('');
@@ -18,6 +15,7 @@ async function load(files){
  if(loading.value || !files.length)return;
  loading.value=true;source.value=null;review.value=[];selected.value=[];mappings.value={};newNames.value=[];message.value='';
  try {
+  const { parseAssignmentWorkbook } = await import('../lib/expense-assignment-import.js');
   const batch={invoices:[],payments:[],allocations:[]};
   for(const [i,file] of files.entries()){
    const data=parseAssignmentWorkbook(await file.arrayBuffer(),file.name);
@@ -40,7 +38,12 @@ function apply(){
   preview();message.value='已更新 '+result.invoicesUpdated+' 张发票、'+result.paymentsUpdated+' 笔付款的归属。';
  }catch(error){message.value=error.message;}
 }
-function template(){downloadBytes(buildAssignmentTemplate(directory),'归属导入模板.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');}
+async function template() {
+  try {
+    const { buildAssignmentTemplate } = await import('../lib/expense-assignment-import.js');
+    downloadBytes(buildAssignmentTemplate(directory), '归属导入模板.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  } catch (error) { message.value = '模板下载失败：' + error.message; }
+}
 </script>
 <template>
  <button type="button" :class="compact ? 'ui-btn' : 'btn'" @click="opened=true">{{ label }}</button>

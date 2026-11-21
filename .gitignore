@@ -60,3 +60,5 @@ public/octest/
 /数据/
 /调试数据/
 *.sdbak
+
+/src/components.d.ts

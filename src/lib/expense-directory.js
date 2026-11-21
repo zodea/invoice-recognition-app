@@ -1,6 +1,6 @@
 import { appStorage } from './app-storage.js';
 import { reactive } from 'vue';
-import { normalizeCompanyName, matchSupplierExact, supplierStore } from './supplier-db.js';
+import { normalizeCompanyName, matchSupplierExact, supplierStore } from './supplier-directory.js';
 const key='expenseDirectory.v1';
 let saved={}; try { saved=JSON.parse(appStorage.getItem(key)||'{}'); } catch {}
 export const directory=reactive({buyers:[],projects:[],allocations:[],people:[],tags:[],purposes:[],paymentMethods:["微信","支付宝","银行转账","现金","其他"],rules:[],aliases:[],deletedArchives:[],...saved});

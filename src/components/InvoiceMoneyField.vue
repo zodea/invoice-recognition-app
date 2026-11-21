@@ -1,11 +1,14 @@
 <script setup>
-import { computed, nextTick, ref, useTemplateRef } from 'vue';
+import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import { toChineseUpper } from '../lib/chinese-money.js';
 
-defineProps({ label: String });
+import { flashAcceptedField } from '../lib/field-feedback.js';
+
+const props = defineProps({ label: String, paperReason: String });
 const value = defineModel({ default: '' });
 const anchor = useTemplateRef('anchor');
 const tooltip = useTemplateRef('tooltip');
+watch(() => props.paperReason, reason => { if (reason) flashAcceptedField(anchor.value); }, { flush: 'post' });
 const visible = ref(false);
 const position = ref({});
 const upper = computed(() => toChineseUpper(value.value));

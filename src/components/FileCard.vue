@@ -1,12 +1,8 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { PopoverRoot, PopoverTrigger, PopoverPortal, PopoverContent } from 'reka-ui';
 import { store, actions, makeItem } from '../store.js';
 import { moneyCents } from '../lib/invoice-allocation.js';
 import { formatMoney } from '../lib/format.js';
-import FieldsTable from './FieldsTable.vue';
-import DeliveryPreview from './DeliveryPreview.vue';
-import MiddleEllipsis from './MiddleEllipsis.vue';
 
 const props = defineProps({ file: Object });
 const docId = ref(props.file.docs[0]?.id || '');
@@ -49,7 +45,7 @@ function chooseCandidate(name) {
       <DeliveryPreview :file="file" />
       <section class="delivery-heading min-w-0 overflow-auto px-3 py-2.5" aria-label="单据抬头">
         <header class="mb-2 flex min-w-0 flex-wrap items-center gap-1.5">
-          <h2 class="mr-auto min-w-0 flex-1 text-sm font-semibold"><MiddleEllipsis :text="file.name" /></h2>
+          <h2 class="mr-auto min-w-0 flex-1 text-sm font-semibold"><MiddleEllipsis :text="file.name" :tail="10" /></h2>
           <button class="ui-btn-sm" :disabled="file.rendering || store.ocrBusy" @click="actions.runOcr(file)">{{ file.ocrStatus === 'running' ? '识别中…' : '识别本件' }}</button>
           <button class="ui-btn-ghost h-7 text-xs text-danger" @click="actions.removeFile(file.id)">移除文件</button>
         </header>
@@ -71,7 +67,7 @@ function chooseCandidate(name) {
         </p>
         <p v-if="file.ocrError" class="mb-1 text-xs text-danger" role="status">{{ file.ocrError }}</p>
         <div v-if="doc" class="grid grid-cols-2 gap-x-2 gap-y-1.5">
-          <label class="ui-label">供应商<input :value="file.company" class="ui-input" placeholder="按红章核对" @input="actions.setCompanyManual(file, $event.target.value)" /></label>
+          <label class="ui-label">供应商<textarea :value="file.company" rows="1" class="ui-input growing-field" :title="file.company" placeholder="按红章核对" @input="actions.setCompanyManual(file, $event.target.value)" /></label>
           <label class="ui-label">送货日期<input :value="doc.dateText" class="ui-input ui-money" placeholder="YYYY-MM-DD" @input="setDate" /></label>
           <label class="ui-label">归属工地<select :value="file.partitionId" class="ui-input" @change="actions.moveFile(file.id, $event.target.value)"><option v-for="part in store.partitions" :key="part.id" :value="part.id">{{ part.name }}</option></select></label>
           <label class="ui-label">单据号<input v-model="doc.orderNo" class="ui-input ui-money" /></label>

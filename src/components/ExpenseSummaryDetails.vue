@@ -1,19 +1,19 @@
 <script setup>
+import { useDebouncedFilter } from '../composables/useDebouncedFilter.js';
 import { computed, ref, watch } from 'vue';
 import { directory } from '../lib/expense-directory.js';
 import { invoiceActions } from '../invoiceStore.js';
-import { allocationKind } from '../lib/payment-records.js';
+import { allocationKind } from '../lib/payment-allocation.js';
 import { isMultiProject } from '../lib/invoice-allocation.js';
 import { formatMoney } from '../lib/format.js';
-import InvoiceProjectAllocationDialog from './InvoiceProjectAllocationDialog.vue';
-import MiddleEllipsis from './MiddleEllipsis.vue';
 
 const props = defineProps({ sources: Array, group: Object });
 const emit = defineEmits(['close']);
 const selected = ref(null), allocation = ref(''), project = ref(''), message = ref('');
 const query = ref(''), page = ref(1), sourceType = ref('all'), split = ref(null), saved = ref('');
+const { applied: appliedQuery } = useDebouncedFilter(query);
 const filtered = computed(() => {
-  const term = query.value.trim().toLowerCase();
+  const term = appliedQuery.value.trim().toLowerCase();
   return props.sources.filter(({ kind, entry, key }) => (sourceType.value === 'all' || kind === sourceType.value)
     && [key, entry.date, entry.number, entry.seller, entry.total].some(value => String(value ?? '').toLowerCase().includes(term)));
 });
@@ -71,7 +71,7 @@ function save() {
               <tr>
                 <td><span :class="row.kind === 'invoice' ? 'ui-badge-brand' : 'ui-badge-neutral'">{{ row.kind === 'invoice' ? '发票' : '垫资' }}</span></td>
                 <td class="ui-money">{{ row.entry.date || '—' }}</td>
-                <td><MiddleEllipsis :text="row.entry.seller || '—'" class="max-w-50" /></td>
+                <td><span class="block max-w-70 whitespace-normal break-words">{{ row.entry.seller || '—' }}</span></td>
                 <td><MiddleEllipsis :text="row.entry.number || row.key" class="max-w-46 ui-money" /></td>
                 <td>{{ isMultiProject(row.entry) ? '多工地分配' : row.entry.project || allocationKind(row.entry) }}</td>
                 <td class="ui-money text-right">¥{{ formatMoney(row.groupedCents / 100) }}</td>

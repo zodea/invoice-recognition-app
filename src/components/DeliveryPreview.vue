@@ -1,6 +1,5 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import DocumentImage from './DocumentImage.vue';
 import { createPreviewPan } from '../lib/preview-pan.js';
 
 const props = defineProps({ file: Object });

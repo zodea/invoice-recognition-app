@@ -1,9 +1,9 @@
-import * as XLSX from 'xlsx/xlsx.mjs';
 import { paymentColumns } from './expense-columns.js';
 import { paymentEvidenceExportPlan } from './payment-evidence-export.js';
 const extra=[['recordType','记录类型'],['dateRange','日期范围'],['reimbursement','报销状态'],['source','原清单位置']];
 const lineKeys=new Set(['purpose','unit','quantity','unitPrice','lineAmount']);
 export async function exportPaymentList(records,attachmentsFor,write) {
+ const XLSX = await import('xlsx/xlsx.mjs');
  const columns=[...paymentColumns,...extra],rows=[],merges=[],links=[];
  let fileCount=0,maxFiles=0;
  for(const record of records){

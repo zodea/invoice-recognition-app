@@ -1,18 +1,19 @@
 <script setup>
+import { notifyArchiveRemoval } from '../lib/archive-feedback.js';
+import { useDebouncedFilter } from '../composables/useDebouncedFilter.js';
 import { computed, ref, watch } from 'vue';
 import { directory, addArchiveAlias, removeArchiveAlias, resolveArchiveName } from '../lib/expense-directory.js';
-import ConfirmAction from './ConfirmAction.vue';
-import MiddleEllipsis from './MiddleEllipsis.vue';
 import { useConfirmation } from '../composables/useConfirmation.js';
 import { toast, toastError } from '../lib/toast.js';
 
 const props = defineProps({ stats: Object });
 const query = ref(''), name = ref(''), kind = ref('buyers'), target = ref('');
+const { applied: appliedQuery } = useDebouncedFilter(query);
 const targets = computed(() => directory[kind.value]);
 watch(targets, values => { if (!values.includes(target.value)) target.value = ''; });
 watch(kind, () => { target.value = ''; });
 const filtered = computed(() => {
-  const key = query.value.trim().normalize('NFKC').toLowerCase();
+  const key = appliedQuery.value.trim().normalize('NFKC').toLowerCase();
   return directory.aliases.filter(item => (item.name + ' ' + item.target).normalize('NFKC').toLowerCase().includes(key));
 });
 const { confirmation, requestConfirmation, answerConfirmation } = useConfirmation();
@@ -26,7 +27,7 @@ function add() {
 async function remove(alias) {
   const count = props.stats[alias.kind]?.get(alias.target)?.count || 0;
   if (!await requestConfirmation('删除别名', '将“' + alias.name + '”移入档案回收站？标准名“' + alias.target + '”关联 ' + count + ' 条记录，原记录保留。')) return;
-  try { removeArchiveAlias(alias); toast('已移入档案回收站。'); }
+  try { removeArchiveAlias(alias); notifyArchiveRemoval('aliases', alias.name); }
   catch (error) { toastError('删除失败：' + error.message); }
 }
 </script>
@@ -46,7 +47,7 @@ async function remove(alias) {
     </form>
     <ul class="max-h-[48vh] flex-1 overflow-auto px-3 py-1">
       <li v-for="item in filtered" :key="item.name" class="flex min-w-0 items-center gap-2 border-b border-line-subtle py-1.5">
-        <div class="min-w-0 flex-1"><MiddleEllipsis :text="item.name" /><div class="truncate text-xs text-ink-soft" :title="item.target">{{ item.kind === 'buyers' ? '购买方' : '工地' }} · {{ item.target }}</div></div>
+        <div class="min-w-0 flex-1"><MiddleEllipsis :text="item.name" /><div class="flex min-w-0 gap-1 text-xs text-ink-soft">{{ item.kind === 'buyers' ? '购买方' : '工地' }} · <MiddleEllipsis :text="item.target" /></div></div>
         <span v-if="resolveArchiveName(item.kind, item.name) !== item.target" class="ui-badge-warn">已停用</span>
         <button class="ui-btn-ghost h-7 text-xs text-danger" type="button" :aria-label="'删除别名 ' + item.name" @click="remove(item)">删除</button>
       </li>

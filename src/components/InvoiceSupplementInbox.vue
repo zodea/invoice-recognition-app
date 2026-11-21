@@ -1,8 +1,6 @@
 <script setup>
-import UiDisclosure from './UiDisclosure.vue';
 import {computed,shallowRef} from 'vue';
 import {invoiceActions,invoiceStore} from '../invoiceStore.js';
-import InvoiceSupplementLink from './InvoiceSupplementLink.vue';
 const message=shallowRef('');
 const pending=computed(()=>invoiceStore.supplements.filter(r=>!r.ledgerKey));
 async function retry(){try{const r=await invoiceActions.retrySupplementMatches();message.value=`已自动关联 ${r.linked} 份，${r.pending} 份继续保留待匹配。`;}catch(error){message.value=error.message;}}

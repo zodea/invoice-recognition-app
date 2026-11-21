@@ -2,10 +2,7 @@
 import { computed } from 'vue';
 import { invoiceActions, invoiceStore } from '../invoiceStore.js';
 import { receiptType } from '../lib/invoice-intake.js';
-import { PopoverRoot, PopoverTrigger, PopoverPortal, PopoverContent } from 'reka-ui';
 import { toast, toastError, toastWarn } from '../lib/toast.js';
-import ConfirmAction from './ConfirmAction.vue';
-import InvoiceSupplementLink from './InvoiceSupplementLink.vue';
 import {supplementType} from '../lib/invoice-supplements.js';
 import { useConfirmation } from '../composables/useConfirmation.js';
 const emit=defineEmits(['open-payment','match-payment']);

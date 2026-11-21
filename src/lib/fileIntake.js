@@ -24,12 +24,13 @@ export function paymentEvidenceFolder(file) {
   return intakeFile(file).parentFolder.split('/').some(part => /^(?:垫资)?(?:付款|支付)(?:凭证|截图)(?:$|[（(\s])/.test(part));
 }
 
-export async function pickDesktopIntakeFolder() {
+export async function pickDesktopIntakeFolder(onRead) {
   const selection = await invokeTauri('pick_intake_folder');
   if (!selection) return null;
   const files = [];
   let skipped = selection.skipped;
   try {
+    onRead?.(0, selection.files.length);
     for (const [index, entry] of selection.files.entries()) {
       try {
         const bytes = await invokeTauri('read_intake_file', { selection: selection.id, index });
@@ -39,6 +40,7 @@ export async function pickDesktopIntakeFolder() {
       } catch {
         skipped++;
       }
+      onRead?.(index + 1, selection.files.length);
     }
   } finally {
     await invokeTauri('release_intake_folder', { selection: selection.id });

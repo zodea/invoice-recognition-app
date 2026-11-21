@@ -1,15 +1,6 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
-import { TabsRoot, TabsList, TabsTrigger, TabsContent } from 'reka-ui';
-import ExpenseSummaryDetails from '../components/ExpenseSummaryDetails.vue';
-import ExpenseAssignmentImport from '../components/ExpenseAssignmentImport.vue';
-import ExpenseArchiveCard from '../components/ExpenseArchiveCard.vue';
-import ExpenseAliasCard from '../components/ExpenseAliasCard.vue';
-import DirectoryTransfer from '../components/DirectoryTransfer.vue';
-import DirectoryRecordsDialog from '../components/DirectoryRecordsDialog.vue';
-import MiddleEllipsis from '../components/MiddleEllipsis.vue';
-import UiDisclosure from '../components/UiDisclosure.vue';
-import ConfirmAction from '../components/ConfirmAction.vue';
+import { notifyArchiveRemoval } from '../lib/archive-feedback.js';
+import { computed, ref } from 'vue';
 import { useConfirmation } from '../composables/useConfirmation.js';
 import { directory, saveDirectory, deleteArchive, resolveArchiveName } from '../lib/expense-directory.js';
 import { invoiceStore } from '../invoiceStore.js';
@@ -17,12 +8,11 @@ import { paymentStore, countPaymentExpense } from '../lib/payment-store.js';
 import { expenseSummary } from '../lib/expense-summary.js';
 import { formatMoney } from '../lib/format.js';
 import { toast, toastError, toastWarn } from '../lib/toast.js';
-import { archiveKinds } from '../lib/directory-workbook.js';
+import { archiveKinds } from '../lib/directory-merge.js';
 
 const emit = defineEmits(['inspect-buyers']);
 const tab = ref('summary'), bySeller = ref(false), groupBy = ref('both'), projectFilter = ref(''), allocationFilter = ref('');
 const recordsOpen = ref(false), recordsMode = ref('archives');
-const seller = ref(''), buyer = ref(''), project = ref('');
 const { confirmation, requestConfirmation, answerConfirmation } = useConfirmation();
 const archiveCount = computed(() => Object.keys(archiveKinds).reduce((count, key) => count + directory[key].length, 0));
 const displayKinds = { ...archiveKinds, aliases: '别名' };
@@ -32,8 +22,6 @@ const siteGroups = computed(() => [
   { kind: 'allocations', label: '费用归属', names: directory.allocations },
 ]);
 function showRecords(mode) { recordsMode.value = mode; recordsOpen.value = true; }
-watch(() => directory.buyers, values => { if (!values.includes(buyer.value)) buyer.value = ''; });
-watch(() => directory.projects, values => { if (!values.includes(project.value)) project.value = ''; });
 
 function add(kind, value) {
   if (directory[kind].includes(value)) { toastWarn('该档案已存在'); return; }
@@ -45,18 +33,8 @@ function add(kind, value) {
 async function remove(kind, value) {
   const count = stats.value[kind]?.get(value)?.count || 0;
   if (!await requestConfirmation('删除' + archiveKinds[kind], '将“' + value + '”移入档案回收站？关联 ' + count + ' 条记录，原记录保留。')) return;
-  try { deleteArchive(kind, value); toast('已移入档案回收站。'); }
+  try { deleteArchive(kind, value); notifyArchiveRemoval(kind, value); }
   catch (error) { toastError('删除失败：' + error.message); }
-}
-function saveRule() {
-  const name = seller.value.trim();
-  if (!name || !directory.buyers.includes(buyer.value) || !directory.projects.includes(project.value)) return;
-  const next = { seller: name, buyer: buyer.value, project: project.value };
-  if (directory.rules.some(item => item.seller === next.seller && item.buyer === next.buyer && item.project === next.project)) {
-    toastWarn('该厂家归属已存在'); return;
-  }
-  try { saveDirectory({ ...directory, rules: [...directory.rules, next] }); toast('厂家归属已保存'); }
-  catch (error) { toastError('保存失败：' + error.message); }
 }
 const sources = computed(() => [
   ...Object.entries(invoiceStore.ledger).map(([key, entry]) => ({ kind: 'invoice', key, entry })),
@@ -117,6 +95,7 @@ const stats = computed(() => {
         <h1 class="text-sm font-semibold">基础档案</h1>
         <div class="flex flex-wrap gap-1.5">
           <DirectoryTransfer compact />
+          <button type="button" class="ui-btn" @click="showRecords('rules')">历史厂家归属（{{ directory.rules.length }}）</button>
           <button type="button" class="ui-btn" @click="showRecords('archives')">档案清单（{{ archiveCount }}）</button>
           <button type="button" class="ui-btn" @click="showRecords('trash')">回收站（{{ directory.deletedArchives.length }}）</button>
         </div>
@@ -168,16 +147,6 @@ const stats = computed(() => {
             <ExpenseArchiveCard title="使用工地与归属" :groups="siteGroups" :stats="stats" @add="add" @remove="remove" />
             <ExpenseAliasCard :stats="stats" />
           </div>
-          <UiDisclosure class="ui-panel mt-3 p-3">
-            <template #label>厂家归属</template>
-            <form class="mt-2 flex flex-wrap items-end gap-2" @submit.prevent="saveRule">
-              <label class="ui-label">厂家 / 销售方<input v-model="seller" class="ui-input w-56" required /></label>
-              <label class="ui-label">购买方<select v-model="buyer" class="ui-input w-48" required><option value="">选择购买方</option><option v-for="value in directory.buyers" :key="value">{{ value }}</option></select></label>
-              <label class="ui-label">工地<select v-model="project" class="ui-input w-48" required><option value="">选择工地</option><option v-for="value in directory.projects" :key="value">{{ value }}</option></select></label>
-              <button type="submit" class="ui-btn-primary">保存对应关系</button>
-              <button type="button" class="ui-btn" @click="showRecords('rules')">厂家归属清单（{{ directory.rules.length }}）</button>
-            </form>
-          </UiDisclosure>
         </TabsContent>
       </TabsRoot>
     </template>

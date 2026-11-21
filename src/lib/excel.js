@@ -1,5 +1,5 @@
 // 用 SheetJS 生成“每公司一个工作表”的 Excel（含 待复核清单）。
-import * as XLSX from "xlsx";
+import * as XLSX from 'xlsx/xlsx.mjs';
 import { safeSheetName, compareDocs } from "./naming.js";
 
 const HEADERS = ["日期", "单号", "材料名称", "单价", "数量", "总价", "单位", "备注", "来源档案", "规格型号"];

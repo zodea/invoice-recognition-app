@@ -2,10 +2,6 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { invoiceActions, invoiceStore } from "../invoiceStore.js";
 import { createPreviewPan } from "../lib/preview-pan";
-import MiddleEllipsis from "./MiddleEllipsis.vue";
-import DocumentImage from './DocumentImage.vue';
-import RecognitionOverlay from './RecognitionOverlay.vue';
-import PreviewMinimap from './PreviewMinimap.vue';
 import { centerPreviewAt, previewCenter } from '../lib/preview-navigation.js';
 
 const props = defineProps({ invoice: { type: Object, default: null }, status: Object, empty: Boolean });
@@ -43,7 +39,7 @@ onBeforeUnmount(pan.cancel);
 
 <template>
   <section class="work-panel invoice-document flex flex-col">
-    <div class="ui-section-header preview-title bg-surface"><div><h2 class="text-sm font-semibold">原件预览</h2><p v-if="invoice" class="text-xs text-ink-soft"><MiddleEllipsis :text="invoice.name" /></p></div>
+    <div class="ui-section-header preview-title bg-surface"><div><h2 class="text-sm font-semibold">原件预览</h2><p v-if="invoice" class="text-xs text-ink-soft"><MiddleEllipsis :text="invoice.name" :tail="14" /></p></div>
       <div class="preview-controls" v-if="invoice">
         <button type="button" aria-label="缩小" title="缩小" @click="changeZoom(-.25)">−</button><button type="button" title="复位缩放及位置" @click="resetZoom">{{ Math.round(zoom * 100) }}%</button><button type="button" aria-label="放大" title="放大" @click="changeZoom(.25)">＋</button>
       </div>

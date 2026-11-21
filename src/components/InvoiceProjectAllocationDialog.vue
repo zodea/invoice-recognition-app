@@ -1,8 +1,6 @@
 <script setup>
 import { formatMoney as money } from "../lib/format.js";
 import { computed, ref, shallowRef, watch } from 'vue';
-import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
-import SearchSelect from './SearchSelect.vue';
 import { directory } from '../lib/expense-directory.js';
 import { invoiceActions } from '../invoiceStore.js';
 import { isMultiProject, moneyCents, projectAllocationState, withProjectAllocation } from '../lib/invoice-allocation.js';

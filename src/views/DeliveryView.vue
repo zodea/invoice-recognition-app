@@ -1,15 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { DialogRoot, DialogTrigger, DialogPortal, DialogOverlay, DialogContent, DialogTitle, DialogDescription, DialogClose,
-  PopoverRoot, PopoverTrigger, PopoverPortal, PopoverContent } from 'reka-ui';
 import { store, actions, collectProblems } from '../store.js';
-import UploadZone from '../components/UploadZone.vue';
-import ProjectSidebar from '../components/ProjectSidebar.vue';
-import FileCard from '../components/FileCard.vue';
-import ExportPanel from '../components/ExportPanel.vue';
-import DeliveryTree from '../components/DeliveryTree.vue';
-import ProblemDialog from '../components/ProblemDialog.vue';
-import MiddleEllipsis from '../components/MiddleEllipsis.vue';
 
 const partitionFiles = computed(() => store.activePartitionId === 'all' ? store.files : store.files.filter(file => file.partitionId === store.activePartitionId));
 const supplier = ref('');
@@ -84,7 +75,7 @@ function status(file) {
               <button v-for="file in visibleFiles" :key="file.id" type="button" class="ui-focus grid w-full min-w-0 gap-1 rounded-md border border-transparent px-2 py-1.5 text-left hover:bg-surface"
                 :class="{ '!border-brand/30 bg-brand-soft': selectedFile?.id === file.id }" :aria-pressed="selectedFile?.id === file.id" @click="selectedFileId = file.id">
                 <strong class="min-w-0 text-xs font-semibold"><MiddleEllipsis :text="file.company || '未填写供应商'" /></strong>
-                <span class="flex min-w-0 items-center gap-1.5"><MiddleEllipsis :text="file.name" class="min-w-0 flex-1 text-xs text-ink-secondary" /><span :class="status(file).tone">{{ status(file).label }}</span></span>
+                <span class="flex min-w-0 items-center gap-1.5"><MiddleEllipsis :text="file.name" :tail="10" class="min-w-0 flex-1 text-xs text-ink-secondary" /><span :class="status(file).tone">{{ status(file).label }}</span></span>
               </button>
               <p v-if="!visibleFiles.length" class="px-2 py-3 text-xs text-ink-soft">没有符合筛选的文件</p>
             </div>

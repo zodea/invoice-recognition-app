@@ -1,12 +1,9 @@
 <script setup>
-import UiDisclosure from './UiDisclosure.vue';
 import { reactive, ref, computed } from 'vue';
-import { DialogContent,DialogOverlay,DialogPortal,DialogRoot,DialogTitle,DialogDescription } from 'reka-ui';
 import { supplierFields, supplierMissingFields, SUPPLIER_CATEGORIES, SUPPLIER_RATINGS, TAXPAYER_TYPES, CONTACT_FIELDS, INVOICE_FIELDS } from '../lib/supplier-schema.js';
-import { supplierStore, saveSuppliers, normalizeCompanyName } from '../lib/supplier-db.js';
+import { supplierStore, saveSuppliers, normalizeCompanyName } from '../lib/supplier-directory.js';
 import { directory } from '../lib/expense-directory.js';
 import { saveLedgerAttachment } from '../lib/ledger-attachments.js';
-import SupplierAttachments from './SupplierAttachments.vue';
 import { toast,toastError,toastWarn } from '../lib/toast.js';
 const props=defineProps({record:{type:Object,required:true},isNew:Boolean});
 const emit=defineEmits(['close','saved']);

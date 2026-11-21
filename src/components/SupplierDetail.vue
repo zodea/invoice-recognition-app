@@ -1,9 +1,8 @@
 <script setup>
 import { computed, reactive } from "vue";
-import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
 import { directory } from "../lib/expense-directory.js";
 import { store } from "../store";
-import { aggregateSupplierDelivery, emptyPurchase, emptyPayment, companySearchUrl } from "../lib/supplier-db";
+import { aggregateSupplierDelivery, emptyPurchase, emptyPayment, companySearchUrl } from "../lib/supplier-directory.js";
 import { openExternal } from "../lib/open-external";
 import { toast, toastError, toastInfo, toastWarn } from "../lib/toast";
 

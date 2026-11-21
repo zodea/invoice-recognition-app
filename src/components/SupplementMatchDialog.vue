@@ -1,18 +1,17 @@
 <script setup>
-import { DialogRoot, DialogPortal, DialogOverlay, DialogContent, DialogTitle, DialogDescription, DialogClose } from 'reka-ui';
+import { useDebouncedFilter } from '../composables/useDebouncedFilter.js';
 import { computed, shallowRef, watch } from 'vue';
 import { invoiceActions, invoiceStore } from '../invoiceStore.js';
 import { getLedgerAttachment } from '../lib/ledger-attachments.js';
 import { supplementInvoiceCandidates, searchSupplementInvoices } from '../lib/invoice-supplements.js';
 import { useConfirmation } from '../composables/useConfirmation.js';
-import ConfirmAction from './ConfirmAction.vue';
-import EvidenceDocument from './EvidenceDocument.vue';
 
 const selected = shallowRef(''), message = shallowRef(''), query = shallowRef(''), original = shallowRef(null);
 const record = computed(() => invoiceStore.supplements.find(item => item.hash === invoiceStore.matchSupplementHash));
 const candidates = computed(() => record.value ? supplementInvoiceCandidates(record.value, invoiceStore.ledger) : []);
 const ranks = computed(() => new Map(candidates.value.map((item, index) => [item.entry.key, { index, ...item }])));
-const results = computed(() => searchSupplementInvoices(invoiceStore.ledger, query.value).sort((first, second) => (ranks.value.get(first.key)?.index ?? Infinity) - (ranks.value.get(second.key)?.index ?? Infinity)));
+const { applied: appliedQuery } = useDebouncedFilter(query);
+const results = computed(() => searchSupplementInvoices(invoiceStore.ledger, appliedQuery.value).sort((first, second) => (ranks.value.get(first.key)?.index ?? Infinity) - (ranks.value.get(second.key)?.index ?? Infinity)));
 const chosen = computed(() => selected.value && invoiceStore.ledger[selected.value]);
 const current = computed(() => record.value?.ledgerKey && invoiceStore.ledger[record.value.ledgerKey]);
 const queue = computed(() => [...invoiceStore.supplements].sort((first, second) => Number(!!first.ledgerKey) - Number(!!second.ledgerKey)));
@@ -49,11 +48,11 @@ async function retry() {
     <DialogPortal><DialogOverlay class="print-layout-overlay" />
       <DialogContent class="print-layout-modal supplement-workbench" @interact-outside.prevent>
         <header class="print-layout-header"><div><DialogTitle class="print-layout-title">附件与主票对照关联</DialogTitle><DialogDescription class="print-layout-description">附件单独保留，不计入主票金额。关联信息会同步到历史台账。</DialogDescription></div><DialogClose class="ui-btn">关闭</DialogClose></header>
-        <div class="flex items-center gap-2 border-b border-line p-3"><div class="flex flex-1 gap-2 overflow-auto" aria-label="附件队列"><button v-for="item in queue" :key="item.hash" class="ui-btn" :class="{ 'bg-brand-soft': item.hash === record?.hash }" :aria-pressed="item.hash === record?.hash" :title="item.relativePath || item.name" @click="invoiceStore.matchSupplementHash = item.hash"><span class="max-w-45 truncate">{{ item.name }}</span><span :class="item.ledgerKey ? 'ui-badge-ok' : 'ui-badge-warn'">{{ item.ledgerKey ? '已关联' : '待匹配' }}</span></button></div><button class="ui-btn" :disabled="invoiceStore.savingIntake" @click="retry">重新自动匹配</button></div>
+        <div class="flex items-center gap-2 border-b border-line p-3"><div class="flex flex-1 gap-2 overflow-auto" aria-label="附件队列"><button v-for="item in queue" :key="item.hash" class="ui-btn" :class="{ 'bg-brand-soft': item.hash === record?.hash }" :aria-pressed="item.hash === record?.hash" :title="item.relativePath || item.name" @click="invoiceStore.matchSupplementHash = item.hash"><MiddleEllipsis class="max-w-45" :text="item.name" :tail="14" /><span :class="item.ledgerKey ? 'ui-badge-ok' : 'ui-badge-warn'">{{ item.ledgerKey ? '已关联' : '待匹配' }}</span></button></div><button class="ui-btn" :disabled="invoiceStore.savingIntake" @click="retry">重新自动匹配</button></div>
         <div class="supplement-columns">
           <section class="overflow-auto p-3" aria-label="附件预览">
             <h3 class="mb-2 font-semibold">附件原件</h3><EvidenceDocument :file="original" />
-            <dl v-if="record" class="ui-section mt-3 grid gap-1 text-xs"><dt class="text-ink-soft">相对路径</dt><dd class="break-all">{{ record.relativePath || record.name }}</dd><dt class="text-ink-soft">识别摘要</dt><dd>{{ [record.fields.seller, record.fields.date, record.fields.total === '' || record.fields.total == null ? '' : `¥${record.fields.total}`].filter(Boolean).join(' · ') || '无摘要' }}</dd></dl>
+            <dl v-if="record" class="ui-section mt-3 grid gap-1 text-xs"><dt class="text-ink-soft">相对路径</dt><dd class="break-all"><MiddleEllipsis :text="record.relativePath || record.name" :tail="14" /></dd><dt class="text-ink-soft">识别摘要</dt><dd>{{ [record.fields.seller, record.fields.date, record.fields.total === '' || record.fields.total == null ? '' : `¥${record.fields.total}`].filter(Boolean).join(' · ') || '无摘要' }}</dd></dl>
           </section>
           <section class="flex min-h-0 flex-col gap-2 p-3" aria-label="候选主票">
             <label class="ui-label">搜索主票<input v-model="query" type="search" class="ui-input" placeholder="票号、公司、日期或金额" @input="selected = ''" /></label>

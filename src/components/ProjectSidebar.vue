@@ -1,9 +1,6 @@
 <script setup>
-import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
 import {computed,shallowRef} from 'vue';
 import {store,actions} from '../store';
-import AppIcon from './AppIcon.vue';
-import ConfirmAction from './ConfirmAction.vue';
 import { useConfirmation } from '../composables/useConfirmation.js';
 const { confirmation, requestConfirmation, answerConfirmation } = useConfirmation();
 defineProps({collapsed:Boolean});const emit=defineEmits(['update:collapsed']);

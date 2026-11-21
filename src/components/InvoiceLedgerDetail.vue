@@ -1,23 +1,19 @@
 <script setup>
-import ImportFileDialog from './ImportFileDialog.vue';
+function optionName(name = '') {
+  const chars = Array.from(name);
+  return chars.length > 38 ? chars.slice(0, 21).join('') + '…' + chars.slice(-14).join('') : name;
+}
 import { formatMoney as money } from "../lib/format.js";
-import DocumentImage from './DocumentImage.vue';
-import InvoiceProjectAllocationDialog from './InvoiceProjectAllocationDialog.vue';
 import { isMultiProject, projectNames, projectExpenseRows, projectAllocationState } from '../lib/invoice-allocation.js';
-import SearchSelect from "./SearchSelect.vue";
-import SearchTags from "./SearchTags.vue";
 import { useExpenseOptions } from "../composables/useExpenseOptions";
 const expenseChoices = useExpenseOptions();
-import InvoiceTypeTags from "./InvoiceTypeTags.vue";
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { TabsRoot, TabsList, TabsTrigger, TabsContent } from 'reka-ui';
 import { createPreviewPan } from '../lib/preview-pan.js';
 import { invoiceActions } from "../invoiceStore.js";
-import { deductionStatus, missingReimbursementFields, redInvoiceStatus } from "../lib/invoice-ledger";
+import { deductionStatus, missingReimbursementFields, redInvoiceStatus } from "../lib/invoice-ledger-state.js";
 import { getLedgerAttachment, saveLedgerAttachment } from "../lib/ledger-attachments";
 import { renderPdfPages, rotateImageUrl } from "../lib/pdftext";
 
-import InvoiceReviewEditor from "./InvoiceReviewEditor.vue";
 import { invoiceProblems } from "../lib/invoice-review";
 const editing = ref(false);
 const allocationOpen = ref(false);
@@ -102,9 +98,13 @@ async function loadAttachment() {
     // 台账状态刷新也会触发附件检查；原件未变时保留已经显示的图片。
     if (identity === displayedSource && images.value.length) return;
     const result = /\.pdf$/i.test(source.name) || source.blob.type === "application/pdf"
-      ? await renderPdfPages(source.blob, { maxPages: 20, scale: 2, rotation: angle })
+      ? await renderPdfPages(source.blob, { maxPages: 20, scale: 2, rotation: angle, maxPixels: 360000 })
       : [await imagePreviewUrl(source.blob, angle)];
-    await Promise.all(result.filter(Boolean).map(url => new Promise(resolve => { const image = new Image(); image.onload = image.onerror = resolve; image.src = url; })));
+    if (result[0]) await new Promise(resolve => {
+      const image = new Image();
+      image.onload = image.onerror = resolve;
+      image.src = result[0];
+    });
     if (current !== generation) { result.forEach(url => URL.revokeObjectURL(url)); return; }
     clearImages();
     attachment.value = source;
@@ -159,21 +159,21 @@ function update(key, event) {
             </TabsList>
             <TabsContent value="original" />
             <TabsContent value="supplements">
-              <select v-if="trips.length" v-model="selectedAttachment" class="ui-input mt-2" aria-label="选择行程单附件">
-                <option v-for="file in trips" :key="file.hash" :value="file.hash">{{ file.name }}</option>
+              <select v-if="trips.length" v-model="selectedAttachment" class="ui-input mt-2 max-w-full" aria-label="选择行程单附件">
+                <option v-for="file in trips" :key="file.hash" :value="file.hash" :title="file.name">{{ optionName(file.name) }}</option>
               </select>
               <p v-else class="mt-2 text-xs text-ink-soft">暂无行程单附件。</p>
             </TabsContent>
             <TabsContent v-if="others.length" value="others">
-              <select v-model="selectedAttachment" class="ui-input mt-2" aria-label="选择其他附件">
-                <option v-for="file in others" :key="file.hash" :value="file.hash">{{ file.type }} · {{ file.name }}</option>
+              <select v-model="selectedAttachment" class="ui-input mt-2 max-w-full" aria-label="选择其他附件">
+                <option v-for="file in others" :key="file.hash" :value="file.hash" :title="file.name">{{ file.type }} · {{ optionName(file.name) }}</option>
               </select>
             </TabsContent>
           </TabsRoot>
         </div>
         <div class="preview-toolbar">
-          <span class="min-w-0 truncate text-xs text-ink-secondary" :title="attachment?.name">{{ attachment?.name || (attachmentTab === 'original' ? '尚未关联原件' : '未选择附件') }}</span>
-          <div class="preview-actions">
+          <MiddleEllipsis class="min-w-0 flex-1 text-xs text-ink-secondary" :text="attachment?.name || (attachmentTab === 'original' ? '尚未关联原件' : '未选择附件')" :tail="14" />
+          <div class="preview-actions shrink-0">
             <button class="ui-btn-sm" :disabled="zoom <= 75" aria-label="缩小发票" @click="changeZoom(-25)">−</button>
             <button class="ui-btn-sm ui-money" aria-label="重置发票缩放" @click="zoom=100; preview?.scrollTo(0,0)">{{ zoom }}%</button>
             <button class="ui-btn-sm" :disabled="zoom >= 400" aria-label="放大发票" @click="changeZoom(25)">＋</button>
@@ -200,6 +200,8 @@ function update(key, event) {
         <dl class="detail-grid">
           <div><dt>开票日期</dt><dd>{{ entry.date || '—' }}</dd></div><div><dt>票种</dt><dd><InvoiceTypeTags :entry="entry" /></dd></div>
           <div class="wide"><dt>销售方</dt><dd>{{ entry.seller || '—' }}</dd></div><div class="wide"><dt>购买方</dt><dd>{{ entry.buyer || '—' }}</dd></div>
+          <div v-if="entry.service" class="wide"><dt>费用名称</dt><dd>{{ entry.service }}</dd></div>
+          <div v-if="entry.remark" class="wide"><dt>票面备注</dt><dd>{{ entry.remark }}</dd></div>
           <div><dt>金额</dt><dd>{{ money(entry.amount) }}</dd></div><div><dt>税额</dt><dd>{{ money(entry.tax) }}</dd></div>
           <div><dt>价税合计</dt><dd>{{ money(entry.total) }}</dd></div><div><dt>有效抵扣税额</dt><dd>{{ money(entry.validTax) }}</dd></div>
           <div><dt>票种标签</dt><dd>{{ entry.typeLabel || '—' }}</dd></div><div><dt>勾选时间</dt><dd>{{ entry.selectionTime || '—' }}</dd></div>
@@ -221,7 +223,7 @@ function update(key, event) {
           <div><dt>报销人</dt><dd>{{ entry.reimburser || '—' }}</dd></div>
           <div><dt>付款账户 / 付款人</dt><dd>{{ entry.payer || '—' }}</dd></div>
           <div><dt>付款方式</dt><dd>{{ entry.payment || '—' }}</dd></div>
-          <div><dt>用途</dt><dd>{{ entry.purpose || '—' }}</dd></div>
+          <div class="wide"><dt>用途</dt><dd>{{ entry.purpose || '—' }}</dd></div>
           <div><dt>自定义标签</dt><dd>{{ entry.tags || '—' }}</dd></div>
         </dl>
         <template v-else>

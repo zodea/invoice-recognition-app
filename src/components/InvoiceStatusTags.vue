@@ -1,6 +1,5 @@
 <script setup>
 import { computed } from 'vue';
-import UiTag from './UiTag.vue';
 import { invoiceStatusTags } from '../lib/invoice-status-display';
 const props=defineProps({entry:{type:Object,required:true}});
 const tags=computed(()=>invoiceStatusTags(props.entry));

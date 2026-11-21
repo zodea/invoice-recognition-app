@@ -1,15 +1,14 @@
 <script setup>
+import { useDebouncedFilter } from '../composables/useDebouncedFilter.js';
 import { computed, ref } from 'vue';
-import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
-import MiddleEllipsis from './MiddleEllipsis.vue';
-import ConfirmAction from './ConfirmAction.vue';
 import { useConfirmation } from '../composables/useConfirmation.js';
 const { confirmation, requestConfirmation, answerConfirmation } = useConfirmation();
 const props = defineProps({ message: String, busy: Boolean, pendingCleanup: Number, records: { type: Array, required: true }, ledger: { type: Object, required: true } });
 const open = defineModel({ type: Boolean, default: false });
 const emit = defineEmits(['restore', 'purge', 'retry']);
 const query = ref('');
-const filtered = computed(() => props.records.filter(r => `${r.entry.number || r.key} ${r.entry.buyer || ''} ${r.entry.seller || ''}`.includes(query.value.trim())));
+const { applied: appliedQuery } = useDebouncedFilter(query);
+const filtered = computed(() => props.records.filter(r => `${r.entry.number || r.key} ${r.entry.buyer || ''} ${r.entry.seller || ''}`.includes(appliedQuery.value.trim())));
 const restorable = computed(() => filtered.value.filter(r => !Object.hasOwn(props.ledger, r.key)));
 async function confirmPurge(records, all = false) {
  if (props.busy || !records.length) return;

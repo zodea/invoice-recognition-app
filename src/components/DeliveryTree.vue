@@ -12,9 +12,8 @@ import {
   computeSuggestions,
   PENDING_GROUP,
 } from "../lib/delivery-tree";
-import { loadSuppliers } from "../lib/supplier-db";
+import { loadSuppliers } from "../lib/supplier-directory.js";
 import { toast, toastInfo, toastWarn } from "../lib/toast";
-import MiddleEllipsis from "./MiddleEllipsis.vue";
 
 const tree = computed(() => store.staging?.tree);
 const mode = computed(() => store.staging?.mode);

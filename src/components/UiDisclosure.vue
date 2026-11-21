@@ -1,5 +1,4 @@
 <script setup>
-import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui';
 
 defineOptions({ inheritAttrs: false });
 defineProps({ defaultOpen: Boolean, plain: Boolean });
@@ -9,7 +8,7 @@ defineProps({ defaultOpen: Boolean, plain: Boolean });
   <section v-if="plain" v-bind="$attrs"><slot /></section>
   <CollapsibleRoot v-else v-bind="$attrs" :default-open="defaultOpen" class="ui-disclosure">
     <CollapsibleTrigger type="button" class="ui-disclosure-trigger ui-focus"><slot name="label" /></CollapsibleTrigger>
-    <CollapsibleContent :unmount-on-hide="false"><slot /></CollapsibleContent>
+    <CollapsibleContent :unmount-on-hide="false" class="disclosure-body"><div><slot /></div></CollapsibleContent>
   </CollapsibleRoot>
 </template>
 

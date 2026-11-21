@@ -1,7 +1,5 @@
 <script setup>
-import UiDisclosure from './UiDisclosure.vue';
 import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
-import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
 import { getLedgerAttachment } from '../lib/ledger-attachments.js';
 import { buildPrintLayout, openForPrint } from '../lib/invoice-layout.js';
 import { renderPdfPages } from '../lib/pdftext.js';

@@ -1,7 +1,5 @@
 <script setup>
 import { ref } from 'vue';
-import { DialogRoot, DialogTrigger, DialogPortal, DialogOverlay, DialogContent, DialogTitle, DialogDescription, DialogClose } from 'reka-ui';
-import FileDropInput from './FileDropInput.vue';
 const props = defineProps({ label: String, accept: String, multiple: Boolean, disabled: Boolean, primary: Boolean, compact: Boolean });
 const emit = defineEmits(['files']);
 const open = ref(false);

@@ -1,5 +1,4 @@
 <script setup>
-import { TooltipRoot, TooltipTrigger, TooltipPortal, TooltipContent, TooltipProvider } from 'reka-ui';
 import { computed } from 'vue';
 import { formatMoney } from '../lib/format.js';
 import { toChineseUpper } from '../lib/chinese-money.js';

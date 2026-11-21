@@ -2,19 +2,10 @@ import * as XLSX from 'xlsx/xlsx.mjs';
 
 import { attachmentReferences, embeddedSheetFiles } from './payment-sheet-files.js';
 
+import { paymentDate } from './payment-date.js';
+export { paymentDate } from './payment-date.js';
+
 const text = v => String(v ?? '').trim();
-const pad = v => String(v).padStart(2, '0');
-export function paymentDate(value, date1904 = false) {
-  if (value instanceof Date) return Number.isFinite(+value) ? [value.getFullYear(), pad(value.getMonth()+1), pad(value.getDate())].join('-') : '';
-  if (typeof value === 'number') {
-    const d = XLSX.SSF.parse_date_code(value, { date1904 });
-    return d ? paymentDate([d.y, d.m, d.d].join('-')) : '';
-  }
-  const m = text(value).match(/((?:19|20)\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})(?!\d)/);
-  if (!m) return '';
-  const date = [m[1], pad(m[2]), pad(m[3])].join('-');
-  return Number.isFinite(Date.parse(date)) && new Date(date).toISOString().startsWith(date) ? date : '';
-}
 
 // SheetJS 0.18 converts ISO date cells through the machine's timezone, even with
 // cellDates:false. Preserve the calendar part written in the worksheet for t="d".
@@ -166,5 +157,4 @@ export function parsePaymentWorkbook(bytes,source='') {
 }
 
 export function paymentDuplicate(a,b){return !!a.evidenceHash&&a.evidenceHash===b.evidenceHash&&a.date===b.date&&Math.round(Number(a.total)*100)===Math.round(Number(b.total)*100);}
-export function allocationKind(e){if(e.allocation)return e.allocation;if(/汽油|柴油|加油|成品油/.test([e.purpose,e.service,e.category,e.remark].join(' ')))return '加油';if(e.payer==='个人')return '个人报账';return e.project?'指定工地':'待确认';}
-export function allocationIssue(e){const kind=allocationKind(e);return kind==='待确认'?'请确认费用归属：办公室房租、水电、车辆维修、跨项目运费或代付退款等':kind==='指定工地'&&!e.project?'请选择工地':'';}
+export { allocationKind, allocationIssue } from './payment-allocation.js';

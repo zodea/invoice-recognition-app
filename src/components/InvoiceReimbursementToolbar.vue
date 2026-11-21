@@ -1,5 +1,4 @@
 <script setup>
-import { PopoverRoot, PopoverTrigger, PopoverPortal, PopoverContent } from 'reka-ui';
 import { ref } from "vue";
 import { EXPENSE_TAGS } from "../lib/invoice-tags";
 defineProps({ selectedCount: Number, visibleCount: Number, status: String, tag: String });

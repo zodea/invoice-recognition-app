@@ -1,13 +1,9 @@
 <script setup>
-import SearchSelect from "./SearchSelect.vue";
-import SearchTags from "./SearchTags.vue";
 import { useExpenseOptions } from "../composables/useExpenseOptions";
 const expenseChoices = useExpenseOptions();
 import { computed, ref } from "vue";
-import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
 import { invoiceActions, invoiceStore } from "../invoiceStore.js";
-import { deductionStatus, historyStatus, missingReimbursementFields } from "../lib/invoice-ledger";
-import InvoiceReimbursementBatch from "./InvoiceReimbursementBatch.vue";
+import { deductionStatus, historyStatus, missingReimbursementFields } from "../lib/invoice-ledger-state.js";
 
 defineProps({ open: Boolean });
 const emit = defineEmits(["update:open"]);

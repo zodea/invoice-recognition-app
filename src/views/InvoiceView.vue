@@ -1,29 +1,17 @@
 <script setup>
+import { useDebouncedFilter } from '../composables/useDebouncedFilter.js';
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
-import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from "reka-ui";
 import { invoiceStore, invoiceActions, invoiceSummary, sortedInvoices, buyerOptions, docTypeOptions, selectInvoice } from "../invoiceStore.js";
-import InvoiceIntakeReview from '../components/InvoiceIntakeReview.vue';
-import InvoiceBuyerCheck from '../components/InvoiceBuyerCheck.vue';
 import { useBuyerCheck } from '../composables/useBuyerCheck.js';
 import { useConfirmation } from '../composables/useConfirmation.js';
 import { matchesBuyerCheck } from '../lib/invoice-buyer-check.js';
 import { workspaceInvoiceStatus } from '../lib/invoice-workspace-status.js';
 import { matchInvoiceFiles } from '../lib/invoiceFileMatcher.js';
-import { invoiceWorkbooksWithoutExportCopies } from '../lib/invoiceExcelImport.js';
-import { ledgerKey } from '../lib/invoice-ledger.js';
-import PaymentEvidenceDrawer from '../components/PaymentEvidenceDrawer.vue';
+import { invoiceWorkbooksWithoutExportCopies } from '../lib/invoice-workbook-links.js';
+import { ledgerKey } from '../lib/invoice-ledger-state.js';
 import { pendingPaymentCount } from '../lib/payment-store.js';
-import InvoiceUpload from "../components/InvoiceUpload.vue";
-import ExpenseAssignmentImport from '../components/ExpenseAssignmentImport.vue';
-import InvoiceRow from "../components/InvoiceRow.vue";
-import InvoiceList from "../components/InvoiceList.vue";
-import InvoiceDocumentPreview from "../components/InvoiceDocumentPreview.vue";
-import InvoicePrintDialog from "../components/InvoicePrintDialog.vue";
-import WorkspaceStatus from "../components/WorkspaceStatus.vue";
-import ConfirmAction from "../components/ConfirmAction.vue";
-import InvoiceReimbursementToolbar from "../components/InvoiceReimbursementToolbar.vue";
 import { inferExpenseTag } from "../lib/invoice-tags";
-import { toast, toastInfo } from "../lib/toast";
+import { toast, toastInfo, toastUndo } from "../lib/toast";
 import { filesFromDrop, dragHasSupported } from "../lib/upload";
 
 const props=defineProps({active:{type:Boolean,default:true}});
@@ -34,6 +22,19 @@ function addWorkbooks(sources) {
   const updated = new Map(invoiceWorkbooks.value.map(source => [source.sourcePath, source]));
   for (const source of sources) updated.set(source.sourcePath, source);
   invoiceWorkbooks.value = invoiceWorkbooksWithoutExportCopies([...updated.values()]);
+}
+function adoptPaperTotal(reason) {
+  const invoice = activeItem.value?.inv;
+  if (!invoice || !reason) return;
+  const totals = paperTotals.value;
+  const previous = totals[invoice.id];
+  totals[invoice.id] = { reason };
+  const accepted = totals[invoice.id];
+  toastUndo('已按票面价税合计核对。', () => {
+    if (paperTotals.value !== totals || totals[invoice.id] !== accepted) return;
+    if (previous) totals[invoice.id] = previous;
+    else delete totals[invoice.id];
+  });
 }
 function clearWorkspace() { invoiceActions.clearAll(); invoiceWorkbooks.value = []; paperTotals.value = {}; }
 const fileMatches = computed(() => invoiceWorkbooks.value.length ? matchInvoiceFiles(invoiceWorkbooks.value.flatMap(source => source.records), invoiceStore.invoices) : null);
@@ -53,16 +54,27 @@ async function saveMatched() {
   } catch(error) { toastInfo('保存失败：'+error.message); }
 }
 const search = ref("");
+const { applied: appliedQuery, flush: flushSearch } = useDebouncedFilter(search);
 const startDate = ref("");
 const endDate = ref("");
 const upload = ref(null);
+const batchProgress = computed(() => invoiceStore.recognitionProgress || upload.value?.progress);
 const dragging = ref(false);
 const dragRejected = ref(false);
 const printPreviewOpen = ref(false);
 const printDialog = ref(null);
 const summary = computed(() => invoiceSummary());
 const listFilter = ref('all');
-const listCollapsed = ref(window.matchMedia('(max-width: 1150px)').matches);
+const laptop = window.matchMedia('(max-width: 1320px)');
+const listCollapsed = ref(laptop.matches);
+let listToggled = false;
+function toggleList() {
+  listToggled = true;
+  listCollapsed.value = !listCollapsed.value;
+}
+function followWindow() {
+  if (!listToggled) listCollapsed.value = laptop.matches;
+}
 const reimbursementFilter = ref("all");
 const expenseTagFilter = ref("all");
 const reimbursementSelection = ref([]);
@@ -83,7 +95,7 @@ const filtered = computed(() => sortedInvoices().filter(({ inv }) => {
   if (!matchesBuyerCheck(buyerChecker.value(inv.fields), buyerCheckFilter.value)) return false;
   const entry = inv.history?.entry;
   const tag = inv.expenseTagSet ? inv.expenseTag : entry?.expenseTagSet ? entry.expenseTag : (inv.expenseTag || entry?.expenseTag || inferExpenseTag(inv));
-  const query = search.value.trim().toLowerCase();
+  const query = appliedQuery.value.trim().toLowerCase();
   const matches = !query || [inv.name, inv.fields.number, inv.fields.seller, inv.fields.buyer, inv.fields.type].some(value => String(value || "").toLowerCase().includes(query));
   const date = String(inv.fields.date || "").slice(0, 10);
   const matchesDate = (!startDate.value || (date && date >= startDate.value)) && (!endDate.value || (date && date <= endDate.value));
@@ -98,7 +110,7 @@ const workspaceItems = computed(() => filtered.value.map(item => {
   const count = Math.max(supplementCounts.value.get(ledgerKey(item.inv)) || 0, fileMatches.value?.supplementCounts.get(item.inv.id) || 0);
   const status = workspaceInvoiceStatus(item.inv, invoiceActions.intakeDecision(item.inv), count);
   const difference = fileMatches.value?.byInvoice.get(item.inv.id);
-  const accepted = difference?.netDifference && paperTotals.value[item.inv.id] === difference.reason;
+  const accepted = difference?.netDifference && paperTotals.value[item.inv.id]?.reason === difference.reason;
   return { ...item, status: status.tone === 'danger' || accepted ? status : difference || status };
 }));
 const segmentCounts = computed(() => workspaceItems.value.reduce((counts, { status }) => {
@@ -153,10 +165,10 @@ async function onDrop(event) {
   if (event.target?.closest?.('[role="dialog"], .ledger-panel, .payment-records-panel')) { event.preventDefault(); dragging.value = false; return; }
   event.preventDefault();
   dragging.value = false;
-  const files = await filesFromDrop(event.dataTransfer);
-  await upload.value?.intake(files);
+  await upload.value?.intake(() => filesFromDrop(event.dataTransfer));
 }
 onMounted(() => {
+  laptop.addEventListener("change", followWindow);
   window.addEventListener("keydown", onKeydown);
   window.addEventListener("dragenter", onDragOver);
   window.addEventListener("dragover", onDragOver);
@@ -164,6 +176,7 @@ onMounted(() => {
   window.addEventListener("drop", onDrop);
 });
 onBeforeUnmount(() => {
+  laptop.removeEventListener("change", followWindow);
   window.removeEventListener("keydown", onKeydown);
   window.removeEventListener("dragenter", onDragOver);
   window.removeEventListener("dragover", onDragOver);
@@ -194,9 +207,8 @@ const buyers = computed(() => buyerOptions());
 const docTypes = computed(() => docTypeOptions());
 
 function dedupe() {
-  const n = invoiceActions.removeConfirmedDuplicates();
-  if (n) toast(`已移除 ${n} 张重复发票，每组保留一张。`);
-  else toastInfo("未发现可自动移除的重复发票；号码不完整或票面信息不一致的请核对。");
+  const n = invoiceActions.removeConfirmedDuplicates({ undoable: true });
+  if (!n) toastInfo("未发现可自动移除的重复发票；号码不完整或票面信息不一致的请核对。");
 }
 function excludeReused() {
   const n = invoiceActions.excludeReused(visibleInvs.value);
@@ -225,10 +237,11 @@ function invertSelect() {
 
 <template>
   <div class="invoice-workspace workspace-v12">
+    <progress v-if="batchProgress" class="batch-progress" :aria-label="batchProgress.label" :title="batchProgress.label" :max="batchProgress.total || 1" :value="batchProgress.total ? batchProgress.done : undefined" />
     <header class="ui-toolbar workspace-header" aria-label="发票工作台工具">
-      <button class="ui-btn-ghost workspace-list-toggle" type="button" :aria-expanded="!listCollapsed" aria-controls="workspace-invoice-list" @click="listCollapsed = !listCollapsed">{{ listCollapsed ? '展开票据' : '收起票据' }}</button>
+      <button class="ui-btn-ghost workspace-list-toggle" type="button" :aria-expanded="!listCollapsed" aria-controls="workspace-invoice-list" @click="toggleList">{{ listCollapsed ? '展开票据' : '收起票据' }}</button>
       <InvoiceUpload ref="upload" @payment-batch="reviewPaymentFiles" @invoice-workbooks="addWorkbooks" />
-      <input v-model="search" type="search" class="ui-input min-w-28 flex-1" placeholder="搜索票号或公司" aria-label="搜索发票" />
+      <input v-model="search" @change="flushSearch" @keydown.enter="flushSearch" type="search" class="ui-input min-w-28 flex-1" placeholder="搜索票号或公司" aria-label="搜索发票" />
       <PopoverRoot><PopoverTrigger class="ui-btn">筛选与入账</PopoverTrigger><PopoverPortal>
         <PopoverContent class="ui-popover workspace-popover" side="bottom" align="start" :side-offset="8" :collision-padding="12">
           <InvoiceBuyerCheck v-model="buyerCheckFilter" :configured="buyersConfigured" :counts="buyerCounts" @scan="scanBuyers" />
@@ -245,11 +258,11 @@ function invertSelect() {
             <button v-if="intakeCounts.supplement" class="ui-btn" :disabled="invoiceStore.busy || invoiceStore.savingIntake" @click="saveSupplements">保存附件（{{ intakeCounts.supplement }}）</button>
           </div>
           <div class="flex flex-wrap items-center gap-2 border-t border-line p-2">
-            <button class="ui-btn" :disabled="invoiceStore.busy || !unrecognizedCount" @click="invoiceActions.recognizeAll">{{ invoiceStore.busy ? '识别中…' : '全部识别' }}</button>
-            <button class="ui-btn" :disabled="invoiceStore.busy || !duplicateCount" @click="dedupe">批量移除重复</button>
+            <button class="ui-btn" :disabled="!!batchProgress || invoiceStore.busy || !unrecognizedCount" @click="invoiceActions.recognizeAll">{{ invoiceStore.busy ? '识别中…' : '全部识别' }}</button>
+            <button class="ui-btn" :disabled="!!batchProgress || invoiceStore.busy || !duplicateCount" @click="dedupe">批量移除重复</button>
             <button class="ui-btn" :disabled="!reusedIncludedCount" @click="excludeReused">排除历史记录</button>
             <ExpenseAssignmentImport label="按清单分配工地" />
-            <button class="ui-btn-danger" :disabled="invoiceStore.busy || (!invoiceStore.invoices.length && !invoiceWorkbooks.length)" @click="clearWorkspace">清空</button>
+            <button class="ui-btn-danger" :disabled="!!batchProgress || invoiceStore.busy || (!invoiceStore.invoices.length && !invoiceWorkbooks.length)" @click="clearWorkspace">清空</button>
           </div>
           <span v-if="invoiceStore.msg" class="block px-2 text-xs text-ink-soft" role="status">{{ invoiceStore.msg }}</span>
         </PopoverContent>
@@ -257,10 +270,14 @@ function invertSelect() {
       <PaymentEvidenceDrawer ref="paymentPanel" :pending="pendingPaymentCount" />
       <button class="ui-btn" :disabled="!firstSupplement" @click="invoiceStore.matchSupplementHash = firstSupplement.hash">待匹配附件 <span class="ui-badge-brand">{{ pendingSupplements }}</span></button>
     </header>
-    <div v-if="dragging" class="file-drag-notice" role="status">{{ dragRejected ? '请拖入 PDF、图片、Excel 或文件夹' : '松开以导入文件或文件夹' }}</div>
+    <div v-if="dragging" class="file-drag-notice" :class="{ rejected: dragRejected }" role="status">
+      <div class="flex items-center gap-3 rounded-card bg-panel px-5 py-4 shadow-pop"><AppIcon :name="dragRejected ? 'alert' : 'upload'" :size="24" />
+        {{ dragRejected ? '请拖入 PDF、图片、Excel 或文件夹' : '松开以导入文件夹或文件（自动忽略 ~$ 临时文件）' }}
+      </div>
+    </div>
     <div class="invoice-columns" :class="{ 'list-collapsed': listCollapsed }">
       <InvoiceList v-show="!listCollapsed" id="workspace-invoice-list" v-model:filter="listFilter" :counts="segmentCounts" :items="sorted" :active-id="activeItem?.inv.id" @select-all="selectAll" @select-none="selectNone" @invert="invertSelect" />
-      <InvoiceDocumentPreview :invoice="activeItem?.inv" :status="activeItem?.status" :empty="!invoiceStore.invoices.length" @adopt-paper-total="paperTotals[activeItem.inv.id] = $event; toastInfo('按票面含税金额核对，原 Excel 金额未修改。')" />
+      <InvoiceDocumentPreview :invoice="activeItem?.inv" :status="activeItem?.status" :empty="!invoiceStore.invoices.length" @adopt-paper-total="adoptPaperTotal" />
       <section class="work-panel invoice-detail">
         <div class="ui-section-header detail-heading bg-surface">
           <h2 class="text-sm font-semibold">识别详情</h2><WorkspaceStatus :status="activeItem?.status" />
@@ -270,7 +287,7 @@ function invertSelect() {
           </div>
         </div>
         <InvoiceIntakeReview v-if="activeItem" :key="activeItem.inv.id" :invoice="activeItem.inv" @open-payment="openPayment" @match-payment="reviewPaymentFiles" />
-        <InvoiceRow v-if="activeItem" :key="activeItem.inv.id" :item="activeItem" :reimbursement-selected="reimbursementSelection.includes(activeItem.inv.id)" @select-reimbursement="selectReimbursement" />
+        <InvoiceRow v-if="activeItem" :key="activeItem.inv.id" :item="activeItem" :paper-reason="paperTotals[activeItem.inv.id]?.reason" :reimbursement-selected="reimbursementSelection.includes(activeItem.inv.id)" @select-reimbursement="selectReimbursement" />
         <div v-else class="work-empty">选择票据后可对照原件核对</div>
       </section>
     </div>
@@ -288,7 +305,13 @@ function invertSelect() {
 </template>
 
 <style scoped>
-.workspace-v12 { height: calc(100dvh - 24px); min-height: 0; gap: 10px; font-size: 13px; }
+.batch-progress { appearance:none; position:absolute; inset:0 0 auto; z-index:3; width:100%; height:2px; border:0; pointer-events:none; }
+.batch-progress::-webkit-progress-bar { background:#e7f1fb; }
+.batch-progress::-webkit-progress-value { background:#1867c0; transition:width 160ms ease-out; }
+.batch-progress:indeterminate { background:linear-gradient(90deg,transparent,#1867c0,transparent) left center / 35% 100% no-repeat #e7f1fb; animation:batch-reading 1.2s ease-in-out infinite alternate; }
+.batch-progress:indeterminate::-webkit-progress-bar { background:transparent; }
+@keyframes batch-reading { to { background-position:right center; } }
+.workspace-v12 { position:relative; height: calc(100dvh - 24px); min-height: 0; gap: 10px; font-size: 13px; }
 .workspace-header { min-height: 48px; flex: none; overflow-x: auto; }
 .workspace-footer { min-height: 44px; flex: none; white-space: nowrap; overflow-x: auto; }
 .workspace-popover { z-index: 52; width: min(570px, calc(100vw - 24px)); max-height: min(76dvh, var(--reka-popover-content-available-height)); overflow: auto; }

@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { supplierStore,matchSupplierExact,coreCompanyName } from '../lib/supplier-db.js';
+import { supplierStore,matchSupplierExact,coreCompanyName } from '../lib/supplier-directory.js';
 const props=defineProps({modelValue:String});const emit=defineEmits(['update:modelValue']);
 const matched=computed(()=>matchSupplierExact(supplierStore.list,props.modelValue)?.supplier);
 const candidates=computed(()=>{if(matched.value)return [];const n=coreCompanyName(props.modelValue);if(n.length<2)return [];return supplierStore.list.filter(s=>[s.name,s.shortName,...s.aliases||[]].some(v=>{const a=coreCompanyName(v);return a.length>=2&&(a.includes(n)||n.includes(a));})).slice(0,8);});

@@ -1,9 +1,7 @@
 <script setup>
 import { computed, ref, shallowRef } from 'vue';
-import { DialogRoot, DialogTrigger, DialogPortal, DialogOverlay, DialogContent, DialogTitle, DialogDescription, DialogClose } from 'reka-ui';
-import FileDropInput from './FileDropInput.vue';
 import { directory, saveDirectory } from '../lib/expense-directory.js';
-import { readDirectoryWorkbook, exportDirectoryWorkbook, mergeDirectoryWorkbook } from '../lib/directory-workbook.js';
+import { mergeDirectoryWorkbook } from '../lib/directory-merge.js';
 import { saveBytesToChosenDir } from '../lib/invoice-export-package.js';
 import { downloadBytes } from '../lib/file-utils.js';
 import { toast, toastError } from '../lib/toast.js';
@@ -20,7 +18,8 @@ function toggle(value) {
 async function read([file]) {
   const version = ++generation;
   busy.value = true; source.value = null; message.value = ''; filename.value = file.name;
-  try { const data = readDirectoryWorkbook(await file.arrayBuffer()); if (generation === version) source.value = data; }
+  try { const { readDirectoryWorkbook } = await import('../lib/directory-workbook.js');
+    const data = readDirectoryWorkbook(await file.arrayBuffer()); if (generation === version) source.value = data; }
   catch (error) { if (generation === version) message.value = error.message; }
   finally { if (generation === version) busy.value = false; }
 }
@@ -31,6 +30,7 @@ function confirm() {
 }
 async function download() {
   try {
+    const { exportDirectoryWorkbook } = await import('../lib/directory-workbook.js');
     const bytes = exportDirectoryWorkbook(directory);
     const name = '基础档案.xlsx';
     const result = await saveBytesToChosenDir(bytes, name);

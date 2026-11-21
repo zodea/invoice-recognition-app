@@ -1,6 +1,4 @@
 <script setup>
-import InvoiceLedgerPanel from "../components/InvoiceLedgerPanel.vue";
-import InvoiceLedgerViewer from "../components/InvoiceLedgerViewer.vue";
 defineProps({ initialBuyerCheck: { type: String, default: 'all' } });
 </script>
 

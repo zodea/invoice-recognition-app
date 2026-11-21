@@ -1,36 +1,25 @@
 <script setup>
+import { useDebouncedFilter } from '../composables/useDebouncedFilter.js';
 import { formatMoney as money } from "../lib/format.js";
 import {matchesInvoiceAmount} from '../lib/invoice-amount-filter.js';
 import {listLedgerAttachmentMetadata} from '../lib/ledger-attachments.js';
 import { directory, resolveArchiveName } from '../lib/expense-directory.js';
-import { allocationKind } from '../lib/payment-records.js';
+import { allocationKind } from '../lib/payment-allocation.js';
 import { projectNames, isMultiProject, projectAllocationState, projectExpenseRows } from '../lib/invoice-allocation.js';
-import ConfirmAction from './ConfirmAction.vue';
 import { useConfirmation } from '../composables/useConfirmation.js';
 const { confirmation, requestConfirmation, answerConfirmation } = useConfirmation();
-import InvoiceLedgerRecycleBin from './InvoiceLedgerRecycleBin.vue';
 import { readTrashCleanupQueue } from '../lib/ledger-trash-purge.js';
-import MiddleEllipsis from './MiddleEllipsis.vue';
 import { useBuyerCheck } from '../composables/useBuyerCheck.js';
 import { buyerCheckLabels, matchesBuyerCheck, normalizeBuyerName } from '../lib/invoice-buyer-check.js';
-import InvoiceStatusTags from "./InvoiceStatusTags.vue";
-import UiTag from "./UiTag.vue";
 import { deductionDisplay } from "../lib/invoice-status-display";
-import InvoiceTypeTags from "./InvoiceTypeTags.vue";
 import { invoiceExpenseColumns } from "../lib/expense-columns";
 import { invoiceProblems } from "../lib/invoice-review";
 import { computed, onMounted, ref, watch } from "vue";
-import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
 import { invoiceActions, invoiceStore } from "../invoiceStore.js";
-import { deductionStatus, redInvoiceStatus } from "../lib/invoice-ledger";
+import { deductionStatus, redInvoiceStatus } from "../lib/invoice-ledger-state.js";
 import { planLedgerMatches } from "../lib/ledger-matching";
-import LedgerPrintPreview from './LedgerPrintPreview.vue';
-import InvoiceLedgerDetail from "./InvoiceLedgerDetail.vue";
 
 const props = defineProps({ initialBuyerCheck: { type: String, default: 'all' } });
-import InvoiceLedgerFilters from './InvoiceLedgerFilters.vue';
-import InvoiceLedgerTotals from './InvoiceLedgerTotals.vue';
-import InvoiceLedgerBatchDialog from './InvoiceLedgerBatchDialog.vue';
 
 const defaultFilters = {
   preset: 'all', query: '', project: '', buyer: '', startDate: '', endDate: '',
@@ -38,6 +27,18 @@ const defaultFilters = {
   amountQuery: '', amountField: 'total', supplementOnly: false, min: '', max: '', buyerCheck: 'all',
 };
 const filters = ref({ ...defaultFilters, preset: props.initialBuyerCheck === 'issues' ? 'buyer' : 'all' });
+const { applied: queryFilter, flush: flushQueryFilter } = useDebouncedFilter(() => filters.value.query);
+const { applied: minFilter, flush: flushMinFilter } = useDebouncedFilter(() => filters.value.min);
+const { applied: maxFilter, flush: flushMaxFilter } = useDebouncedFilter(() => filters.value.max);
+const { applied: amountFilter, flush: flushAmountFilter } = useDebouncedFilter(() => filters.value.amountQuery);
+function flushFilters() {
+  flushQueryFilter();
+  flushMinFilter();
+  flushMaxFilter();
+  flushAmountFilter();
+}
+const filtersPending = computed(() => filters.value.query !== queryFilter.value || filters.value.min !== minFilter.value
+  || filters.value.max !== maxFilter.value || filters.value.amountQuery !== amountFilter.value);
 const hasFilters = computed(() => Object.keys(defaultFilters).some(key => filters.value[key] !== defaultFilters[key]));
 const { checker: buyerChecker, configured: buyersConfigured, counts: buyerCounts } = useBuyerCheck(() => entries.value);
 function scanBuyers() { filters.value = { ...defaultFilters, preset: 'buyer' }; }
@@ -117,8 +118,9 @@ const invalidRange = computed(() => {
   return '';
 });
 const baseResults = computed(() => {
-  const { query, project, buyer, startDate, endDate, selection, reimbursement, red, attachment,
-    amountQuery, amountField, supplementOnly, min, max, buyerCheck } = filters.value;
+  const { project, buyer, startDate, endDate, selection, reimbursement, red, attachment,
+    amountField, supplementOnly, buyerCheck } = filters.value;
+  const query = queryFilter.value, min = minFilter.value, max = maxFilter.value, amountQuery = amountFilter.value;
   if (invalidRange.value) return [];
   const q = query.trim().toLowerCase();
   return entries.value.filter(e => {
@@ -180,7 +182,7 @@ function togglePage(checked) {
 async function deleteEntries(keys) {
  const actual = [...new Set(keys)].filter(k=>Object.hasOwn(invoiceStore.ledger,k));
  if(!actual.length || !await requestConfirmation('删除 '+actual.length+' 张发票','记录将退出台账、汇总和导出，原件保留，可在回收站恢复。'))return;
- try{const r=invoiceActions.deleteLedgerEntries(actual);notice.value='已将 '+r.changed+' 张发票移入回收站。'+(r.warning||'');checkedKeys.value=[];}catch(e){notice.value='删除失败，原记录仍保留：'+e.message;}
+ try{const r=invoiceActions.deleteLedgerEntries(actual);notice.value=r.warning || '';checkedKeys.value=[];}catch(e){notice.value='删除失败，原记录仍保留：'+e.message;}
 }
 function restoreEntries(ids) {
  try{const r=invoiceActions.restoreLedgerEntries(ids);trashNotice.value='已恢复 '+r.changed+' 张'+(r.conflicts?'；'+r.conflicts+' 张同号码已存在，未覆盖':'')+'。'+(r.warning||'');notice.value=trashNotice.value;}catch(e){trashNotice.value='恢复失败，回收站备份仍保留：'+e.message;}
@@ -217,7 +219,7 @@ onMounted(refreshAttachments);
 <template>
   <section class="ledger-workspace" aria-label="历史进项台账列表">
     <ConfirmAction :request="confirmation" @answer="answerConfirmation" />
-    <InvoiceLedgerFilters v-model="filters" :presets="presets" :counts="presetCounts" :projects="projectOptions"
+    <InvoiceLedgerFilters @apply-input="flushFilters" v-model="filters" :presets="presets" :counts="presetCounts" :projects="projectOptions"
       :buyers="buyerOptions" :buyers-configured="buyersConfigured" :buyer-counts="buyerCounts" :has-filters="hasFilters" @reset="resetFilters" @scan="scanBuyers">
       <button v-if="eligibleCount || syncing" type="button" class="ui-btn" :disabled="syncing" @click="syncCurrent">{{ syncing ? '正在同步…' : '同步原件 ('+eligibleCount+')' }}</button>
       <button type="button" class="ui-btn ml-auto" @click="openTrash">回收站（{{ invoiceStore.ledgerTrash.length }}）</button>
@@ -241,15 +243,15 @@ onMounted(refreshAttachments);
       <div class="ledger-table-wrap" tabindex="0" aria-label="发票列表，可上下及左右滚动">
         <table class="ledger-table">
           <thead><tr>
-            <th scope="col" class="ledger-select"><input type="checkbox" aria-label="全选当前页" :checked="allPageChecked" :indeterminate="somePageChecked && !allPageChecked" :disabled="!paged.length" @change="togglePage($event.target.checked)" /></th>
+            <th scope="col" class="ledger-select"><input type="checkbox" :disabled="filtersPending || !paged.length" aria-label="全选当前页" :checked="allPageChecked" :indeterminate="somePageChecked && !allPageChecked" @change="togglePage($event.target.checked)" /></th>
             <th v-for="[key, label] in invoiceExpenseColumns" :key="key" scope="col" :class="{ numeric: key === 'total' }" :aria-sort="sortKey === key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined"><button class="ui-focus" @click="setSort(key)">{{ label }} {{ sortIcon(key) }}</button></th>
             <th scope="col">购买方</th><th scope="col">复核状态</th><th scope="col">报销状态</th><th scope="col">发票状态</th><th scope="col">抵扣 / 勾选时间</th><th scope="col">原件</th><th scope="col">附件</th><th scope="col" class="sticky-action">操作</th>
           </tr></thead>
           <tbody>
             <tr v-for="e in paged" :key="e.key" :class="{ active: selectedKey === e.key }">
-              <td class="ledger-select"><input v-model="checkedKeys" type="checkbox" :value="e.key" :aria-label="'选择发票 '+e.number" /></td>
-              <td v-for="[key] in invoiceExpenseColumns" :key="key" :class="{numeric:key==='total',number:key==='number'}"><InvoiceTypeTags v-if="key==='type'" :entry="e" /><span v-else-if="key==='project' && isMultiProject(e)" class="multi-project-cell"><MiddleEllipsis :text="projectNames(e) || '尚未指定工地'" :tail="4" class="ledger-short-text" /><small :class="projectAllocationState(e).complete ? 'allocation-complete' : 'allocation-incomplete'">{{ projectAllocationState(e).label }} · {{ (e.projectAllocations || []).length }} 个工地</small></span><MiddleEllipsis v-else-if="['seller','project','payer'].includes(key)" :text="String(e[key] || '—')" :tail="6" :class="key==='seller'?'ledger-company-text':'ledger-short-text'" /><template v-else>{{ key==='total'?money(e[key]):e[key]||'—' }}</template></td>
-              <td><MiddleEllipsis :text="e.buyer || '—'" :tail="6" class="ledger-company-text" /><small v-if="['missing','unmatched'].includes(buyerChecker(e))" class="buyer-issue">{{ buyerCheckLabels[buyerChecker(e)] }}</small></td>
+              <td class="ledger-select"><input v-model="checkedKeys" type="checkbox" :disabled="filtersPending" :value="e.key" :aria-label="'选择发票 '+e.number" /></td>
+              <td v-for="[key] in invoiceExpenseColumns" :key="key" :class="{numeric:key==='total',number:key==='number'}"><InvoiceTypeTags v-if="key==='type'" :entry="e" /><span v-else-if="key==='project' && isMultiProject(e)" class="multi-project-cell"><MiddleEllipsis :text="projectNames(e) || '尚未指定工地'" :tail="4" class="ledger-short-text" /><small :class="projectAllocationState(e).complete ? 'allocation-complete' : 'allocation-incomplete'">{{ projectAllocationState(e).label }} · {{ (e.projectAllocations || []).length }} 个工地</small></span><MiddleEllipsis v-else-if="['seller','project','payer','number'].includes(key)" :text="String(e[key] || '—')" :tail="key === 'seller' ? 5 : 6" :class="key==='seller'?'ledger-company-text':'ledger-short-text'" /><template v-else>{{ key==='total'?money(e[key]):e[key]||'—' }}</template></td>
+              <td><MiddleEllipsis :text="e.buyer || '—'" :tail="5" class="ledger-company-text" /><small v-if="['missing','unmatched'].includes(buyerChecker(e))" class="buyer-issue">{{ buyerCheckLabels[buyerChecker(e)] }}</small></td>
               <td><span class="status-pill" :class="invoiceProblems(e).length?'warning':'neutral'">{{ invoiceProblems(e).length?'待补全':e.reviewedAt?'已复核':'待复核' }}</span></td>
               <td><span class="status-pill" :class="e.reimbursement==='已报销'?'success':'neutral'">{{ e.reimbursement||'未核对' }}</span></td>
               <td><InvoiceStatusTags :entry="e" /></td>
@@ -303,7 +305,7 @@ onMounted(refreshAttachments);
 .ledger-body { display:flex; flex:1; min-width:0; min-height:9rem; }
 .ledger-table-wrap { flex:1; min-width:0; overflow:auto; overscroll-behavior:contain; }
 .ledger-table { min-width:max(100%,1040px); width:max-content; border-collapse:separate; border-spacing:0; text-align:left; white-space:nowrap; }
-.ledger-table th,.ledger-table td { padding:5px 8px; height:34px; border-bottom:1px solid #eef0f3; }
+.ledger-table th,.ledger-table td { padding:5px 6px; height:36px; border-bottom:1px solid #eef0f3; }
 .ledger-table th { position:sticky; top:0; z-index:1; background:#f9fafb; color:#4b5563; font-size:12px; font-weight:600; }
 .ledger-table tr:hover td,.ledger-table tr.active td { background:#f0f6ff; }
 .ledger-table .ledger-select,.ledger-table .sticky-action { position:sticky; z-index:2; background:white; }

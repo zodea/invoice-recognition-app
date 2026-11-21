@@ -1,10 +1,8 @@
 <script setup>
 import { ref } from "vue";
-import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from "reka-ui";
 import { appSettings, saveAppSettings, vlConfigured } from "../lib/app-settings";
 import { vlParseDocument } from "../lib/ocr-vl";
 import { toast, toastError, toastInfo } from "../lib/toast";
-import LocalDataPanel from './LocalDataPanel.vue';
 import { flushLocalData } from '../lib/local-data.js';
 
 defineProps({ open: Boolean });

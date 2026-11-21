@@ -1,20 +1,22 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui';
 import { supplementType } from '../lib/invoice-supplements.js';
-import { allocationKind } from '../lib/payment-records.js';
+import { allocationKind } from '../lib/payment-allocation.js';
 import { isMultiProject, projectNames } from '../lib/invoice-allocation.js';
 import { invoiceStore, invoiceActions } from '../invoiceStore.js';
 import { directory } from '../lib/expense-directory.js';
 import { EXPENSE_TAGS, inferExpenseTag } from '../lib/invoice-tags.js';
 import { invoiceTypes, recentInvoiceProjects } from '../lib/invoice-workspace-fields.js';
 import { toastWarn } from '../lib/toast.js';
-import InvoiceMoneyField from './InvoiceMoneyField.vue';
-import InvoiceProjectAllocationDialog from './InvoiceProjectAllocationDialog.vue';
-import SearchSelect from './SearchSelect.vue';
-import SupplierMatch from './SupplierMatch.vue';
 
-const props = defineProps({ item: { type: Object, required: true }, reimbursementSelected: Boolean });
+import { flashAcceptedField } from '../lib/field-feedback.js';
+
+const projectField = ref(null);
+function adoptProject(project) {
+  setAssignment('project', project);
+  flashAcceptedField(projectField.value);
+}
+const props = defineProps({ item: { type: Object, required: true }, reimbursementSelected: Boolean, paperReason: String });
 const emit = defineEmits(['select-reimbursement']);
 const invoice = computed(() => props.item.inv);
 const fields = computed(() => invoice.value.fields);
@@ -65,12 +67,12 @@ function changeTag(event) {
       <div class="grid grid-cols-2 gap-2">
         <label class="ui-label col-span-2">发票号码<input v-model="fields.number" class="ui-input ui-money" /></label>
         <label class="ui-label">开票日期<input v-model="fields.date" class="ui-input" placeholder="YYYY-MM-DD" @input="fields.dateText = $event.target.value" /></label>
-        <label class="ui-label col-span-2">销售方<input v-model="fields.seller" class="ui-input" /><SupplierMatch v-model="fields.seller" @update:model-value="markEdited" /></label>
-        <label class="ui-label col-span-2">购买方<SearchSelect v-model="fields.buyer" :options="directory.buyers" label="购买方" placeholder="搜索档案或输入新抬头" allow-custom @update:model-value="markEdited" /></label>
+        <label class="ui-label col-span-2">销售方<textarea v-model="fields.seller" rows="1" class="ui-input growing-field" :title="fields.seller" /><SupplierMatch v-model="fields.seller" @update:model-value="markEdited" /></label>
+        <label class="ui-label col-span-2">购买方<SearchSelect multiline v-model="fields.buyer" :options="directory.buyers" label="购买方" placeholder="搜索档案或输入新抬头" allow-custom @update:model-value="markEdited" /></label>
         <label class="ui-label col-span-2">票种<select :value="fields.type" class="ui-input" @change="changeType($event.target.value)"><option value="">待识别</option><option v-for="kind in kinds" :key="kind">{{ kind }}</option></select></label>
         <InvoiceMoneyField v-model="fields.amount" label="不含税金额" />
         <InvoiceMoneyField v-model="fields.tax" label="税额" />
-        <InvoiceMoneyField v-model="fields.total" label="价税合计" />
+        <InvoiceMoneyField v-model="fields.total" :paper-reason="paperReason" label="价税合计" />
         <label class="ui-label">税率<input v-model="fields.rate" class="ui-input" placeholder="如 13%" /></label>
       </div>
     </section>
@@ -79,8 +81,8 @@ function changeTag(event) {
       <p v-if="isMultiProject(assignment)" class="text-xs text-ink-secondary">多工地分摊：{{ projectNames(assignment) || '待分配' }}</p>
       <template v-else>
         <label class="ui-label">归属类型<select :value="allocationKind(assignment)" class="ui-input" @change="setAssignment('allocation', $event.target.value)"><option v-for="kind in allocations" :key="kind">{{ kind }}</option></select></label>
-        <label class="ui-label">使用工地<SearchSelect :model-value="assignment.project || ''" :options="projects" label="使用工地" @update:model-value="setAssignment('project', $event)" /></label>
-        <div v-if="recent.length" class="flex flex-wrap items-center gap-1.5"><span class="text-xs text-ink-soft">近期常用</span><button v-for="project in recent" :key="project" class="ui-btn-sm" :aria-pressed="assignment.project === project" @click="setAssignment('project', project)">{{ project }}</button></div>
+        <label ref="projectField" class="ui-label">使用工地<SearchSelect :model-value="assignment.project || ''" :options="projects" label="使用工地" @update:model-value="setAssignment('project', $event)" /></label>
+        <div v-if="recent.length" class="flex flex-wrap items-center gap-1.5"><span class="text-xs text-ink-soft">近期常用</span><button v-for="project in recent" :key="project" class="ui-btn-sm" :aria-pressed="assignment.project === project" @click="adoptProject(project)">{{ project }}</button></div>
       </template>
       <label class="ui-label">费用标签<select :value="expenseTag" class="ui-input" @change.stop="changeTag"><option value="">未分类</option><option v-for="tag in EXPENSE_TAGS" :key="tag">{{ tag }}</option></select></label>
       <InvoiceProjectAllocationDialog v-if="allocationOpen" :entry="allocationEntry" :draft="!previous" @apply="applyAllocation" @close="allocationOpen = false" />

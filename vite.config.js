@@ -1,4 +1,6 @@
 import { defineConfig } from "vite";
+import Components from 'unplugin-vue-components/vite';
+import RekaResolver from 'reka-ui/resolver';
 import vue from "@vitejs/plugin-vue";
 import UnoCSS from "unocss/vite";
 
@@ -6,7 +8,9 @@ import UnoCSS from "unocss/vite";
 // 需在 Chrome / Edge 里以 http://localhost 打开（不是 file://）。
 export default defineConfig({
   base: "./",
-  plugins: [UnoCSS(), vue()],
+  plugins: [UnoCSS(), vue(),
+    Components({ dirs: ['src/components'], resolvers: [RekaResolver()], dts: 'src/components.d.ts' }),
+  ],
   server: {
     port: 5173,
     open: true,

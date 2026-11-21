@@ -1,16 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import {
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuPortal,
-  ContextMenuRoot,
-  ContextMenuTrigger,
-} from "reka-ui";
 import { invoiceStore, invoiceActions, printUnits, selectInvoice } from "../invoiceStore.js";
 import { A4_RATIO, perPageCount, planSlots } from "../lib/print-layout";
-import DocumentImage from "./DocumentImage.vue";
-import PreviewMinimap from './PreviewMinimap.vue';
 import { createPreviewPan } from "../lib/preview-pan.js";
 
 const units = computed(() => printUnits());
@@ -184,7 +175,7 @@ const menuItemCls = "flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-md cu
                   {{ unit.seq }}<template v-if="unit.pageCount > 1">-{{ unit.page + 1 }}</template>
                 </span>
                 <span v-if="unit.needsReview" class="slot-warning z-3 chip bg-[#fff7ed] text-[#b45309] border border-[#fed7aa] px-1.5 py-0.75">待复核</span>
-                <img v-if="unit.image" :src="unit.image" class="w-full h-full object-contain block" alt="" />
+                <img v-if="unit.image" loading="lazy" decoding="async" :src="unit.image" class="w-full h-full object-contain block" alt="" />
                 <div v-else class="h-full flex flex-col items-start justify-center gap-1.5 px-3.5 pt-5.5 pb-3.5 text-left text-ink">
                   <strong class="text-[13px] leading-snug">{{ unit.inv.fields.seller || "电子发票 PDF" }}</strong>
                   <span class="text-xs text-ink-soft">{{ unit.inv.fields.date || "日期待复核" }}</span>

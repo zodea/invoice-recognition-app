@@ -1,4 +1,4 @@
-import { allocationKind } from './payment-records.js';
+import { allocationKind } from './payment-allocation.js';
 import { isMultiProject, projectExpenseRows } from './invoice-allocation.js';
 
 export function expenseSummary(entries, bySeller = false, options = {}) {

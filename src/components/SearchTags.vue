@@ -1,7 +1,5 @@
 <script setup>
 import {computed} from 'vue';
-import SearchSelect from './SearchSelect.vue';
-import UiTag from './UiTag.vue';
 import {splitTags} from '../lib/expense-options';
 const props=defineProps({modelValue:{type:String,default:''},options:{type:Array,default:()=>[]}});const emit=defineEmits(['update:modelValue']);
 const selected=computed(()=>splitTags(props.modelValue));const available=computed(()=>props.options.filter(v=>!selected.value.includes(v)));

@@ -1,10 +1,10 @@
 <script setup>
 import { computed } from "vue";
 
-const props = defineProps({ text: { type: String, default: "" }, tail: { type: Number, default: 4 } });
+const props = defineProps({ text: { type: String, default: "" }, tail: { type: Number, default: 5 } });
 const parts = computed(() => {
   const chars = Array.from(props.text);
-  if (chars.length <= props.tail) return [props.text, ""];
+  if (props.tail <= 0 || chars.length <= props.tail) return [props.text, ""];
   return [chars.slice(0, -props.tail).join(""), chars.slice(-props.tail).join("")];
 });
 </script>

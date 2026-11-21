@@ -1,7 +1,6 @@
 // 发票批量打印自动排版：把多张发票（PDF 页或图片）拼到 A4 页上，
 // 每页 1/2/4 张，等比缩放、居中、留白。几何来自 print-layout.js，
 // 与左侧预览共用同一套槽位，保证导出 PDF 与预览一致。
-import { PDFDocument, degrees } from "pdf-lib";
 import { A4, planSlots, perPageCount } from "./print-layout.js";
 import { isPdf } from './file-utils.js';
 
@@ -23,12 +22,13 @@ function placeRotated(d, s, rot) {
   if (rot === 90) { y = by + sw; }
   else if (rot === 180) { x = bx + sw; y = by + sh; }
   else if (rot === 270) { x = bx + sh; }
-  return { x, y, width: sw, height: sh, rotate: degrees(-rot) };
+  return { x, y, width: sw, height: sh, rotation: -rot };
 }
 
 // invoices: [{ name, blob, rotation }]，已是要打印的子集、且已排好序
 // 返回打印版 PDF 的 Uint8Array
 export async function buildPrintLayout(invoices, { perPage = 2, margin = 18, gap = 12, onLayout } = {}) {
+  const { PDFDocument, degrees } = await import("pdf-lib");
   const out = await PDFDocument.create();
 
   // 收集所有“可绘制单元”（发票通常 1 页，但也支持多页）。
@@ -62,7 +62,8 @@ export async function buildPrintLayout(invoices, { perPage = 2, margin = 18, gap
   drawables.forEach((d, i) => {
     const slotIdx = i % per;
     if (slotIdx === 0) page = out.addPage([A4.w, A4.h]);
-    const opts = placeRotated(d, slots[slotIdx], d.rot || 0);
+    const { rotation, ...box } = placeRotated(d, slots[slotIdx], d.rot || 0);
+    const opts = { ...box, rotate: degrees(rotation) };
     if (d.type === "page") page.drawPage(d.ep, opts);
     else page.drawImage(d.img, opts);
   });

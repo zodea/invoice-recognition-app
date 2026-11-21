@@ -1,7 +1,7 @@
 import { normalizeBuyerName } from './invoice-buyer-check.js';
 import { moneyCents } from './invoice-allocation.js';
 import { supplementInvoiceCandidates, supplementType } from './invoice-supplements.js';
-import { relativeLink } from './invoiceExcelImport.js';
+import { relativeLink } from './invoice-workbook-links.js';
 
 const compact = value => String(value || '').normalize('NFKC').replace(/\s/g, '');
 const medical = fields => /医疗|门诊/.test([fields.type, fields.docType, fields.sourcePath].join(' '));

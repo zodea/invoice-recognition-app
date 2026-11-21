@@ -30,7 +30,7 @@ function removeRow(index) {
         <tbody>
           <tr v-for="(item, index) in doc.items" :key="item.id || index">
             <td class="text-ink-soft ui-money">{{ index + 1 }}</td>
-            <td><input v-model="item.name" class="ui-input" :title="item.name" :aria-label="'第 ' + (index + 1) + ' 行材料名称'" /></td>
+            <td><textarea v-model="item.name" rows="1" class="ui-input growing-field" :title="item.name" :aria-label="'第 ' + (index + 1) + ' 行材料名称'" /></td>
             <td><input v-model="item.specification" class="ui-input" :title="item.specification" :aria-label="'第 ' + (index + 1) + ' 行规格型号'" /></td>
             <td><input v-model="item.unit" class="ui-input" :aria-label="'第 ' + (index + 1) + ' 行单位'" /></td>
             <td><input :value="item.quantity" class="ui-input ui-money text-right" inputmode="decimal" :aria-label="'第 ' + (index + 1) + ' 行数量'" @input="updateAmount(item, 'quantity', $event.target.value)" /></td>

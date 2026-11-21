@@ -3,7 +3,6 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { isPdf } from '../lib/file-utils.js';
 import { renderPdfPages } from '../lib/pdftext.js';
 import { createPreviewPan } from '../lib/preview-pan.js';
-import DocumentImage from './DocumentImage.vue';
 
 const props = defineProps({ file: Object });
 const urls = ref([]), index = ref(0), zoom = ref(100), viewport = ref(null), dragging = ref(false), notice = ref('');
@@ -19,7 +18,7 @@ watch(() => props.file, async (file, _, onCleanup) => {
   notice.value = file ? '正在读取原件…' : '请选择原件';
   if (!file) return;
   try {
-    loaded = isPdf(file) ? await renderPdfPages(file, { maxPages: 20, scale: 1.4 }) : [URL.createObjectURL(file)];
+    loaded = isPdf(file) ? await renderPdfPages(file, { maxPages: 20, scale: 1.4, maxPixels: 360000 }) : [URL.createObjectURL(file)];
     if (stale) { loaded.forEach(url => URL.revokeObjectURL(url)); return; }
     urls.value = loaded;
     notice.value = loaded.length ? '' : '没有可预览的页面';

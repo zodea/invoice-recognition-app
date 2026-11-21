@@ -4,7 +4,7 @@ import { renderFileToPages } from "./lib/pdf";
 import { recognizePages } from "./lib/ocr";
 import { parseDoc } from "./lib/parse";
 import { buildTree, buildTreeFromStore, flattenForApply } from "./lib/delivery-tree";
-import { loadSuppliers, matchSupplierExact as matchSupplier, normalizeCompanyName } from "./lib/supplier-db";
+import { loadSuppliers, matchSupplierExact as matchSupplier, normalizeCompanyName } from "./lib/supplier-directory.js";
 import { vlConfigured, vlParseDocument } from "./lib/ocr-vl";
 import { parseVlToDocs } from "./lib/vl-parse";
 import { rotateImageUrl } from "./lib/pdftext";
